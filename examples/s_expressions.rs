@@ -10,11 +10,11 @@ extern crate rowan;
 /// Currently, rowan doesn't have a hook to add your own interner,
 /// but `SmolStr` should be a "good enough" type for representing
 /// tokens.
-/// Aditionaly, rowan uses `TextUnit` and `TextRange` types to
+/// Additionally, rowan uses `TextUnit` and `TextRange` types to
 /// represent utf8 offsets and ranges.
 use rowan::SmolStr;
 
-/// Let's start with defning all kinds of tokens and
+/// Let's start with defining all kinds of tokens and
 /// composite nodes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
@@ -74,12 +74,12 @@ type SyntaxNodeRef<'a> = SyntaxNode<rowan::RefRoot<'a, STypes>>;
 /// completely invalid source code.
 fn parse(text: &str) -> SyntaxNode {
     struct Parser {
-        /// input tokens, including whitepsace,
+        /// input tokens, including whitespace,
         /// in *reverse* order.
         tokens: Vec<(SyntaxKind, SmolStr)>,
         /// the in-progress tree.
         builder: GreenNodeBuilder,
-        /// the list of syntax errors we've accamulated
+        /// the list of syntax errors we've accumulated
         /// so far.
         errors: Vec<String>,
     }
@@ -209,14 +209,14 @@ fn test_parser() {
 }
 
 /// So far, we've been working with a homogeneous untyped tree.
-/// It's nice to provide generic tree oprations, like traversals,
+/// It's nice to provide generic tree operations, like traversals,
 /// but it's a bad fit for semantic analysis.
 /// This crate itself does not provide AST facilities directly,
 /// but it is possible to layer AST on top of `SyntaxNode` API.
 /// Let's write a function to evaluate S-expression.
 ///
 /// For that, let's define AST nodes.
-/// It'll be quite a bunch of repetative code, so we'll use a macro.
+/// It'll be quite a bunch of repetitive code, so we'll use a macro.
 ///
 /// For a real language, you'd want to generate an AST. I find a
 /// combination of `serde`, `ron` and `tera` crates invaluable for that!
@@ -254,7 +254,7 @@ impl<'a> Sexp<'a> {
     }
 }
 
-// Let's enchace AST nodes with ancillary functions and
+// Let's enhance AST nodes with ancillary functions and
 // eval.
 impl<'a> Root<'a> {
     fn sexps(self) -> impl Iterator<Item = Sexp<'a>> {
