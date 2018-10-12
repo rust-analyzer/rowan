@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {SmolStr, TextUnit, Types};
 
-/// `GreenNode` is an immutable sytnax tree,
+/// `GreenNode` is an immutable syntax tree,
 /// which is cheap to update. It lacks parent
 /// pointers and information about offsets.
 #[derive(Debug)]

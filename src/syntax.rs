@@ -25,14 +25,14 @@ use {
 /// with a corresponding ergonomics hit.
 ///
 /// Owned `SyntaxNode` is `Clone` (using `Arc::clone` under the hood) and
-/// is not parametrized over a lifetime. Note that becaue of the parent
-/// links `SyntaxNode` keeps all of its ancestors alive, and not only descendents,
+/// is not parametrized over a lifetime. Note that because of the parent
+/// links `SyntaxNode` keeps all of its ancestors alive, and not only descendants,
 /// so keep an eye on memory leaks.
 ///
-/// Methods like `parent` or `children` preserv the flavor (borrowed or owned)
+/// Methods like `parent` or `children` preserve the flavor (borrowed or owned)
 /// of nodes, but you can switch between them at any time using `.borrowed()`
 /// and `.owned()` methods. As a rule of thumb, when *processing* nodes, use
-/// borowed version to avoid excessive Arc trafic, and, when *storing* nodes
+/// borrowed version to avoid excessive Arc traffic, and, when *storing* nodes
 /// in data structures, use owned variant, to avoid dealing with lifetimes.
 ///
 /// `SyntaxNode` have object identity equality and hash semantics.

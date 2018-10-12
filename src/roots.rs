@@ -12,7 +12,7 @@ pub struct SyntaxRoot<T: Types> {
     pub(crate) data: T::RootData,
 }
 
-/// A marker trait to distingush between owned and borrowed
+/// A marker trait to distinguish between owned and borrowed
 /// trees. You don't need to implement it yourself,
 /// use existing `OwnedRoot` or `RefRoot`.
 pub trait TreeRoot<T: Types>: Clone + Send + Sync {
