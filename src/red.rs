@@ -17,11 +17,11 @@ enum RedChild<T: Types> {
 impl<T: Types> RedChild<T> {
     fn set(&mut self, node: RedNode<T>) -> &RedNode<T> {
         match self {
-            RedChild::Child(node) => return node,
+            RedChild::Child(node) => node,
             RedChild::Zigot(_) => {
                 *self = RedChild::Child(node);
                 match self {
-                    RedChild::Child(node) => return node,
+                    RedChild::Child(node) => node,
                     RedChild::Zigot(_) => unreachable!(),
                 }
             }
