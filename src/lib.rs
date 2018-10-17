@@ -23,7 +23,7 @@ pub use {
     roots::{OwnedRoot, RefRoot, TreeRoot},
     smol_str::SmolStr,
 
-    syntax::{SyntaxNode, SyntaxNodeChildren},
+    syntax::{SyntaxNode, SyntaxNodeChildren, WalkEvent},
     // Reexport types for working with strings.
     // We might be too opinionated about these,
     // as a custom interner might work better,

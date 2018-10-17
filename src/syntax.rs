@@ -3,6 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     ops::Range,
     sync::Arc,
+    iter::repeat,
 };
 
 use {
@@ -88,12 +89,43 @@ impl<T: Types> SyntaxNode<T, OwnedRoot<T>> {
     }
 }
 
+/// `WalkeEvent` describes tree walking process.
+#[derive(Debug, Copy, Clone)]
+pub enum WalkEvent<T> {
+    /// Fired before traversing the node.
+    Enter(T),
+    /// Fired after the node is traversed.
+    Leave(T),
+}
+
 impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
     /// Text of this node if it is a leaf.
     // Only for `RefRoot` to extend lifetime to `'a`.
-    pub fn leaf_text(&self) -> Option<&'a SmolStr> {
+    pub fn leaf_text(self) -> Option<&'a SmolStr> {
         let red = unsafe { self.red.get(self.root.syntax_root()) };
         red.green().leaf_text()
+    }
+
+    /// Traverse the subtree rooted at the current node in preorder.
+    pub fn preorder(self) -> impl Iterator<Item = WalkEvent<SyntaxNode<T, RefRoot<'a, T>>>> {
+        generate(Some(WalkEvent::Enter(self)), move |pos| {
+            let next = match *pos {
+                WalkEvent::Enter(node) => match node.first_child() {
+                    Some(child) => WalkEvent::Enter(child),
+                    None => WalkEvent::Leave(node),
+                },
+                WalkEvent::Leave(node) => {
+                    if node == self {
+                        return None;
+                    }
+                    match node.next_sibling() {
+                        Some(sibling) => WalkEvent::Enter(sibling),
+                        None => WalkEvent::Leave(node.parent().unwrap()),
+                    }
+                }
+            };
+            Some(next)
+        })
     }
 }
 
@@ -238,4 +270,15 @@ impl<T: Types, R: TreeRoot<T>> Iterator for SyntaxNodeChildren<T, R> {
             }
         })
     }
+}
+
+
+fn generate<'a, T: 'a, F: Fn(&T) -> Option<T> + 'a>(seed: Option<T>, step: F) -> impl Iterator<Item = T> + 'a {
+    repeat(())
+        .scan(seed, move |state, ()| {
+            state.take().map(|curr| {
+                *state = step(&curr);
+                curr
+            })
+        })
 }
