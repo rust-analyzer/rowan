@@ -18,7 +18,7 @@ mod syntax;
 
 use std::fmt::Debug;
 
-pub use {
+pub use crate::{
     green::{GreenNode, GreenNodeBuilder},
     roots::{OwnedRoot, RefRoot, TreeRoot},
     smol_str::SmolStr,

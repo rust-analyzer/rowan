@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use {SmolStr, TextUnit, Types};
+use crate::{SmolStr, TextUnit, Types};
 
 /// `GreenNode` is an immutable syntax tree,
 /// which is cheap to update. It lacks parent
@@ -48,6 +48,12 @@ impl<T: Types> GreenNodeBuilder<T> {
     /// Start new branch and make it current.
     pub fn start_internal(&mut self, kind: T::Kind) {
         let len = self.children.len();
+        self.parents.push((kind, len));
+    }
+    /// Wrap the previous branch in a new branch and make it current.
+    pub fn wrap_internal(&mut self, kind: T::Kind) {
+        assert!(!self.children.is_empty(), "can't wrap_internal on empty node");
+        let len = self.children.len() - 1;
         self.parents.push((kind, len));
     }
     /// Finish current branch and restore previous

@@ -1,5 +1,5 @@
 use parking_lot::RwLock;
-use {roots::RedPtr, GreenNode, TextUnit, Types};
+use crate::{roots::RedPtr, GreenNode, TextUnit, Types};
 
 #[derive(Debug)]
 pub(crate) struct RedNode<T: Types> {
