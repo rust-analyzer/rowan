@@ -20,6 +20,10 @@ impl<T: Types> Clone for GreenNode<T> {
     }
 }
 
+/// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::wrap_checkpoint` for details.
+#[derive(Clone, Copy, Debug)]
+pub struct WrapCheckpoint(usize);
+
 #[derive(Debug)]
 enum GreenNodeImpl<T: Types> {
     Leaf { kind: T::Kind, text: SmolStr },
@@ -50,12 +54,6 @@ impl<T: Types> GreenNodeBuilder<T> {
         let len = self.children.len();
         self.parents.push((kind, len));
     }
-    /// Wrap the previous branch in a new branch and make it current.
-    pub fn wrap_internal(&mut self, kind: T::Kind) {
-        assert!(!self.children.is_empty(), "can't wrap_internal on empty node");
-        let len = self.children.len() - 1;
-        self.parents.push((kind, len));
-    }
     /// Finish current branch and restore previous
     /// branch as current.
     pub fn finish_internal(&mut self) {
@@ -63,6 +61,31 @@ impl<T: Types> GreenNodeBuilder<T> {
         let children: Vec<_> = self.children.drain(first_child..).collect();
         self.children
             .push(GreenNode::new_branch(kind, children.into_boxed_slice()));
+    }
+    /// Prepare for maybe wrapping the next node.
+    /// The way wrapping works is that you first of all get a checkpoint,
+    /// then you place all tokens you want to wrap, and then *maybe* call wrap_internal.
+    /// Example:
+    /// ```rust,ignore
+    /// let checkpoint = builder.wrap_checkpoint();
+    /// self.parse_expr();
+    /// if self.peek() == Some(Token::Plus) {
+    ///   // 1 + 2 = Add(1, 2)
+    ///   builder.wrap_internal(checkpoint, Token::Operation);
+    ///   self.parse_expr();
+    ///   builder.finish_internal();
+    /// }
+    /// ```
+    pub fn wrap_checkpoint(&self) -> WrapCheckpoint {
+        WrapCheckpoint(self.children.len())
+    }
+    /// Wrap the previous branch marked by wrap_checkpoint in a new branch and
+    /// make it current.
+    pub fn wrap_internal(&mut self, checkpoint: WrapCheckpoint, kind: T::Kind) {
+        let WrapCheckpoint(checkpoint) = checkpoint;
+        assert!(checkpoint <= self.children.len(), "checkpoint no longer valid, was finish_internal called early?");
+
+        self.parents.push((kind, checkpoint));
     }
     /// Complete tree building. Make sure that
     /// `start_internal` and `finish_internal` calls
