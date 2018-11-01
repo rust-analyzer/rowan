@@ -79,7 +79,7 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
         }
     }
     fn handle_operation(&mut self, tokens: &[Token], next: fn(&mut Self)) {
-        let checkpoint = self.builder.wrap_checkpoint();
+        let checkpoint = self.builder.checkpoint();
         next(self);
         while self.peek().map(|t| tokens.contains(&t)).unwrap_or(false) {
             self.builder.start_internal_at(checkpoint, NodeType::Marker(ASTKind::Operation));

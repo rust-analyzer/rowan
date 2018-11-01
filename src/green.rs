@@ -20,9 +20,9 @@ impl<T: Types> Clone for GreenNode<T> {
     }
 }
 
-/// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::wrap_checkpoint` for details.
+/// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
-pub struct WrapCheckpoint(usize);
+pub struct Checkpoint(usize);
 
 #[derive(Debug)]
 enum GreenNodeImpl<T: Types> {
@@ -67,7 +67,7 @@ impl<T: Types> GreenNodeBuilder<T> {
     /// then you place all tokens you want to wrap, and then *maybe* call start_internal_at.
     /// Example:
     /// ```rust,ignore
-    /// let checkpoint = builder.wrap_checkpoint();
+    /// let checkpoint = builder.checkpoint();
     /// self.parse_expr();
     /// if self.peek() == Some(Token::Plus) {
     ///   // 1 + 2 = Add(1, 2)
@@ -76,13 +76,13 @@ impl<T: Types> GreenNodeBuilder<T> {
     ///   builder.finish_internal();
     /// }
     /// ```
-    pub fn wrap_checkpoint(&self) -> WrapCheckpoint {
-        WrapCheckpoint(self.children.len())
+    pub fn checkpoint(&self) -> Checkpoint {
+        Checkpoint(self.children.len())
     }
-    /// Wrap the previous branch marked by wrap_checkpoint in a new branch and
+    /// Wrap the previous branch marked by `checkpoint` in a new branch and
     /// make it current.
-    pub fn start_internal_at(&mut self, checkpoint: WrapCheckpoint, kind: T::Kind) {
-        let WrapCheckpoint(checkpoint) = checkpoint;
+    pub fn start_internal_at(&mut self, checkpoint: Checkpoint, kind: T::Kind) {
+        let Checkpoint(checkpoint) = checkpoint;
         assert!(checkpoint <= self.children.len(), "checkpoint no longer valid, was finish_internal called early?");
 
         if let Some(&(_, first_child)) = self.parents.last() {
