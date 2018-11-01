@@ -64,14 +64,14 @@ impl<T: Types> GreenNodeBuilder<T> {
     }
     /// Prepare for maybe wrapping the next node.
     /// The way wrapping works is that you first of all get a checkpoint,
-    /// then you place all tokens you want to wrap, and then *maybe* call wrap_internal.
+    /// then you place all tokens you want to wrap, and then *maybe* call start_internal_at.
     /// Example:
     /// ```rust,ignore
     /// let checkpoint = builder.wrap_checkpoint();
     /// self.parse_expr();
     /// if self.peek() == Some(Token::Plus) {
     ///   // 1 + 2 = Add(1, 2)
-    ///   builder.wrap_internal(checkpoint, Token::Operation);
+    ///   builder.start_internal_at(checkpoint, Token::Operation);
     ///   self.parse_expr();
     ///   builder.finish_internal();
     /// }
@@ -81,9 +81,13 @@ impl<T: Types> GreenNodeBuilder<T> {
     }
     /// Wrap the previous branch marked by wrap_checkpoint in a new branch and
     /// make it current.
-    pub fn wrap_internal(&mut self, checkpoint: WrapCheckpoint, kind: T::Kind) {
+    pub fn start_internal_at(&mut self, checkpoint: WrapCheckpoint, kind: T::Kind) {
         let WrapCheckpoint(checkpoint) = checkpoint;
         assert!(checkpoint <= self.children.len(), "checkpoint no longer valid, was finish_internal called early?");
+
+        if let Some(&(_, first_child)) = self.parents.last() {
+            assert!(checkpoint >= first_child, "checkpoint no longer valid, was an unmatched start_internal called?");
+        }
 
         self.parents.push((kind, checkpoint));
     }
