@@ -6,7 +6,7 @@ use std::{
     iter::repeat,
 };
 
-use {
+use crate::{
     red::RedNode,
     roots::{OwnedRoot, RedPtr, RefRoot, SyntaxRoot, TreeRoot},
     GreenNode, SmolStr, TextRange, Types,

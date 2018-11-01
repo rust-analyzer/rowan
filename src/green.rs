@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use {SmolStr, TextUnit, Types};
+use crate::{SmolStr, TextUnit, Types};
 
 /// `GreenNode` is an immutable syntax tree,
 /// which is cheap to update. It lacks parent
@@ -19,6 +19,10 @@ impl<T: Types> Clone for GreenNode<T> {
         })
     }
 }
+
+/// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
+#[derive(Clone, Copy, Debug)]
+pub struct Checkpoint(usize);
 
 #[derive(Debug)]
 enum GreenNodeImpl<T: Types> {
@@ -57,6 +61,35 @@ impl<T: Types> GreenNodeBuilder<T> {
         let children: Vec<_> = self.children.drain(first_child..).collect();
         self.children
             .push(GreenNode::new_branch(kind, children.into_boxed_slice()));
+    }
+    /// Prepare for maybe wrapping the next node.
+    /// The way wrapping works is that you first of all get a checkpoint,
+    /// then you place all tokens you want to wrap, and then *maybe* call start_internal_at.
+    /// Example:
+    /// ```rust,ignore
+    /// let checkpoint = builder.checkpoint();
+    /// self.parse_expr();
+    /// if self.peek() == Some(Token::Plus) {
+    ///   // 1 + 2 = Add(1, 2)
+    ///   builder.start_internal_at(checkpoint, Token::Operation);
+    ///   self.parse_expr();
+    ///   builder.finish_internal();
+    /// }
+    /// ```
+    pub fn checkpoint(&self) -> Checkpoint {
+        Checkpoint(self.children.len())
+    }
+    /// Wrap the previous branch marked by `checkpoint` in a new branch and
+    /// make it current.
+    pub fn start_internal_at(&mut self, checkpoint: Checkpoint, kind: T::Kind) {
+        let Checkpoint(checkpoint) = checkpoint;
+        assert!(checkpoint <= self.children.len(), "checkpoint no longer valid, was finish_internal called early?");
+
+        if let Some(&(_, first_child)) = self.parents.last() {
+            assert!(checkpoint >= first_child, "checkpoint no longer valid, was an unmatched start_internal called?");
+        }
+
+        self.parents.push((kind, checkpoint));
     }
     /// Complete tree building. Make sure that
     /// `start_internal` and `finish_internal` calls

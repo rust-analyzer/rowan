@@ -3,7 +3,7 @@ use std::{
     ptr,
     sync::Arc,
 };
-use {red::RedNode, Types};
+use crate::{red::RedNode, Types};
 
 #[derive(Debug)]
 #[doc(hidden)]
