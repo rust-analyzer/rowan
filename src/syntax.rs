@@ -250,6 +250,18 @@ impl<T: Types, R: TreeRoot<T>> fmt::Debug for SyntaxNode<T, R> {
         write!(fmt, "{:?}@{:?}", self.kind(), self.range())
     }
 }
+impl<T: Types, R: TreeRoot<T>> fmt::Display for SyntaxNode<T, R> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for event in self.borrowed().preorder() {
+            if let WalkEvent::Enter(node) = event {
+                if let Some(text) = node.leaf_text() {
+                    write!(fmt, "{}", text)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Iterator over node's children.
 #[derive(Debug)]
