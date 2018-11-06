@@ -47,7 +47,7 @@ pub trait Types: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use red::RedNode;
+    use crate::red::RedNode;
 
     #[derive(Clone, Copy)]
     enum SillyTypes {}

@@ -9,7 +9,7 @@ use std::{
 use crate::{
     red::RedNode,
     roots::{OwnedRoot, RedPtr, RefRoot, SyntaxRoot, TreeRoot},
-    GreenNode, SmolStr, TextRange, Types,
+    GreenNode, SmolStr, TextUnit, TextRange, Types,
 };
 
 /// An immutable lazy constructed syntax tree with
@@ -98,6 +98,54 @@ pub enum WalkEvent<T> {
     Leave(T),
 }
 
+/// There might be zero, one or two leaves at a given offset.
+#[derive(Clone, Debug)]
+pub enum LeafAtOffset<T> {
+    /// No leaves at offset -- possible for the empty file.
+    None,
+    /// Only a single leaf at offset.
+    Single(T),
+    /// Offset is exactly between two leaves.
+    Between(T, T),
+}
+
+impl<T> LeafAtOffset<T> {
+    /// Convert to option, preferring the right leaf in case of a tie.
+    pub fn right_biased(self) -> Option<T> {
+        match self {
+            LeafAtOffset::None => None,
+            LeafAtOffset::Single(node) => Some(node),
+            LeafAtOffset::Between(_, right) => Some(right),
+        }
+    }
+    /// Convert to option, preferring the left leaf in case of a tie.
+    pub fn left_biased(self) -> Option<T> {
+        match self {
+            LeafAtOffset::None => None,
+            LeafAtOffset::Single(node) => Some(node),
+            LeafAtOffset::Between(left, _) => Some(left),
+        }
+    }
+}
+
+impl<T> Iterator for LeafAtOffset<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        match std::mem::replace(self, LeafAtOffset::None) {
+            LeafAtOffset::None => None,
+            LeafAtOffset::Single(node) => {
+                *self = LeafAtOffset::None;
+                Some(node)
+            }
+            LeafAtOffset::Between(left, right) => {
+                *self = LeafAtOffset::Single(right);
+                Some(left)
+            }
+        }
+    }
+}
+
 impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
     /// Text of this node if it is a leaf.
     // Only for `RefRoot` to extend lifetime to `'a`.
@@ -127,6 +175,50 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
             Some(next)
         })
     }
+
+    /// Find a leaf in the subtree corresponding to this node, which covers the offset.
+    /// Precondition: offset must be withing node's range.
+    pub fn leaf_at_offset(self, offset: TextUnit) -> LeafAtOffset<SyntaxNode<T, RefRoot<'a, T>>> {
+        // TODO: replace with non-recursive implementation
+        let range = self.range();
+        assert!(
+            range.start() <= offset && offset <= range.end(),
+            "Bad offset: range {:?} offset {:?}",
+            range,
+            offset
+        );
+        if range.is_empty() {
+            return LeafAtOffset::None;
+        }
+
+        if self.is_leaf() {
+            return LeafAtOffset::Single(self);
+        }
+
+        let mut children = self.children().filter(|child| {
+            let child_range = child.range();
+            !child_range.is_empty() && (child_range.start() <= offset && offset <= child_range.end())
+        });
+
+        let left = children.next().unwrap();
+        let right = children.next();
+        assert!(children.next().is_none());
+
+        if let Some(right) = right {
+            match (
+                left.leaf_at_offset(offset),
+                right.leaf_at_offset(offset),
+            ) {
+                (LeafAtOffset::Single(left), LeafAtOffset::Single(right)) => {
+                    LeafAtOffset::Between(left, right)
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            left.leaf_at_offset(offset)
+        }
+    }
+
 }
 
 impl<T: Types, R: TreeRoot<T>> SyntaxNode<T, R> {
