@@ -23,7 +23,7 @@ pub use crate::{
     roots::{OwnedRoot, RefRoot, TreeRoot},
     smol_str::SmolStr,
 
-    syntax::{SyntaxNode, SyntaxNodeChildren, WalkEvent},
+    syntax::{SyntaxNode, SyntaxNodeChildren, WalkEvent, LeafAtOffset},
     // Reexport types for working with strings.
     // We might be too opinionated about these,
     // as a custom interner might work better,

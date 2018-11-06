@@ -181,6 +181,18 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
         })
     }
 
+    /// Returns common ancestor of the two nodes.
+    /// Precondition: nodes must be from the same tree.
+    pub fn common_ancestor(self, other: SyntaxNode<T, RefRoot<T>>) -> SyntaxNode<T, RefRoot<'a, T>> {
+        // TODO: use small-vec to memoize other's ancestors
+        for p in self.ancestors() {
+            if other.ancestors().any(|a| a == p) {
+                return p
+            }
+        }
+        panic!("No common ancestor for {:?} and {:?}", self, other)
+    }
+
     /// Find a leaf in the subtree corresponding to this node, which covers the offset.
     /// Precondition: offset must be withing node's range.
     pub fn leaf_at_offset(self, offset: TextUnit) -> LeafAtOffset<SyntaxNode<T, RefRoot<'a, T>>> {
@@ -224,22 +236,10 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
         }
     }
 
-    /// Returns common ancestor of the two nodes.
-    /// Precondition: nodes must be from the same tree.
-    pub fn common_ancestor(self, other: SyntaxNode<T, RefRoot<T>>) -> SyntaxNode<T, RefRoot<'a, T>> {
-        // TODO: use small-vec to memoize other's ancestors
-        for p in self.ancestors() {
-            if other.ancestors().any(|a| a == p) {
-                return p
-            }
-        }
-        panic!("No common ancestor for {:?} and {:?}", self, other)
-    }
-
     /// Return the deepest node in the current subtree that fully contains the range.
     /// If the range is empty and is contained in two leaf nodes, either one can be returned.
     /// Precondition: range must be contained withing the current node
-    pub fn find_covering_node(self, range: TextRange) -> SyntaxNode<T, RefRoot<'a, T>> {
+    pub fn covering_node(self, range: TextRange) -> SyntaxNode<T, RefRoot<'a, T>> {
         let mut res = self;
         loop {
             assert!(
