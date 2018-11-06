@@ -8,7 +8,7 @@ description = "Library for generic lossless syntax trees."
 
 [dependencies]
 parking_lot = "0.6.0"
-text_unit = "0.1.4"
+text_unit = "0.1.5"
 smol_str = "0.1.6"
 
 [dev-dependencies]

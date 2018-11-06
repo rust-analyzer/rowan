@@ -154,6 +154,11 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
         red.green().leaf_text()
     }
 
+    /// All ancestors of the current node, including itself
+    pub fn ancestors(self) -> impl Iterator<Item = SyntaxNode<T, RefRoot<'a, T>>> {
+        generate(Some(self), |node| node.parent())
+    }
+
     /// Traverse the subtree rooted at the current node in preorder.
     pub fn preorder(self) -> impl Iterator<Item = WalkEvent<SyntaxNode<T, RefRoot<'a, T>>>> {
         generate(Some(WalkEvent::Enter(self)), move |pos| {
@@ -219,6 +224,35 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
         }
     }
 
+    /// Returns common ancestor of the two nodes.
+    /// Precondition: nodes must be from the same tree.
+    pub fn common_ancestor(self, other: SyntaxNode<T, RefRoot<T>>) -> SyntaxNode<T, RefRoot<'a, T>> {
+        // TODO: use small-vec to memoize other's ancestors
+        for p in self.ancestors() {
+            if other.ancestors().any(|a| a == p) {
+                return p
+            }
+        }
+        panic!("No common ancestor for {:?} and {:?}", self, other)
+    }
+
+    /// Return the deepest node in the current subtree that fully contains the range.
+    /// If the range is empty and is contained in two leaf nodes, either one can be returned.
+    /// Precondition: range must be contained withing the current node
+    pub fn find_covering_node(self, range: TextRange) -> SyntaxNode<T, RefRoot<'a, T>> {
+        let mut res = self;
+        loop {
+            assert!(
+                range.is_subrange(&res.range()),
+                "Bad range: node range {:?}, range {:?}",
+                res.range(), range,
+            );
+            res = match res.children().find(|child| range.is_subrange(&child.range())) {
+                Some(child) => child,
+                None => return res,
+            }
+        }
+    }
 }
 
 impl<T: Types, R: TreeRoot<T>> SyntaxNode<T, R> {
