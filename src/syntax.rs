@@ -366,6 +366,14 @@ impl<T: Types, R: TreeRoot<T>> SyntaxNode<T, R> {
             }
         }
     }
+    /// Get the green node for this node
+    pub fn green(&self) -> &GreenNode<T> {
+        self.red().green()
+    }
+    /// Get the root node but with the children replaced. See `replace_with`.
+    pub fn with_children(&self, children: Box<[GreenNode<T>]>) -> GreenNode<T> {
+        self.replace_with(GreenNode::new_branch(self.kind(), children))
+    }
     fn red(&self) -> &RedNode<T> {
         unsafe { self.red.get(self.root.syntax_root()) }
     }
