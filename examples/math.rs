@@ -14,10 +14,7 @@
 //!     - "4" Token(Number)
 extern crate rowan;
 
-use rowan::{
-    GreenNodeBuilder,
-    SmolStr
-};
+use rowan::{GreenNodeBuilder, SmolStr};
 use std::iter::Peekable;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -28,20 +25,20 @@ enum Token {
     Sub,
     Mul,
     Div,
-    Number
+    Number,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum ASTKind {
     Error,
     Operation,
-    Root
+    Root,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum NodeType {
     /// A marker node, will have tokens as children
     Marker(ASTKind),
     /// A raw token in the AST
-    Token(Token)
+    Token(Token),
 }
 
 struct Types;
@@ -54,11 +51,16 @@ type Node<R = rowan::OwnedRoot<Types>> = rowan::SyntaxNode<Types, R>;
 
 struct Parser<I: Iterator<Item = (Token, SmolStr)>> {
     builder: GreenNodeBuilder<Types>,
-    iter: Peekable<I>
+    iter: Peekable<I>,
 }
 impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
     fn peek(&mut self) -> Option<Token> {
-        while self.iter.peek().map(|&(t, _)| t == Token::Whitespace).unwrap_or(false) {
+        while self
+            .iter
+            .peek()
+            .map(|&(t, _)| t == Token::Whitespace)
+            .unwrap_or(false)
+        {
             self.bump();
         }
         self.iter.peek().map(|&(t, _)| t)
@@ -72,7 +74,8 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
         match self.peek() {
             Some(Token::Number) => self.bump(),
             _ => {
-                self.builder.start_internal(NodeType::Marker(ASTKind::Error));
+                self.builder
+                    .start_internal(NodeType::Marker(ASTKind::Error));
                 self.bump();
                 self.builder.finish_internal();
             }
@@ -82,7 +85,8 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
         let checkpoint = self.builder.checkpoint();
         next(self);
         while self.peek().map(|t| tokens.contains(&t)).unwrap_or(false) {
-            self.builder.start_internal_at(checkpoint, NodeType::Marker(ASTKind::Operation));
+            self.builder
+                .start_internal_at(checkpoint, NodeType::Marker(ASTKind::Operation));
             self.bump();
             next(self);
             self.builder.finish_internal();
@@ -111,7 +115,7 @@ fn print<R: rowan::TreeRoot<Types>>(indent: usize, node: Node<R>) {
         println!("- {:?}", node.kind());
     }
     for child in node.children() {
-        print(indent+2, child);
+        print(indent + 2, child);
     }
 }
 
@@ -132,8 +136,11 @@ fn main() {
             (Token::Whitespace, " ".into()),
             (Token::Add, "+".into()),
             (Token::Whitespace, " ".into()),
-            (Token::Number, "4".into())
-        ].into_iter().peekable()
-    }.parse();
+            (Token::Number, "4".into()),
+        ]
+        .into_iter()
+        .peekable(),
+    }
+    .parse();
     print(0, ast.borrowed());
 }

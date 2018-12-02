@@ -4,7 +4,7 @@
     missing_debug_implementations,
     unconditional_recursion,
     future_incompatible,
-    missing_docs,
+    missing_docs
 )]
 
 extern crate parking_lot;
@@ -23,7 +23,7 @@ pub use crate::{
     roots::{OwnedRoot, RefRoot, TreeRoot},
     smol_str::SmolStr,
 
-    syntax::{SyntaxNode, SyntaxNodeChildren, WalkEvent, LeafAtOffset},
+    syntax::{LeafAtOffset, SyntaxNode, SyntaxNodeChildren, WalkEvent},
     // Reexport types for working with strings.
     // We might be too opinionated about these,
     // as a custom interner might work better,
