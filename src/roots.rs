@@ -1,9 +1,9 @@
+use crate::{red::RedNode, Types};
 use std::{
     hash::{Hash, Hasher},
     ptr,
     sync::Arc,
 };
-use crate::{red::RedNode, Types};
 
 #[derive(Debug)]
 #[doc(hidden)]

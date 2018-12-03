@@ -83,10 +83,16 @@ impl<T: Types> GreenNodeBuilder<T> {
     /// make it current.
     pub fn start_internal_at(&mut self, checkpoint: Checkpoint, kind: T::Kind) {
         let Checkpoint(checkpoint) = checkpoint;
-        assert!(checkpoint <= self.children.len(), "checkpoint no longer valid, was finish_internal called early?");
+        assert!(
+            checkpoint <= self.children.len(),
+            "checkpoint no longer valid, was finish_internal called early?"
+        );
 
         if let Some(&(_, first_child)) = self.parents.last() {
-            assert!(checkpoint >= first_child, "checkpoint no longer valid, was an unmatched start_internal called?");
+            assert!(
+                checkpoint >= first_child,
+                "checkpoint no longer valid, was an unmatched start_internal called?"
+            );
         }
 
         self.parents.push((kind, checkpoint));

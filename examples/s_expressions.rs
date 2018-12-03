@@ -175,7 +175,8 @@ fn parse(text: &str) -> SyntaxNode {
         tokens,
         builder: GreenNodeBuilder::new(),
         errors: Vec::new(),
-    }.parse()
+    }
+    .parse()
 }
 
 /// Let's check that the parser works as expected
@@ -357,7 +358,8 @@ fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
             (tok(R_PAREN), r"\)"),
             (tok(ATOM), r"[^\s()]+"),
             (tok(WHITESPACE), r"\s+"),
-        ]).build();
+        ])
+        .build();
 
     lexer
         .tokenize(text)
@@ -367,5 +369,6 @@ fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
             let s: SmolStr = text[*start_offset..*start_offset + len].into();
             *start_offset += len;
             Some((kind, s))
-        }).collect()
+        })
+        .collect()
 }

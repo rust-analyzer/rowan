@@ -1,5 +1,5 @@
-use parking_lot::RwLock;
 use crate::{roots::RedPtr, GreenNode, TextUnit, Types};
+use parking_lot::RwLock;
 
 #[derive(Debug)]
 pub(crate) struct RedNode<T: Types> {
@@ -67,7 +67,8 @@ impl<T: Types> RedNode<T> {
                 let off = start_offset;
                 start_offset += child.text_len();
                 RedChild::Zigot(off)
-            }).collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
             .into_boxed_slice();
         RedNode {
             green,

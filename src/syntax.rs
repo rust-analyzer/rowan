@@ -1,15 +1,15 @@
 use std::{
     fmt,
     hash::{Hash, Hasher},
+    iter::repeat,
     ops::Range,
     sync::Arc,
-    iter::repeat,
 };
 
 use crate::{
     red::RedNode,
     roots::{OwnedRoot, RedPtr, RefRoot, SyntaxRoot, TreeRoot},
-    GreenNode, SmolStr, TextUnit, TextRange, Types,
+    GreenNode, SmolStr, TextRange, TextUnit, Types,
 };
 
 /// An immutable lazy constructed syntax tree with
@@ -183,11 +183,14 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
 
     /// Returns common ancestor of the two nodes.
     /// Precondition: nodes must be from the same tree.
-    pub fn common_ancestor(self, other: SyntaxNode<T, RefRoot<T>>) -> SyntaxNode<T, RefRoot<'a, T>> {
+    pub fn common_ancestor(
+        self,
+        other: SyntaxNode<T, RefRoot<T>>,
+    ) -> SyntaxNode<T, RefRoot<'a, T>> {
         // TODO: use small-vec to memoize other's ancestors
         for p in self.ancestors() {
             if other.ancestors().any(|a| a == p) {
-                return p
+                return p;
             }
         }
         panic!("No common ancestor for {:?} and {:?}", self, other)
@@ -214,7 +217,8 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
 
         let mut children = self.children().filter(|child| {
             let child_range = child.range();
-            !child_range.is_empty() && (child_range.start() <= offset && offset <= child_range.end())
+            !child_range.is_empty()
+                && (child_range.start() <= offset && offset <= child_range.end())
         });
 
         let left = children.next().unwrap();
@@ -222,10 +226,7 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
         assert!(children.next().is_none());
 
         if let Some(right) = right {
-            match (
-                left.leaf_at_offset(offset),
-                right.leaf_at_offset(offset),
-            ) {
+            match (left.leaf_at_offset(offset), right.leaf_at_offset(offset)) {
                 (LeafAtOffset::Single(left), LeafAtOffset::Single(right)) => {
                     LeafAtOffset::Between(left, right)
                 }
@@ -245,9 +246,13 @@ impl<'a, T: Types> SyntaxNode<T, RefRoot<'a, T>> {
             assert!(
                 range.is_subrange(&res.range()),
                 "Bad range: node range {:?}, range {:?}",
-                res.range(), range,
+                res.range(),
+                range,
             );
-            res = match res.children().find(|child| range.is_subrange(&child.range())) {
+            res = match res
+                .children()
+                .find(|child| range.is_subrange(&child.range()))
+            {
                 Some(child) => child,
                 None => return res,
             }
@@ -360,7 +365,8 @@ impl<T: Types, R: TreeRoot<T>> SyntaxNode<T, R> {
                         } else {
                             child.red().green().clone()
                         }
-                    }).collect();
+                    })
+                    .collect();
                 let new_parent = GreenNode::new_branch(parent.kind(), children.into_boxed_slice());
                 parent.replace_with(new_parent)
             }
@@ -418,13 +424,14 @@ impl<T: Types, R: TreeRoot<T>> Iterator for SyntaxNodeChildren<T, R> {
     }
 }
 
-
-fn generate<'a, T: 'a, F: Fn(&T) -> Option<T> + 'a>(seed: Option<T>, step: F) -> impl Iterator<Item = T> + 'a {
-    repeat(())
-        .scan(seed, move |state, ()| {
-            state.take().map(|curr| {
-                *state = step(&curr);
-                curr
-            })
+fn generate<'a, T: 'a, F: Fn(&T) -> Option<T> + 'a>(
+    seed: Option<T>,
+    step: F,
+) -> impl Iterator<Item = T> + 'a {
+    repeat(()).scan(seed, move |state, ()| {
+        state.take().map(|curr| {
+            *state = step(&curr);
+            curr
         })
+    })
 }
