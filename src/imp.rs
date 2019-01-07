@@ -15,20 +15,6 @@ pub(crate) struct ParentData<T: Types> {
     index_in_parent: u32,
 }
 
-unsafe impl<T: Types> Send for SyntaxNode<T>
-where
-    T::RootData: Send,
-    T::Kind: Send,
-{
-}
-
-unsafe impl<T: Types> Sync for SyntaxNode<T>
-where
-    T::RootData: Sync,
-    T::Kind: Sync,
-{
-}
-
 impl<T: Types> TreePtr<T> {
     pub(crate) fn new(node: &SyntaxNode<T>) -> TreePtr<T> {
         let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
@@ -54,16 +40,16 @@ where
 {
 }
 
-impl<T: Types> Drop for TreePtr<T> {
-    fn drop(&mut self) {
-        let _root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(self.root) };
-    }
-}
-
 impl<T: Types> std::ops::Deref for TreePtr<T> {
     type Target = SyntaxNode<T>;
     fn deref(&self) -> &SyntaxNode<T> {
         unsafe { &*self.inner }
+    }
+}
+
+impl<T: Types> Clone for TreePtr<T> {
+    fn clone(&self) -> TreePtr<T> {
+        TreePtr::new(&*self)
     }
 }
 
