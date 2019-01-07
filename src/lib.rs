@@ -28,7 +28,6 @@ use std::{
 
 pub use crate::{
     green::{GreenNode, GreenNodeBuilder},
-    imp::{SyntaxNode, TreePtr},
     smol_str::SmolStr,
 
     // Reexport types for working with strings.
@@ -50,6 +49,16 @@ pub trait Types: Send + Sync + 'static {
     /// for example, syntax errors.
     type RootData: fmt::Debug + Send + Sync;
 }
+
+pub use crate::imp::{TreePtr, TransparentNewType};
+
+impl<T: Types> Clone for TreePtr<SyntaxNode<T>> {
+    fn clone(&self) -> TreePtr<SyntaxNode<T>> {
+        TreePtr::new(&*self)
+    }
+}
+
+pub use crate::imp::SyntaxNode;
 
 impl<T: Types> fmt::Debug for SyntaxNode<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -359,6 +368,21 @@ impl<T: Types> SyntaxNode<T> {
                 None => return res,
             }
         }
+    }
+
+    pub(crate) fn start_offset(&self) -> TextUnit {
+        match &self.parent {
+            None => 0.into(),
+            Some(p) => p.start_offset,
+        }
+    }
+
+    pub(crate) fn n_children(&self) -> usize {
+        self.green.children().len()
+    }
+
+    pub(crate) fn index_in_parent(&self) -> Option<usize> {
+        Some(self.parent.as_ref()?.index_in_parent as usize)
     }
 }
 

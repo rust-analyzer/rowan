@@ -10,9 +10,9 @@ pub(crate) struct SyntaxRoot<T: Types> {
 
 #[derive(Debug)]
 pub(crate) struct ParentData<T: Types> {
-    parent: ptr::NonNull<SyntaxNode<T>>,
+    pub(crate) parent: ptr::NonNull<SyntaxNode<T>>,
     pub(crate) start_offset: TextUnit,
-    index_in_parent: u32,
+    pub(crate) index_in_parent: u32,
 }
 
 /// An immutable lazy constructed syntax tree with
@@ -42,13 +42,13 @@ pub(crate) struct ParentData<T: Types> {
 /// `SyntaxNode` have object identity equality and hash semantics.
 pub struct SyntaxNode<T: Types> {
     root: *const SyntaxRoot<T>, // created from `Arc`
-    parent: Option<ParentData<T>>,
+    pub(crate) parent: Option<ParentData<T>>,
     pub(crate) green: GreenNode<T>,
     // replace with
     // `children: [(TextUnit, AtomSetOnce<SyntaxNode<T><T>>)]`
     // once we can have var-length structs.
     // Perhaps even fold `TextUnit` into ptr using a spare bit?
-    children: Box<[SwapCell<TextUnit, SyntaxNode<T>>]>,
+    pub(crate) children: Box<[SwapCell<TextUnit, SyntaxNode<T>>]>,
 }
 
 unsafe impl<T: Types> Send for SyntaxNode<T>
@@ -89,10 +89,12 @@ pub struct TreePtr<T> {
 /// Implementing this trait allows one to cast safely between the wrapper and
 /// the underlying representation.
 pub unsafe trait TransparentNewType<Repr>: Sized {
+    /// Cast the uderlying repr into a wrapper.
     fn from_repr(repr: &Repr) -> &Self {
         assert!(mem::size_of::<Self>() == mem::size_of::<Repr>());
         unsafe { mem::transmute(repr) }
     }
+    /// Cast wrapper to the underlying repr.
     fn into_repr(&self) -> &Repr {
         assert!(mem::size_of::<Self>() == mem::size_of::<Repr>());
         unsafe { mem::transmute(self) }
@@ -132,12 +134,6 @@ impl<T> std::ops::Deref for TreePtr<T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe { &*self.inner }
-    }
-}
-
-impl<T: Types> Clone for TreePtr<SyntaxNode<T>> {
-    fn clone(&self) -> TreePtr<SyntaxNode<T>> {
-        TreePtr::new(&*self)
     }
 }
 
@@ -205,16 +201,6 @@ impl<T: Types> SyntaxNode<T> {
         let ptr = self.parent.as_ref()?.parent;
         Some(unsafe { &*ptr.as_ptr() })
     }
-    pub(crate) fn start_offset(&self) -> TextUnit {
-        match &self.parent {
-            None => 0.into(),
-            Some(p) => p.start_offset,
-        }
-    }
-
-    pub(crate) fn n_children(&self) -> usize {
-        self.green.children().len()
-    }
 
     pub(crate) fn get_child(&self, idx: usize) -> Option<&SyntaxNode<T>> {
         if idx >= self.n_children() {
@@ -231,9 +217,5 @@ impl<T: Types> SyntaxNode<T> {
             )
         });
         Some(child)
-    }
-
-    pub(crate) fn index_in_parent(&self) -> Option<usize> {
-        Some(self.parent.as_ref()?.index_in_parent as usize)
     }
 }
