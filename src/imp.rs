@@ -1,3 +1,6 @@
+//! All tricky and unsafe bits of implementation are here. If you get a
+//! segfault, this the module to scrutinze in the frist place :-)
+
 use std::{mem, ptr, sync::Arc};
 
 use crate::{swap_cell::SwapCell, GreenNode, TextUnit, Types};
@@ -41,7 +44,9 @@ pub(crate) struct ParentData<T: Types> {
 ///
 /// `SyntaxNode` have object identity equality and hash semantics.
 pub struct SyntaxNode<T: Types> {
-    root: *const SyntaxRoot<T>, // created from `Arc`
+    // Created from `Arc`. The ref-count on root is equal to the number of live
+    // `TreePtr` which point into this tree.
+    root: *const SyntaxRoot<T>,
     pub(crate) parent: Option<ParentData<T>>,
     pub(crate) green: GreenNode<T>,
     // replace with
@@ -51,6 +56,7 @@ pub struct SyntaxNode<T: Types> {
     pub(crate) children: Box<[SwapCell<TextUnit, SyntaxNode<T>>]>,
 }
 
+// Manualy send/sync impls due to `root: *const SyntaxRoot<T>` field.
 unsafe impl<T> Send for SyntaxNode<T>
 where
     T: Types,
@@ -67,6 +73,7 @@ where
 
 /// Owned smart pointer for syntax Nodes.
 /// It can be used with any type implementing `TransparentNewType<SyntaxNode>`.
+// Conceptually, it also plays an `Arc<TreeRoot<T>>` role as well.
 pub struct TreePtr<T, N>
 where
     T: Types,
@@ -124,6 +131,8 @@ where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
+    /// Creates a new owned node from a reference to a node, by bumping root's
+    /// refcount.
     pub(crate) fn new(node: &N) -> TreePtr<T, N> {
         let node: &SyntaxNode<T> = node.into_repr();
         let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
@@ -139,6 +148,8 @@ where
     where
         U: TransparentNewType<Repr = SyntaxNode<T>>,
     {
+        // We can avoid an Arc bump if we want here, but lets leverage existing
+        // `new`, to minimize unsafety.
         let r: &SyntaxNode<T> = this.into_repr();
         let n = U::from_repr(r);
         TreePtr::new(n)
@@ -150,24 +161,34 @@ where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
+    // Drop refcount
     fn drop(&mut self) {
-        let node: &N = &*self;
-        let node = node.into_repr();
-        unsafe { Arc::from_raw(node.root) };
+        // Be careful not to leave dangling references to node.
+        let root: *const SyntaxRoot<T> = {
+            let node: &N = &*self;
+            let node = node.into_repr();
+            node.root
+        };
+        drop(unsafe { Arc::from_raw(root) });
+        // inner may be a dangling pointer at this point, but it is okey: it's a
+        // raw pointer after all
     }
 }
 
+// Manual impls due to `inner: *const N` field
 unsafe impl<T, N> Send for TreePtr<T, N>
 where
     T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>> + Send,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+    N: Send,
 {
 }
 
 unsafe impl<T: Sync, N> Sync for TreePtr<T, N>
 where
     T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>> + Sync,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+    N: Sync,
 {
 }
 
@@ -178,37 +199,42 @@ where
 {
     type Target = N;
     fn deref(&self) -> &N {
+        // We are a `TreePtr`, so underlying `SyntaxRoot` has an count at least
+        // one, so it's safe to deref a node.
         unsafe { &*self.inner }
     }
 }
 
 impl<T: Types> SyntaxNode<T> {
     pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<T, SyntaxNode<T>> {
-        let root = Arc::new(SyntaxRoot {
+        let mut root = Arc::new(SyntaxRoot {
             root_node: SyntaxNode::new_impl(ptr::null(), None, green),
             data,
         });
-        let red_node = &root.root_node as *const SyntaxNode<T>;
+
+        let red_node: *mut SyntaxNode<T> = &mut Arc::get_mut(&mut root).unwrap().root_node;
+        // "forget" the `root` so that we have rc equal to one once exiting this
+        // function.
         let root_ptr: *const SyntaxRoot<T> = Arc::into_raw(root);
+        // set backreference
         unsafe {
-            (*(red_node as *mut SyntaxNode<T>)).root = root_ptr;
+            (*red_node).root = root_ptr;
         }
         TreePtr { inner: red_node }
     }
 
     fn new_child(
-        root: *const SyntaxRoot<T>,
-        parent: ptr::NonNull<SyntaxNode<T>>,
-        green: GreenNode<T>,
+        &self,
         start_offset: TextUnit,
         index_in_parent: usize,
+        green: GreenNode<T>,
     ) -> SyntaxNode<T> {
         let parent_data = ParentData {
-            parent,
+            parent: ptr::NonNull::from(self),
             start_offset,
             index_in_parent: index_in_parent as u32,
         };
-        SyntaxNode::new_impl(root, Some(parent_data), green)
+        SyntaxNode::new_impl(self.root, Some(parent_data), green)
     }
 
     fn new_impl(
@@ -239,10 +265,12 @@ impl<T: Types> SyntaxNode<T> {
     }
 
     pub(crate) fn root(&self) -> &SyntaxRoot<T> {
+        // If we (the rerence) not dangle, then root must be alive as well.
         unsafe { &*self.root }
     }
 
     pub(crate) fn parent_impl(&self) -> Option<&SyntaxNode<T>> {
+        // If we (the rerence) not dangle, then parent must be alive as well.
         let ptr = self.parent.as_ref()?.parent;
         Some(unsafe { &*ptr.as_ptr() })
     }
@@ -253,13 +281,7 @@ impl<T: Types> SyntaxNode<T> {
         }
         let child = self.children[idx].get_or_init(|start_offset| {
             let green_children = self.green.children();
-            SyntaxNode::new_child(
-                self.root,
-                ptr::NonNull::from(self),
-                green_children[idx].clone(),
-                start_offset,
-                idx,
-            )
+            self.new_child(start_offset, idx, green_children[idx].clone())
         });
         Some(child)
     }
