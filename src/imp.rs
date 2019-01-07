@@ -86,8 +86,8 @@ where
 ///
 /// it is safe to add
 ///
-/// ```rust
-/// unsafe impl TransparentNewType<Inner> for Wrapper {}
+/// ```no-run
+/// unsafe impl TransparentNewType for Wrapper { type Repr = Inner; }
 /// ```
 ///
 /// Implementing this trait allows one to cast safely between the wrapper and

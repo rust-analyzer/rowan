@@ -438,6 +438,6 @@ mod tests {
         fn f<T: Send + Sync>() {}
         f::<GreenNode<SillyTypes>>();
         f::<SyntaxNode<SillyTypes>>();
-        f::<TreePtr<SyntaxNode<SillyTypes>>>();
+        f::<TreePtr<SillyTypes, SyntaxNode<SillyTypes>>>();
     }
 }
