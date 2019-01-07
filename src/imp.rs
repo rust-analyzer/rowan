@@ -1,5 +1,5 @@
 //! All tricky and unsafe bits of implementation are here. If you get a
-//! segfault, this the module to scrutinze in the frist place :-)
+//! segfault, this the module to scrutinize in the first place :-)
 
 use std::{mem, ptr, sync::Arc};
 
@@ -17,32 +17,14 @@ pub(crate) struct ParentData<T: Types> {
     pub(crate) start_offset: TextUnit,
     pub(crate) index_in_parent: u32,
 }
-
-/// An immutable lazy constructed syntax tree with
-/// offsets and parent pointers.
+/// Akn immutable lazy constructed syntax tree with offsets and parent pointers.
 ///
 /// The design is close to
 /// https://github.com/apple/swift/tree/bc3189a2d265bf7728ea0cfeb55f032bfe5beaf1/lib/Syntax
 ///
-/// `SyntaxNode` exists in two flavors:
-///   * owned (R = OwnedRoot<T>)
-///   * borrowed (R = RefRoot<'a, T>)
-///
-/// Borrowed `SyntaxNode` is `Copy`, but is parametrized over a lifetime,
-/// with a corresponding ergonomics hit.
-///
-/// Owned `SyntaxNode` is `Clone` (using `Arc::clone` under the hood) and
-/// is not parametrized over a lifetime. Note that because of the parent
-/// links `SyntaxNode` keeps all of its ancestors alive, and not only descendants,
-/// so keep an eye on memory leaks.
-///
-/// Methods like `parent` or `children` preserve the flavor (borrowed or owned)
-/// of nodes, but you can switch between them at any time using `.borrowed()`
-/// and `.owned()` methods. As a rule of thumb, when *processing* nodes, use
-/// borrowed version to avoid excessive Arc traffic, and, when *storing* nodes
-/// in data structures, use owned variant, to avoid dealing with lifetimes.
-///
-/// `SyntaxNode` have object identity equality and hash semantics.
+/// All nodes constituting a tree share the ownership by a tree. Internally, and
+/// `Arc` is used, but outside world observes nodes as `&SyntaxNode` or
+/// `TreePtr<SyntaxNode>`, where a `TreePtr` is an Arc-like smart pointer.
 pub struct SyntaxNode<T: Types> {
     // Created from `Arc`. The ref-count on root is equal to the number of live
     // `TreePtr` which point into this tree.
@@ -56,18 +38,20 @@ pub struct SyntaxNode<T: Types> {
     pub(crate) children: Box<[SwapCell<TextUnit, SyntaxNode<T>>]>,
 }
 
-// Manualy send/sync impls due to `root: *const SyntaxRoot<T>` field.
+// Manually send/sync impls due to `root: *const SyntaxRoot<T>` field.
 unsafe impl<T> Send for SyntaxNode<T>
 where
     T: Types,
-    SyntaxNode<T>: Send,
+    T::RootData: Send,
+    T::Kind: Send,
 {
 }
 
 unsafe impl<T> Sync for SyntaxNode<T>
 where
     T: Types,
-    SyntaxNode<T>: Send,
+    T::RootData: Send,
+    T::Kind: Send,
 {
 }
 
@@ -100,17 +84,17 @@ where
 /// Implementing this trait allows one to cast safely between the wrapper and
 /// the underlying representation.
 pub unsafe trait TransparentNewType: Sized {
-    /// Underlyng representation of a newtype.
+    /// Underlying representation of a newtype.
     type Repr;
-    /// Cast the uderlying repr into a wrapper.
+    /// Cast the underlying repr into a wrapper.
     fn from_repr(repr: &Self::Repr) -> &Self {
         assert!(mem::size_of::<Self>() == mem::size_of::<Self::Repr>());
-        unsafe { mem::transmute(repr) }
+        unsafe { &*(repr as *const Self::Repr as *const Self) }
     }
     /// Cast wrapper to the underlying repr.
     fn into_repr(&self) -> &Self::Repr {
         assert!(mem::size_of::<Self>() == mem::size_of::<Self::Repr>());
-        unsafe { mem::transmute(self) }
+        unsafe { &*(self as *const Self as *const Self::Repr) }
     }
 }
 
@@ -208,7 +192,7 @@ where
 impl<T: Types> SyntaxNode<T> {
     pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<T, SyntaxNode<T>> {
         let mut root = Arc::new(SyntaxRoot {
-            root_node: SyntaxNode::new_impl(ptr::null(), None, green),
+            root_node: unsafe { SyntaxNode::new_impl(ptr::null(), None, green) },
             data,
         });
 
@@ -234,10 +218,10 @@ impl<T: Types> SyntaxNode<T> {
             start_offset,
             index_in_parent: index_in_parent as u32,
         };
-        SyntaxNode::new_impl(self.root, Some(parent_data), green)
+        unsafe { SyntaxNode::new_impl(self.root, Some(parent_data), green) }
     }
 
-    fn new_impl(
+    unsafe fn new_impl(
         root: *const SyntaxRoot<T>,
         parent: Option<ParentData<T>>,
         green: GreenNode<T>,
