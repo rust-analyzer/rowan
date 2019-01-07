@@ -63,6 +63,33 @@ where
     }
 }
 
+impl<T, N> PartialEq<TreePtr<T, N>> for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn eq(&self, other: &TreePtr<T, N>) -> bool {
+        ptr::eq(self.inner, other.inner)
+    }
+}
+
+impl<T, N> Eq for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+}
+
+impl<T, N> Hash for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state)
+    }
+}
+
 pub use crate::imp::SyntaxNode;
 
 impl<T: Types> fmt::Debug for SyntaxNode<T> {

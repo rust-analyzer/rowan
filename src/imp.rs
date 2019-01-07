@@ -79,7 +79,7 @@ where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
-    inner: *const N,
+    pub(crate) inner: *const N,
 }
 
 /// A marker trait for transparent newtypes.
