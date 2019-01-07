@@ -51,17 +51,17 @@ pub struct SyntaxNode<T: Types> {
     pub(crate) children: Box<[SwapCell<TextUnit, SyntaxNode<T>>]>,
 }
 
-unsafe impl<T: Types> Send for SyntaxNode<T>
+unsafe impl<T> Send for SyntaxNode<T>
 where
-    T::RootData: Send,
-    T::Kind: Send,
+    T: Types,
+    SyntaxNode<T>: Send,
 {
 }
 
-unsafe impl<T: Types> Sync for SyntaxNode<T>
+unsafe impl<T> Sync for SyntaxNode<T>
 where
-    T::RootData: Sync,
-    T::Kind: Sync,
+    T: Types,
+    SyntaxNode<T>: Send,
 {
 }
 
