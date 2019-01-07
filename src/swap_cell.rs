@@ -9,21 +9,23 @@ enum State<U, V> {
     InProgress,
 }
 
+/// A `SwapCell` is a set-once version of `RefCell`, whihc gives you plain `&T`
+/// back.
 #[derive(Debug)]
-pub struct SwapCell<U, V> {
+pub(crate) struct SwapCell<U, V> {
     once: Once,
     state: UnsafeCell<State<U, V>>,
 }
 
 impl<U, V> SwapCell<U, V> {
-    pub fn new(seed: U) -> SwapCell<U, V> {
+    pub(crate) fn new(seed: U) -> SwapCell<U, V> {
         SwapCell {
             once: ONCE_INIT,
             state: UnsafeCell::new(State::Uninit(seed)),
         }
     }
 
-    pub fn get_or_init(&self, f: impl FnOnce(U) -> V) -> &V {
+    pub(crate) fn get_or_init(&self, f: impl FnOnce(U) -> V) -> &V {
         self.once.call_once(|| {
             let seed = match unsafe { self.replace_state(State::InProgress) } {
                 State::Uninit(seed) => seed,
