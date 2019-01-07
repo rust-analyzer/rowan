@@ -279,7 +279,7 @@ struct Sexp(SyntaxNode);
 
 enum SexpKind<'a> {
     Atom(&'a Atom),
-    List(&'a List)
+    List(&'a List),
 }
 
 impl Sexp {
@@ -292,7 +292,8 @@ impl Sexp {
     }
 
     fn kind(&self) -> SexpKind {
-        Atom::cast(&self.0).map(SexpKind::Atom)
+        Atom::cast(&self.0)
+            .map(SexpKind::Atom)
             .or_else(|| List::cast(&self.0).map(SexpKind::List))
             .unwrap()
     }

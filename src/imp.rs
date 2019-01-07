@@ -1,7 +1,19 @@
-use std::{ptr, mem, sync::Arc};
+use std::{mem, ptr, sync::Arc};
 
 use crate::{swap_cell::SwapCell, GreenNode, TextUnit, Types};
 
+#[derive(Debug)]
+pub(crate) struct SyntaxRoot<T: Types> {
+    pub(crate) root_node: SyntaxNode<T>,
+    pub(crate) data: T::RootData,
+}
+
+#[derive(Debug)]
+pub(crate) struct ParentData<T: Types> {
+    parent: ptr::NonNull<SyntaxNode<T>>,
+    pub(crate) start_offset: TextUnit,
+    index_in_parent: u32,
+}
 
 /// An immutable lazy constructed syntax tree with
 /// offsets and parent pointers.
@@ -54,21 +66,9 @@ where
 }
 
 /// Owned smart pointer for syntax Nodes.
+/// It can be used with any type implementing `TransparentNewType<SyntaxNode>`.
 pub struct TreePtr<T> {
     inner: *const T,
-}
-
-#[derive(Debug)]
-pub(crate) struct SyntaxRoot<T: Types> {
-    pub(crate) root_node: SyntaxNode<T>,
-    pub(crate) data: T::RootData,
-}
-
-#[derive(Debug)]
-pub(crate) struct ParentData<T: Types> {
-    parent: ptr::NonNull<SyntaxNode<T>>,
-    pub(crate) start_offset: TextUnit,
-    index_in_parent: u32,
 }
 
 /// A marker trait for transparent newtypes.
@@ -100,14 +100,19 @@ pub unsafe trait TransparentNewType<Repr>: Sized {
 }
 
 unsafe impl<T> TransparentNewType<T> for T {
-    fn from_repr(repr: &T) -> &T { repr }
-    fn into_repr(&self) -> &T { self }
+    fn from_repr(repr: &T) -> &T {
+        repr
+    }
+    fn into_repr(&self) -> &T {
+        self
+    }
 }
 
 impl<T> TreePtr<T> {
     pub(crate) fn new<TY>(node: &T) -> TreePtr<T>
-        where T: TransparentNewType<SyntaxNode<TY>>,
-              TY: Types,
+    where
+        T: TransparentNewType<SyntaxNode<TY>>,
+        TY: Types,
     {
         let node: &SyntaxNode<TY> = node.into_repr();
         let root: Arc<SyntaxRoot<TY>> = unsafe { Arc::from_raw(node.root) };
@@ -119,11 +124,9 @@ impl<T> TreePtr<T> {
     }
 }
 
-unsafe impl<T: Send> Send for TreePtr<T> {
-}
+unsafe impl<T: Send> Send for TreePtr<T> {}
 
-unsafe impl<T: Sync> Sync for TreePtr<T> {
-}
+unsafe impl<T: Sync> Sync for TreePtr<T> {}
 
 impl<T> std::ops::Deref for TreePtr<T> {
     type Target = T;
