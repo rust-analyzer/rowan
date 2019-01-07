@@ -52,13 +52,14 @@ pub trait Types: Send + Sync + 'static {
 
 pub use crate::imp::{TransparentNewType, TreePtr};
 
-impl<T, TY> Clone for TreePtr<T>
+impl<T, N> Clone for TreePtr<T, N>
 where
-    T: TransparentNewType<Repr = SyntaxNode<TY>>,
-    TY: Types,
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
-    fn clone(&self) -> TreePtr<T> {
-        TreePtr::new(&*self)
+    fn clone(&self) -> TreePtr<T, N> {
+        let n: &N = &*self;
+        TreePtr::new(n)
     }
 }
 
@@ -96,9 +97,13 @@ impl<T: Types> Hash for SyntaxNode<T> {
     }
 }
 
-impl<T: Types> fmt::Debug for TreePtr<SyntaxNode<T>> {
+impl<T, N> fmt::Debug for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>> + fmt::Debug,
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let inner: &SyntaxNode<T> = &*self;
+        let inner: &N = &*self;
         fmt::Debug::fmt(inner, fmt)
     }
 }
@@ -162,12 +167,12 @@ impl<T> Iterator for LeafAtOffset<T> {
 
 impl<T: Types> SyntaxNode<T> {
     /// Creates a new `SyntaxNode`, whihc becomes the root of the tree.
-    pub fn new(green: GreenNode<T>, data: T::RootData) -> TreePtr<SyntaxNode<T>> {
+    pub fn new(green: GreenNode<T>, data: T::RootData) -> TreePtr<T, SyntaxNode<T>> {
         Self::new_root(green, data)
     }
 
     /// Switch this node to owned flavor.
-    pub fn to_owned(&self) -> TreePtr<SyntaxNode<T>> {
+    pub fn to_owned(&self) -> TreePtr<T, SyntaxNode<T>> {
         TreePtr::new(self)
     }
 

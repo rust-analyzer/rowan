@@ -67,8 +67,12 @@ where
 
 /// Owned smart pointer for syntax Nodes.
 /// It can be used with any type implementing `TransparentNewType<SyntaxNode>`.
-pub struct TreePtr<T> {
-    inner: *const T,
+pub struct TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    inner: *const N,
 }
 
 /// A marker trait for transparent newtypes.
@@ -115,35 +119,71 @@ unsafe impl<T: Types> TransparentNewType for SyntaxNode<T> {
     }
 }
 
-impl<T> TreePtr<T> {
-    pub(crate) fn new<TY>(node: &T) -> TreePtr<T>
-    where
-        T: TransparentNewType<Repr = SyntaxNode<TY>>,
-        TY: Types,
-    {
-        let node: &SyntaxNode<TY> = node.into_repr();
-        let root: Arc<SyntaxRoot<TY>> = unsafe { Arc::from_raw(node.root) };
+impl<T, N> TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    pub(crate) fn new(node: &N) -> TreePtr<T, N> {
+        let node: &SyntaxNode<T> = node.into_repr();
+        let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
         std::mem::forget(Arc::clone(&root));
         std::mem::forget(root);
         TreePtr {
-            inner: T::from_repr(node) as *const T,
+            inner: N::from_repr(node) as *const N,
         }
+    }
+
+    /// Casts this ptr across equivalent reprs.
+    pub fn cast<U>(&self) -> TreePtr<T, U>
+    where
+        U: TransparentNewType<Repr = SyntaxNode<T>>,
+    {
+        let r: &SyntaxNode<T> = self.into_repr();
+        let n = U::from_repr(r);
+        TreePtr::new(n)
     }
 }
 
-unsafe impl<T: Send> Send for TreePtr<T> {}
+impl<T, N> Drop for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn drop(&mut self) {
+        let node: &N = &*self;
+        let node = node.into_repr();
+        unsafe { Arc::from_raw(node.root) };
+    }
+}
 
-unsafe impl<T: Sync> Sync for TreePtr<T> {}
+unsafe impl<T, N> Send for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>> + Send,
+{
+}
 
-impl<T> std::ops::Deref for TreePtr<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
+unsafe impl<T: Sync, N> Sync for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>> + Sync,
+{
+}
+
+impl<T, N> std::ops::Deref for TreePtr<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    type Target = N;
+    fn deref(&self) -> &N {
         unsafe { &*self.inner }
     }
 }
 
 impl<T: Types> SyntaxNode<T> {
-    pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<SyntaxNode<T>> {
+    pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<T, SyntaxNode<T>> {
         let root = Arc::new(SyntaxRoot {
             root_node: SyntaxNode::new_impl(ptr::null(), None, green),
             data,

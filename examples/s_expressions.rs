@@ -65,43 +65,15 @@ type GreenNodeBuilder = rowan::GreenNodeBuilder<STypes>;
 #[allow(type_alias_bounds)]
 type SyntaxNode = rowan::SyntaxNode<STypes>;
 
-unsafe trait IsSyntaxNode: Sized {
-    fn as_syntax_node(&self) -> &SyntaxNode {
-        unsafe { std::mem::transmute(self) }
-    }
-    fn from_syntax_node(node: &SyntaxNode) -> &Self {
-        unsafe { std::mem::transmute(node) }
-    }
-}
+type TreePtr<T> = rowan::TreePtr<STypes, T>;
 
-unsafe impl IsSyntaxNode for SyntaxNode {}
-
-struct TreePtr<T: IsSyntaxNode> {
-    inner: rowan::TreePtr<SyntaxNode>,
-    phantom: std::marker::PhantomData<T>,
-}
-
-impl<T: IsSyntaxNode> TreePtr<T> {
-    fn new(inner: rowan::TreePtr<SyntaxNode>) -> Self {
-        TreePtr {
-            inner,
-            phantom: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<T: IsSyntaxNode> std::ops::Deref for TreePtr<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        T::from_syntax_node(&*self.inner)
-    }
-}
+use rowan::TransparentNewType;
 
 /// Now, let's write a parser.
 /// Note that `parse` does not return a `Result`:
 /// by design, syntax tree can be build even for
 /// completely invalid source code.
-fn parse(text: &str) -> TreePtr<SyntaxNode> {
+fn parse(text: &str) -> TreePtr<Root> {
     struct Parser {
         /// input tokens, including whitespace,
         /// in *reverse* order.
@@ -120,7 +92,7 @@ fn parse(text: &str) -> TreePtr<SyntaxNode> {
     }
 
     impl Parser {
-        fn parse(mut self) -> TreePtr<SyntaxNode> {
+        fn parse(mut self) -> TreePtr<Root> {
             // Make sure that the root node covers all source
             self.builder.start_internal(ROOT);
             // Parse a list of S-expressions
@@ -145,7 +117,7 @@ fn parse(text: &str) -> TreePtr<SyntaxNode> {
             let green: GreenNode = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
-            TreePtr::new(SyntaxNode::new(green, self.errors))
+            SyntaxNode::new(green, self.errors).cast()
         }
         fn list(&mut self) {
             // Start the list node
@@ -255,14 +227,22 @@ macro_rules! ast_node {
         #[derive(PartialEq, Eq, Hash)]
         #[repr(transparent)]
         struct $ast(SyntaxNode);
-        unsafe impl IsSyntaxNode for $ast {}
+        unsafe impl TransparentNewType for $ast {
+            type Repr = SyntaxNode;
+        }
         impl $ast {
+            #[allow(unused)]
             fn cast(node: &SyntaxNode) -> Option<&Self> {
                 if node.kind() == $kind {
-                    Some(Self::from_syntax_node(node))
+                    Some(Self::from_repr(node))
                 } else {
                     None
                 }
+            }
+            #[allow(unused)]
+            fn to_owned(&self) -> TreePtr<Self> {
+                let owned = self.0.to_owned();
+                owned.cast()
             }
         }
     };
@@ -371,8 +351,7 @@ fn main() {
 nan
 (+ (* 15 2) 62)
 ";
-    let node = parse(sexps);
-    let root = Root::cast(&node).unwrap();
+    let root = parse(sexps);
     let res = root.sexps().map(|it| it.eval()).collect::<Vec<_>>();
     eprintln!("{:?}", res);
     assert_eq!(res, vec![Some(92), Some(92), None, None, Some(92),])
