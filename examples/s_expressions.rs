@@ -117,7 +117,8 @@ fn parse(text: &str) -> TreePtr<Root> {
             let green: GreenNode = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
-            SyntaxNode::new(green, self.errors).cast()
+            let node = SyntaxNode::new(green, self.errors);
+            Root::cast(&node).unwrap().to_owned()
         }
         fn list(&mut self) {
             // Start the list node
@@ -242,7 +243,7 @@ macro_rules! ast_node {
             #[allow(unused)]
             fn to_owned(&self) -> TreePtr<Self> {
                 let owned = self.0.to_owned();
-                owned.cast()
+                TreePtr::cast(owned)
             }
         }
     };

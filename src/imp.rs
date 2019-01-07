@@ -135,11 +135,11 @@ where
     }
 
     /// Casts this ptr across equivalent reprs.
-    pub fn cast<U>(&self) -> TreePtr<T, U>
+    pub fn cast<U>(this: TreePtr<T, N>) -> TreePtr<T, U>
     where
         U: TransparentNewType<Repr = SyntaxNode<T>>,
     {
-        let r: &SyntaxNode<T> = self.into_repr();
+        let r: &SyntaxNode<T> = this.into_repr();
         let n = U::from_repr(r);
         TreePtr::new(n)
     }
