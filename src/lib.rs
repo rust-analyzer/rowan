@@ -28,6 +28,7 @@ use std::{
 
 pub use crate::{
     green::{GreenNode, GreenNodeBuilder},
+    imp::{SyntaxNode, TreePtr},
     smol_str::SmolStr,
 
     // Reexport types for working with strings.
@@ -48,42 +49,6 @@ pub trait Types: Send + Sync + 'static {
     /// It can be just `()`, but you can use it to store,
     /// for example, syntax errors.
     type RootData: fmt::Debug + Send + Sync;
-}
-
-/// An immutable lazy constructed syntax tree with
-/// offsets and parent pointers.
-///
-/// The design is close to
-/// https://github.com/apple/swift/tree/bc3189a2d265bf7728ea0cfeb55f032bfe5beaf1/lib/Syntax
-///
-/// `SyntaxNode` exists in two flavors:
-///   * owned (R = OwnedRoot<T>)
-///   * borrowed (R = RefRoot<'a, T>)
-///
-/// Borrowed `SyntaxNode` is `Copy`, but is parametrized over a lifetime,
-/// with a corresponding ergonomics hit.
-///
-/// Owned `SyntaxNode` is `Clone` (using `Arc::clone` under the hood) and
-/// is not parametrized over a lifetime. Note that because of the parent
-/// links `SyntaxNode` keeps all of its ancestors alive, and not only descendants,
-/// so keep an eye on memory leaks.
-///
-/// Methods like `parent` or `children` preserve the flavor (borrowed or owned)
-/// of nodes, but you can switch between them at any time using `.borrowed()`
-/// and `.owned()` methods. As a rule of thumb, when *processing* nodes, use
-/// borrowed version to avoid excessive Arc traffic, and, when *storing* nodes
-/// in data structures, use owned variant, to avoid dealing with lifetimes.
-///
-/// `SyntaxNode` have object identity equality and hash semantics.
-pub struct SyntaxNode<T: Types> {
-    root: *const imp::SyntaxRoot<T>, // created from `Arc`
-    parent: Option<imp::ParentData<T>>,
-    green: GreenNode<T>,
-    // replace with
-    // `children: [(TextUnit, AtomSetOnce<SyntaxNode<T><T>>)]`
-    // once we can have var-length structs.
-    // Perhaps even fold `TextUnit` into ptr using a spare bit?
-    children: Box<[swap_cell::SwapCell<TextUnit, SyntaxNode<T>>]>,
 }
 
 impl<T: Types> fmt::Debug for SyntaxNode<T> {
@@ -116,11 +81,6 @@ impl<T: Types> Hash for SyntaxNode<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (self as *const SyntaxNode<T>).hash(state)
     }
-}
-
-/// Owned smart pointer for syntax Nodes.
-pub struct TreePtr<T> {
-    inner: *const T,
 }
 
 impl<T: Types> fmt::Debug for TreePtr<SyntaxNode<T>> {
