@@ -15,8 +15,22 @@ pub(crate) struct ParentData<T: Types> {
     index_in_parent: u32,
 }
 
-impl<T: Types> TreePtr<T> {
-    pub(crate) fn new(node: &SyntaxNode<T>) -> TreePtr<T> {
+unsafe impl<T: Types> Send for SyntaxNode<T>
+where
+    T::RootData: Send,
+    T::Kind: Send,
+{
+}
+
+unsafe impl<T: Types> Sync for SyntaxNode<T>
+where
+    T::RootData: Sync,
+    T::Kind: Sync,
+{
+}
+
+impl<T: Types> TreePtr<SyntaxNode<T>> {
+    pub(crate) fn new(node: &SyntaxNode<T>) -> TreePtr<SyntaxNode<T>> {
         let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
         std::mem::forget(Arc::clone(&root));
         std::mem::forget(root);
@@ -26,35 +40,27 @@ impl<T: Types> TreePtr<T> {
     }
 }
 
-unsafe impl<T: Types> Send for TreePtr<T>
-where
-    T::RootData: Send,
-    T::Kind: Send,
-{
+unsafe impl<T: Send> Send for TreePtr<T> {
 }
 
-unsafe impl<T: Types> Sync for TreePtr<T>
-where
-    T::RootData: Sync,
-    T::Kind: Sync,
-{
+unsafe impl<T: Sync> Sync for TreePtr<T> {
 }
 
-impl<T: Types> std::ops::Deref for TreePtr<T> {
-    type Target = SyntaxNode<T>;
-    fn deref(&self) -> &SyntaxNode<T> {
+impl<T> std::ops::Deref for TreePtr<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
         unsafe { &*self.inner }
     }
 }
 
-impl<T: Types> Clone for TreePtr<T> {
-    fn clone(&self) -> TreePtr<T> {
+impl<T: Types> Clone for TreePtr<SyntaxNode<T>> {
+    fn clone(&self) -> TreePtr<SyntaxNode<T>> {
         TreePtr::new(&*self)
     }
 }
 
 impl<T: Types> SyntaxNode<T> {
-    pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<T> {
+    pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<SyntaxNode<T>> {
         let root = Arc::new(SyntaxRoot {
             root_node: SyntaxNode::new_impl(ptr::null(), None, green),
             data,

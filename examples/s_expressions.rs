@@ -77,12 +77,12 @@ unsafe trait IsSyntaxNode: Sized {
 unsafe impl IsSyntaxNode for SyntaxNode {}
 
 struct TreePtr<T: IsSyntaxNode> {
-    inner: rowan::TreePtr<STypes>,
+    inner: rowan::TreePtr<SyntaxNode>,
     phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: IsSyntaxNode> TreePtr<T> {
-    fn new(inner: rowan::TreePtr<STypes>) -> Self {
+    fn new(inner: rowan::TreePtr<SyntaxNode>) -> Self {
         TreePtr {
             inner,
             phantom: std::marker::PhantomData,

@@ -119,11 +119,11 @@ impl<T: Types> Hash for SyntaxNode<T> {
 }
 
 /// Owned smart pointer for syntax Nodes.
-pub struct TreePtr<T: Types> {
-    inner: *const SyntaxNode<T>,
+pub struct TreePtr<T> {
+    inner: *const T,
 }
 
-impl<T: Types> fmt::Debug for TreePtr<T> {
+impl<T: Types> fmt::Debug for TreePtr<SyntaxNode<T>> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let inner: &SyntaxNode<T> = &*self;
         fmt::Debug::fmt(inner, fmt)
@@ -189,12 +189,12 @@ impl<T> Iterator for LeafAtOffset<T> {
 
 impl<T: Types> SyntaxNode<T> {
     /// Creates a new `SyntaxNode`, whihc becomes the root of the tree.
-    pub fn new(green: GreenNode<T>, data: T::RootData) -> TreePtr<T> {
+    pub fn new(green: GreenNode<T>, data: T::RootData) -> TreePtr<SyntaxNode<T>> {
         Self::new_root(green, data)
     }
 
     /// Switch this node to owned flavor.
-    pub fn to_owned(&self) -> TreePtr<T> {
+    pub fn to_owned(&self) -> TreePtr<SyntaxNode<T>> {
         TreePtr::new(self)
     }
 
@@ -445,6 +445,6 @@ mod tests {
         fn f<T: Send + Sync>() {}
         f::<GreenNode<SillyTypes>>();
         f::<SyntaxNode<SillyTypes>>();
-        f::<TreePtr<SillyTypes>>();
+        f::<TreePtr<SyntaxNode<SillyTypes>>>();
     }
 }
