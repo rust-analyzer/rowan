@@ -88,24 +88,29 @@ pub struct TreePtr<T> {
 ///
 /// Implementing this trait allows one to cast safely between the wrapper and
 /// the underlying representation.
-pub unsafe trait TransparentNewType<Repr>: Sized {
+pub unsafe trait TransparentNewType: Sized {
+    /// Underlyng representation of a newtype.
+    type Repr;
     /// Cast the uderlying repr into a wrapper.
-    fn from_repr(repr: &Repr) -> &Self {
-        assert!(mem::size_of::<Self>() == mem::size_of::<Repr>());
+    fn from_repr(repr: &Self::Repr) -> &Self {
+        assert!(mem::size_of::<Self>() == mem::size_of::<Self::Repr>());
         unsafe { mem::transmute(repr) }
     }
     /// Cast wrapper to the underlying repr.
-    fn into_repr(&self) -> &Repr {
-        assert!(mem::size_of::<Self>() == mem::size_of::<Repr>());
+    fn into_repr(&self) -> &Self::Repr {
+        assert!(mem::size_of::<Self>() == mem::size_of::<Self::Repr>());
         unsafe { mem::transmute(self) }
     }
 }
 
-unsafe impl<T> TransparentNewType<T> for T {
-    fn from_repr(repr: &T) -> &T {
+unsafe impl<T: Types> TransparentNewType for SyntaxNode<T> {
+    type Repr = SyntaxNode<T>;
+
+    fn from_repr(repr: &Self::Repr) -> &Self {
         repr
     }
-    fn into_repr(&self) -> &T {
+
+    fn into_repr(&self) -> &Self::Repr {
         self
     }
 }
@@ -113,7 +118,7 @@ unsafe impl<T> TransparentNewType<T> for T {
 impl<T> TreePtr<T> {
     pub(crate) fn new<TY>(node: &T) -> TreePtr<T>
     where
-        T: TransparentNewType<SyntaxNode<TY>>,
+        T: TransparentNewType<Repr = SyntaxNode<TY>>,
         TY: Types,
     {
         let node: &SyntaxNode<TY> = node.into_repr();

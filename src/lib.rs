@@ -50,10 +50,14 @@ pub trait Types: Send + Sync + 'static {
     type RootData: fmt::Debug + Send + Sync;
 }
 
-pub use crate::imp::{TreePtr, TransparentNewType};
+pub use crate::imp::{TransparentNewType, TreePtr};
 
-impl<T: Types> Clone for TreePtr<SyntaxNode<T>> {
-    fn clone(&self) -> TreePtr<SyntaxNode<T>> {
+impl<T, TY> Clone for TreePtr<T>
+where
+    T: TransparentNewType<Repr = SyntaxNode<TY>>,
+    TY: Types,
+{
+    fn clone(&self) -> TreePtr<T> {
         TreePtr::new(&*self)
     }
 }
