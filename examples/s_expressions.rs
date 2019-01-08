@@ -63,16 +63,17 @@ type GreenNodeBuilder = rowan::GreenNodeBuilder<STypes>;
 /// SyntaxNode exist in borrowed and owned flavors,
 /// which is controlled by the `R` parameter.
 #[allow(type_alias_bounds)]
-type SyntaxNode<R: rowan::TreeRoot<STypes> = rowan::OwnedRoot<STypes>> =
-    rowan::SyntaxNode<STypes, R>;
+type SyntaxNode = rowan::SyntaxNode<STypes>;
 
-type SyntaxNodeRef<'a> = SyntaxNode<rowan::RefRoot<'a, STypes>>;
+type TreePtr<T> = rowan::TreePtr<STypes, T>;
+
+use rowan::TransparentNewType;
 
 /// Now, let's write a parser.
 /// Note that `parse` does not return a `Result`:
 /// by design, syntax tree can be build even for
 /// completely invalid source code.
-fn parse(text: &str) -> SyntaxNode {
+fn parse(text: &str) -> TreePtr<Root> {
     struct Parser {
         /// input tokens, including whitespace,
         /// in *reverse* order.
@@ -91,7 +92,7 @@ fn parse(text: &str) -> SyntaxNode {
     }
 
     impl Parser {
-        fn parse(mut self) -> SyntaxNode {
+        fn parse(mut self) -> TreePtr<Root> {
             // Make sure that the root node covers all source
             self.builder.start_internal(ROOT);
             // Parse a list of S-expressions
@@ -116,7 +117,8 @@ fn parse(text: &str) -> SyntaxNode {
             let green: GreenNode = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
-            SyntaxNode::new(green, self.errors)
+            let node = SyntaxNode::new(green, self.errors);
+            Root::cast(&node).unwrap().to_owned()
         }
         fn list(&mut self) {
             // Start the list node
@@ -223,15 +225,25 @@ fn test_parser() {
 /// combination of `serde`, `ron` and `tera` crates invaluable for that!
 macro_rules! ast_node {
     ($ast:ident, $kind:ident) => {
-        #[derive(Clone, Copy, PartialEq, Eq, Hash)] // note the Copy
-        struct $ast<'a>(SyntaxNodeRef<'a>);
-        impl<'a> $ast<'a> {
-            fn cast(node: SyntaxNodeRef<'a>) -> Option<Self> {
+        #[derive(PartialEq, Eq, Hash)]
+        #[repr(transparent)]
+        struct $ast(SyntaxNode);
+        unsafe impl TransparentNewType for $ast {
+            type Repr = SyntaxNode;
+        }
+        impl $ast {
+            #[allow(unused)]
+            fn cast(node: &SyntaxNode) -> Option<&Self> {
                 if node.kind() == $kind {
-                    Some($ast(node))
+                    Some(Self::from_repr(node))
                 } else {
                     None
                 }
+            }
+            #[allow(unused)]
+            fn to_owned(&self) -> TreePtr<Self> {
+                let owned = self.0.to_owned();
+                TreePtr::cast(owned)
             }
         }
     };
@@ -242,23 +254,36 @@ ast_node!(Atom, ATOM);
 ast_node!(List, LIST);
 
 // Sexp is slightly different, so let's do it by hand.
-enum Sexp<'a> {
-    Atom(Atom<'a>),
-    List(List<'a>),
+#[derive(PartialEq, Eq, Hash)]
+#[repr(transparent)]
+struct Sexp(SyntaxNode);
+
+enum SexpKind<'a> {
+    Atom(&'a Atom),
+    List(&'a List),
 }
 
-impl<'a> Sexp<'a> {
-    fn cast(node: SyntaxNodeRef<'a>) -> Option<Self> {
-        Atom::cast(node)
-            .map(Sexp::Atom)
-            .or_else(|| List::cast(node).map(Sexp::List))
+impl Sexp {
+    fn cast(node: &SyntaxNode) -> Option<&Self> {
+        if Atom::cast(node).is_some() || List::cast(node).is_some() {
+            Some(unsafe { std::mem::transmute(node) })
+        } else {
+            None
+        }
+    }
+
+    fn kind(&self) -> SexpKind {
+        Atom::cast(&self.0)
+            .map(SexpKind::Atom)
+            .or_else(|| List::cast(&self.0).map(SexpKind::List))
+            .unwrap()
     }
 }
 
 // Let's enhance AST nodes with ancillary functions and
 // eval.
-impl<'a> Root<'a> {
-    fn sexps(self) -> impl Iterator<Item = Sexp<'a>> {
+impl Root {
+    fn sexps(&self) -> impl Iterator<Item = &Sexp> {
         self.0.children().filter_map(Sexp::cast)
     }
 }
@@ -270,11 +295,11 @@ enum Op {
     Mul,
 }
 
-impl<'a> Atom<'a> {
-    fn eval(self) -> Option<i64> {
+impl Atom {
+    fn eval(&self) -> Option<i64> {
         self.0.leaf_text().unwrap().parse().ok()
     }
-    fn as_op(self) -> Option<Op> {
+    fn as_op(&self) -> Option<Op> {
         let text = self.0.leaf_text().unwrap();
         let op = match text.as_str() {
             "+" => Op::Add,
@@ -287,13 +312,13 @@ impl<'a> Atom<'a> {
     }
 }
 
-impl<'a> List<'a> {
-    fn sexps(self) -> impl Iterator<Item = Sexp<'a>> {
+impl List {
+    fn sexps(&self) -> impl Iterator<Item = &Sexp> {
         self.0.children().filter_map(Sexp::cast)
     }
-    fn eval(self) -> Option<i64> {
-        let op = match self.sexps().nth(0)? {
-            Sexp::Atom(atom) => atom.as_op()?,
+    fn eval(&self) -> Option<i64> {
+        let op = match self.sexps().nth(0)?.kind() {
+            SexpKind::Atom(atom) => atom.as_op()?,
             _ => return None,
         };
         let arg1 = self.sexps().nth(1)?.eval()?;
@@ -309,11 +334,11 @@ impl<'a> List<'a> {
     }
 }
 
-impl<'a> Sexp<'a> {
-    fn eval(self) -> Option<i64> {
-        match self {
-            Sexp::Atom(atom) => atom.eval(),
-            Sexp::List(list) => list.eval(),
+impl Sexp {
+    fn eval(&self) -> Option<i64> {
+        match self.kind() {
+            SexpKind::Atom(atom) => atom.eval(),
+            SexpKind::List(list) => list.eval(),
         }
     }
 }
@@ -327,8 +352,7 @@ fn main() {
 nan
 (+ (* 15 2) 62)
 ";
-    let node = parse(sexps);
-    let root = Root::cast(node.borrowed()).unwrap();
+    let root = parse(sexps);
     let res = root.sexps().map(|it| it.eval()).collect::<Vec<_>>();
     eprintln!("{:?}", res);
     assert_eq!(res, vec![Some(92), Some(92), None, None, Some(92),])

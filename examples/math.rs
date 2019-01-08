@@ -47,7 +47,8 @@ impl rowan::Types for Types {
     type RootData = ();
 }
 
-type Node<R = rowan::OwnedRoot<Types>> = rowan::SyntaxNode<Types, R>;
+type Node = rowan::SyntaxNode<Types>;
+type TreePtr<T> = rowan::TreePtr<Types, T>;
 
 struct Parser<I: Iterator<Item = (Token, SmolStr)>> {
     builder: GreenNodeBuilder<Types>,
@@ -98,7 +99,7 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
     fn parse_add(&mut self) {
         self.handle_operation(&[Token::Add, Token::Sub], Self::parse_mul)
     }
-    fn parse(mut self) -> Node {
+    fn parse(mut self) -> TreePtr<Node> {
         self.builder.start_internal(NodeType::Marker(ASTKind::Root));
         self.parse_add();
         self.builder.finish_internal();
@@ -107,9 +108,9 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
     }
 }
 
-fn print<R: rowan::TreeRoot<Types>>(indent: usize, node: Node<R>) {
+fn print(indent: usize, node: &Node) {
     print!("{:indent$}", "", indent = indent);
-    if let Some(text) = node.borrowed().leaf_text() {
+    if let Some(text) = node.leaf_text() {
         println!("- {:?} {:?}", text, node.kind());
     } else {
         println!("- {:?}", node.kind());
@@ -142,5 +143,5 @@ fn main() {
         .peekable(),
     }
     .parse();
-    print(0, ast.borrowed());
+    print(0, &ast);
 }
