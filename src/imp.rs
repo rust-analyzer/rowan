@@ -24,10 +24,10 @@ pub(crate) struct ParentData<T: Types> {
 ///
 /// All nodes constituting a tree share the ownership by a tree. Internally, and
 /// `Arc` is used, but outside world observes nodes as `&SyntaxNode` or
-/// `TreePtr<SyntaxNode>`, where a `TreePtr` is an Arc-like smart pointer.
+/// `TreeArc<SyntaxNode>`, where a `TreeArc` is an Arc-like smart pointer.
 pub struct SyntaxNode<T: Types> {
     // Created from `Arc`. The ref-count on root is equal to the number of live
-    // `TreePtr` which point into this tree.
+    // `TreeArc` which point into this tree.
     root: *const SyntaxRoot<T>,
     pub(crate) parent: Option<ParentData<T>>,
     pub(crate) green: GreenNode<T>,
@@ -58,7 +58,7 @@ where
 /// Owned smart pointer for syntax Nodes.
 /// It can be used with any type implementing `TransparentNewType<SyntaxNode>`.
 // Conceptually, it also plays an `Arc<TreeRoot<T>>` role as well.
-pub struct TreePtr<T, N>
+pub struct TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
@@ -110,25 +110,25 @@ unsafe impl<T: Types> TransparentNewType for SyntaxNode<T> {
     }
 }
 
-impl<T, N> TreePtr<T, N>
+impl<T, N> TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
     /// Creates a new owned node from a reference to a node, by bumping root's
     /// refcount.
-    pub(crate) fn new(node: &N) -> TreePtr<T, N> {
+    pub(crate) fn new(node: &N) -> TreeArc<T, N> {
         let node: &SyntaxNode<T> = node.into_repr();
         let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
         std::mem::forget(Arc::clone(&root));
         std::mem::forget(root);
-        TreePtr {
+        TreeArc {
             inner: N::from_repr(node) as *const N,
         }
     }
 
     /// Casts this ptr across equivalent reprs.
-    pub fn cast<U>(this: TreePtr<T, N>) -> TreePtr<T, U>
+    pub fn cast<U>(this: TreeArc<T, N>) -> TreeArc<T, U>
     where
         U: TransparentNewType<Repr = SyntaxNode<T>>,
     {
@@ -136,11 +136,11 @@ where
         // `new`, to minimize unsafety.
         let r: &SyntaxNode<T> = this.into_repr();
         let n = U::from_repr(r);
-        TreePtr::new(n)
+        TreeArc::new(n)
     }
 }
 
-impl<T, N> Drop for TreePtr<T, N>
+impl<T, N> Drop for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
@@ -160,7 +160,7 @@ where
 }
 
 // Manual impls due to `inner: *const N` field
-unsafe impl<T, N> Send for TreePtr<T, N>
+unsafe impl<T, N> Send for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
@@ -168,7 +168,7 @@ where
 {
 }
 
-unsafe impl<T: Sync, N> Sync for TreePtr<T, N>
+unsafe impl<T: Sync, N> Sync for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
@@ -176,21 +176,21 @@ where
 {
 }
 
-impl<T, N> std::ops::Deref for TreePtr<T, N>
+impl<T, N> std::ops::Deref for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
     type Target = N;
     fn deref(&self) -> &N {
-        // We are a `TreePtr`, so underlying `SyntaxRoot` has an count at least
+        // We are a `TreeArc`, so underlying `SyntaxRoot` has an count at least
         // one, so it's safe to deref a node.
         unsafe { &*self.inner }
     }
 }
 
 impl<T: Types> SyntaxNode<T> {
-    pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreePtr<T, SyntaxNode<T>> {
+    pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreeArc<T, SyntaxNode<T>> {
         let mut root = Arc::new(SyntaxRoot {
             root_node: unsafe { SyntaxNode::new_impl(ptr::null(), None, green) },
             data,
@@ -204,7 +204,7 @@ impl<T: Types> SyntaxNode<T> {
         unsafe {
             (*red_node).root = root_ptr;
         }
-        TreePtr { inner: red_node }
+        TreeArc { inner: red_node }
     }
 
     fn new_child(

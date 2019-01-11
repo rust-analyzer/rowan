@@ -65,7 +65,7 @@ type GreenNodeBuilder = rowan::GreenNodeBuilder<STypes>;
 #[allow(type_alias_bounds)]
 type SyntaxNode = rowan::SyntaxNode<STypes>;
 
-type TreePtr<T> = rowan::TreePtr<STypes, T>;
+type TreeArc<T> = rowan::TreeArc<STypes, T>;
 
 use rowan::TransparentNewType;
 
@@ -73,7 +73,7 @@ use rowan::TransparentNewType;
 /// Note that `parse` does not return a `Result`:
 /// by design, syntax tree can be build even for
 /// completely invalid source code.
-fn parse(text: &str) -> TreePtr<Root> {
+fn parse(text: &str) -> TreeArc<Root> {
     struct Parser {
         /// input tokens, including whitespace,
         /// in *reverse* order.
@@ -92,7 +92,7 @@ fn parse(text: &str) -> TreePtr<Root> {
     }
 
     impl Parser {
-        fn parse(mut self) -> TreePtr<Root> {
+        fn parse(mut self) -> TreeArc<Root> {
             // Make sure that the root node covers all source
             self.builder.start_internal(ROOT);
             // Parse a list of S-expressions
@@ -241,9 +241,9 @@ macro_rules! ast_node {
                 }
             }
             #[allow(unused)]
-            fn to_owned(&self) -> TreePtr<Self> {
+            fn to_owned(&self) -> TreeArc<Self> {
                 let owned = self.0.to_owned();
-                TreePtr::cast(owned)
+                TreeArc::cast(owned)
             }
         }
     };
