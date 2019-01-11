@@ -48,7 +48,7 @@ impl rowan::Types for Types {
 }
 
 type Node = rowan::SyntaxNode<Types>;
-type TreePtr<T> = rowan::TreePtr<Types, T>;
+type TreeArc<T> = rowan::TreeArc<Types, T>;
 
 struct Parser<I: Iterator<Item = (Token, SmolStr)>> {
     builder: GreenNodeBuilder<Types>,
@@ -99,7 +99,7 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
     fn parse_add(&mut self) {
         self.handle_operation(&[Token::Add, Token::Sub], Self::parse_mul)
     }
-    fn parse(mut self) -> TreePtr<Node> {
+    fn parse(mut self) -> TreeArc<Node> {
         self.builder.start_internal(NodeType::Marker(ASTKind::Root));
         self.parse_add();
         self.builder.finish_internal();

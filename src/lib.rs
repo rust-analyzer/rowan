@@ -50,37 +50,37 @@ pub trait Types: Send + Sync + 'static {
     type RootData: fmt::Debug + Send + Sync;
 }
 
-pub use crate::imp::{TransparentNewType, TreePtr};
+pub use crate::imp::{TransparentNewType, TreeArc};
 
-impl<T, N> Clone for TreePtr<T, N>
+impl<T, N> Clone for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
-    fn clone(&self) -> TreePtr<T, N> {
+    fn clone(&self) -> TreeArc<T, N> {
         let n: &N = &*self;
-        TreePtr::new(n)
+        TreeArc::new(n)
     }
 }
 
-impl<T, N> PartialEq<TreePtr<T, N>> for TreePtr<T, N>
+impl<T, N> PartialEq<TreeArc<T, N>> for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
-    fn eq(&self, other: &TreePtr<T, N>) -> bool {
+    fn eq(&self, other: &TreeArc<T, N>) -> bool {
         ptr::eq(self.inner, other.inner)
     }
 }
 
-impl<T, N> Eq for TreePtr<T, N>
+impl<T, N> Eq for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
 }
 
-impl<T, N> Hash for TreePtr<T, N>
+impl<T, N> Hash for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
@@ -124,7 +124,7 @@ impl<T: Types> Hash for SyntaxNode<T> {
     }
 }
 
-impl<T, N> fmt::Debug for TreePtr<T, N>
+impl<T, N> fmt::Debug for TreeArc<T, N>
 where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>> + fmt::Debug,
@@ -194,13 +194,13 @@ impl<T> Iterator for LeafAtOffset<T> {
 
 impl<T: Types> SyntaxNode<T> {
     /// Creates a new `SyntaxNode`, whihc becomes the root of the tree.
-    pub fn new(green: GreenNode<T>, data: T::RootData) -> TreePtr<T, SyntaxNode<T>> {
+    pub fn new(green: GreenNode<T>, data: T::RootData) -> TreeArc<T, SyntaxNode<T>> {
         Self::new_root(green, data)
     }
 
     /// Switch this node to owned flavor.
-    pub fn to_owned(&self) -> TreePtr<T, SyntaxNode<T>> {
-        TreePtr::new(self)
+    pub fn to_owned(&self) -> TreeArc<T, SyntaxNode<T>> {
+        TreeArc::new(self)
     }
 
     /// Get the green node for this node
@@ -465,6 +465,6 @@ mod tests {
         fn f<T: Send + Sync>() {}
         f::<GreenNode<SillyTypes>>();
         f::<SyntaxNode<SillyTypes>>();
-        f::<TreePtr<SillyTypes, SyntaxNode<SillyTypes>>>();
+        f::<TreeArc<SillyTypes, SyntaxNode<SillyTypes>>>();
     }
 }
