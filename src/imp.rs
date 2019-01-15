@@ -1,7 +1,12 @@
 //! All tricky and unsafe bits of implementation are here. If you get a
 //! segfault, this the module to scrutinize in the first place :-)
 
-use std::{mem, ptr, sync::Arc};
+use std::{
+    mem,
+    panic::{RefUnwindSafe, UnwindSafe},
+    ptr,
+    sync::Arc,
+};
 
 use crate::{swap_cell::SwapCell, GreenNode, TextUnit, Types};
 
@@ -50,8 +55,24 @@ where
 unsafe impl<T> Sync for SyntaxNode<T>
 where
     T: Types,
-    T::RootData: Send,
-    T::Kind: Send,
+    T::RootData: Sync + Send,
+    T::Kind: Sync + Send,
+{
+}
+
+impl<T> UnwindSafe for SyntaxNode<T>
+where
+    T: Types,
+    T::RootData: UnwindSafe,
+    T::Kind: UnwindSafe,
+{
+}
+
+impl<T> RefUnwindSafe for SyntaxNode<T>
+where
+    T: Types,
+    T::RootData: RefUnwindSafe + UnwindSafe,
+    T::Kind: RefUnwindSafe + UnwindSafe,
 {
 }
 
