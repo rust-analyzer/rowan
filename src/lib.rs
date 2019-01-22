@@ -406,6 +406,13 @@ impl<T: Types> SyntaxNode<T> {
         }
     }
 
+    /// Number of memory bytes of occupied by subtree rooted at `self`.
+    pub fn memory_size_of_subtree(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.green().memory_size_of_subtree()
+            + self.memory_size_of_red_children()
+    }
+
     pub(crate) fn start_offset(&self) -> TextUnit {
         match &self.parent {
             None => 0.into(),

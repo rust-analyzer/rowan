@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, mem};
 
-use parking_lot::{Once, ONCE_INIT};
+use parking_lot::{Once, OnceState, ONCE_INIT};
 
 #[derive(Debug)]
 enum State<U, V> {
@@ -25,6 +25,13 @@ impl<U, V> SwapCell<U, V> {
         }
     }
 
+    pub(crate) fn get(&self) -> Option<&V> {
+        if self.once.state() != OnceState::Done {
+            return None;
+        }
+        Some(unsafe { self.get_unchecked() })
+    }
+
     pub(crate) fn get_or_init(&self, f: impl FnOnce(U) -> V) -> &V {
         self.once.call_once(|| {
             let seed = match unsafe { self.replace_state(State::InProgress) } {
@@ -37,7 +44,11 @@ impl<U, V> SwapCell<U, V> {
                 _ => unreachable!(),
             }
         });
-        match unsafe { &*self.state.get() } {
+        unsafe { self.get_unchecked() }
+    }
+
+    unsafe fn get_unchecked(&self) -> &V {
+        match &*self.state.get() {
             State::Inited(value) => value,
             _ => unreachable!(),
         }

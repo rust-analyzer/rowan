@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{mem::size_of, sync::Arc};
 
 use crate::{SmolStr, TextUnit, Types};
 
@@ -145,6 +145,27 @@ impl<T: Types> GreenNode<T> {
             GreenNodeImpl::Leaf { text, .. } => Some(text),
             GreenNodeImpl::Branch(_) => None,
         }
+    }
+    /// Number of memory bytes of occupied by subtree rooted at `self`.
+    pub fn memory_size_of_subtree(&self) -> usize {
+        let mut res = size_of::<Self>();
+        match &self.0 {
+            GreenNodeImpl::Leaf { text, .. } => {
+                if text.len() > 22 {
+                    res += text.len();
+                }
+            }
+            GreenNodeImpl::Branch(branch) => {
+                res += size_of::<GreenBranch<T>>()
+                    + 2 * size_of::<usize>()
+                    + branch
+                        .children
+                        .iter()
+                        .map(|it| it.memory_size_of_subtree())
+                        .sum::<usize>();
+            }
+        }
+        res
     }
 }
 

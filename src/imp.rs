@@ -290,4 +290,14 @@ impl<T: Types> SyntaxNode<T> {
         });
         Some(child)
     }
+    /// Number of memory bytes of occupied by subtree rooted at `self`.
+    pub fn memory_size_of_red_children(&self) -> usize {
+        self.children
+            .iter()
+            .map(|it| {
+                std::mem::size_of::<SwapCell<TextUnit, SyntaxNode<T>>>()
+                    + it.get().map_or(0, |it| it.memory_size_of_red_children())
+            })
+            .sum()
+    }
 }
