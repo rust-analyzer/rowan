@@ -90,6 +90,19 @@ where
     }
 }
 
+// NB: borrow requires that Eq & Hash for `Owned` are consistent with thouse for
+// `Borrowed`. This is true for `TreeArc`, but for a slightly peculiar reason:
+// it forces "identity" (comparisons of pointers) semantics on the contents.
+impl<T, N> std::borrow::Borrow<N> for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn borrow(&self) -> &N {
+        &*self
+    }
+}
+
 pub use crate::imp::SyntaxNode;
 
 impl<T: Types> fmt::Debug for SyntaxNode<T> {
@@ -192,15 +205,17 @@ impl<T> Iterator for LeafAtOffset<T> {
     }
 }
 
+impl<T: Types> ToOwned for SyntaxNode<T> {
+    type Owned = TreeArc<T, SyntaxNode<T>>;
+    fn to_owned(&self) -> TreeArc<T, SyntaxNode<T>> {
+        TreeArc::new(self)
+    }
+}
+
 impl<T: Types> SyntaxNode<T> {
     /// Creates a new `SyntaxNode`, whihc becomes the root of the tree.
     pub fn new(green: GreenNode<T>, data: T::RootData) -> TreeArc<T, SyntaxNode<T>> {
         Self::new_root(green, data)
-    }
-
-    /// Switch this node to owned flavor.
-    pub fn to_owned(&self) -> TreeArc<T, SyntaxNode<T>> {
-        TreeArc::new(self)
     }
 
     /// Get the green node for this node
