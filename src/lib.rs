@@ -8,6 +8,7 @@
 )]
 #![deny(unsafe_code)]
 
+extern crate colosseum;
 extern crate parking_lot;
 extern crate smol_str;
 extern crate text_unit;

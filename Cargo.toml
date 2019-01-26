@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "Library for generic lossless syntax trees."
 
 [dependencies]
+colosseum = "0.2.2"
 parking_lot = "0.7.1"
 text_unit = "0.1.6"
 smol_str = "0.1.9"

@@ -25,6 +25,13 @@ impl<U, V> SwapCell<U, V> {
         }
     }
 
+    pub(crate) fn get_mut(&mut self) -> Option<&mut V> {
+        match unsafe { &mut *self.state.get() } {
+            State::Inited(value) => Some(value),
+            _ => None,
+        }
+    }
+
     pub(crate) fn get(&self) -> Option<&V> {
         if self.once.state() != OnceState::Done {
             return None;

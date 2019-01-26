@@ -9,10 +9,12 @@ use std::{
 };
 
 use crate::{swap_cell::SwapCell, GreenNode, TextUnit, Types};
+use colosseum::sync::Arena;
 
-#[derive(Debug)]
+type LazyNode<T> = SwapCell<TextUnit, SyntaxNode<T>>;
+
 pub(crate) struct SyntaxRoot<T: Types> {
-    pub(crate) root_node: SyntaxNode<T>,
+    pub(crate) arena: Arena<LazyNode<T>>,
     pub(crate) data: T::RootData,
 }
 
@@ -40,7 +42,7 @@ pub struct SyntaxNode<T: Types> {
     // `children: [(TextUnit, AtomSetOnce<SyntaxNode<T><T>>)]`
     // once we can have var-length structs.
     // Perhaps even fold `TextUnit` into ptr using a spare bit?
-    pub(crate) children: Box<[SwapCell<TextUnit, SyntaxNode<T>>]>,
+    pub(crate) children: ptr::NonNull<[LazyNode<T>]>,
 }
 
 // Manually send/sync impls due to `root: *const SyntaxRoot<T>` field.
@@ -212,15 +214,19 @@ where
 
 impl<T: Types> SyntaxNode<T> {
     pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreeArc<T, SyntaxNode<T>> {
-        let mut root = Arc::new(SyntaxRoot {
-            root_node: unsafe { SyntaxNode::new_impl(ptr::null(), None, green) },
+        let root = SyntaxRoot {
+            arena: Arena::new(),
             data,
-        });
+        };
+        let red_node: *mut SyntaxNode<T> = {
+            let mut red_node = root.arena.alloc(SwapCell::new(0.into()));
+            red_node.get_or_init(|_| SyntaxNode::new_impl(&root, None, green));
+            red_node.get_mut().unwrap()
+        };
 
-        let red_node: *mut SyntaxNode<T> = &mut Arc::get_mut(&mut root).unwrap().root_node;
         // "forget" the `root` so that we have rc equal to one once exiting this
         // function.
-        let root_ptr: *const SyntaxRoot<T> = Arc::into_raw(root);
+        let root_ptr: *const SyntaxRoot<T> = Arc::into_raw(Arc::new(root));
         // set backreference
         unsafe {
             (*red_node).root = root_ptr;
@@ -239,11 +245,11 @@ impl<T: Types> SyntaxNode<T> {
             start_offset,
             index_in_parent: index_in_parent as u32,
         };
-        unsafe { SyntaxNode::new_impl(self.root, Some(parent_data), green) }
+        SyntaxNode::new_impl(self.root(), Some(parent_data), green)
     }
 
-    unsafe fn new_impl(
-        root: *const SyntaxRoot<T>,
+    fn new_impl(
+        root: &SyntaxRoot<T>,
         parent: Option<ParentData<T>>,
         green: GreenNode<T>,
     ) -> SyntaxNode<T> {
@@ -251,21 +257,19 @@ impl<T: Types> SyntaxNode<T> {
             .as_ref()
             .map(|it| it.start_offset)
             .unwrap_or(0.into());
-        let children = green
-            .children()
-            .iter()
-            .map(|child| {
+
+        let children = root
+            .arena
+            .alloc_extend(green.children().iter().map(|child| {
                 let off = start_offset;
                 start_offset += child.text_len();
                 SwapCell::new(off)
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+            }));
         SyntaxNode {
             root,
             parent,
             green,
-            children,
+            children: children.into(),
         }
     }
 
@@ -280,11 +284,16 @@ impl<T: Types> SyntaxNode<T> {
         Some(unsafe { &*ptr.as_ptr() })
     }
 
+    pub(crate) fn children_impl(&self) -> &[LazyNode<T>] {
+        // If we (the rerence) not dangle, then parent must be alive as well.
+        unsafe { &*self.children.as_ptr() }
+    }
+
     pub(crate) fn get_child(&self, idx: usize) -> Option<&SyntaxNode<T>> {
         if idx >= self.n_children() {
             return None;
         }
-        let child = self.children[idx].get_or_init(|start_offset| {
+        let child = self.children_impl()[idx].get_or_init(|start_offset| {
             let green_children = self.green.children();
             self.new_child(start_offset, idx, green_children[idx].clone())
         });
@@ -292,10 +301,10 @@ impl<T: Types> SyntaxNode<T> {
     }
     /// Number of memory bytes of occupied by subtree rooted at `self`.
     pub fn memory_size_of_red_children(&self) -> usize {
-        self.children
+        self.children_impl()
             .iter()
             .map(|it| {
-                std::mem::size_of::<SwapCell<TextUnit, SyntaxNode<T>>>()
+                std::mem::size_of::<LazyNode<T>>()
                     + it.get().map_or(0, |it| it.memory_size_of_red_children())
             })
             .sum()
