@@ -8,12 +8,18 @@
 )]
 #![deny(unsafe_code)]
 
+#[cfg(feature = "serde")]
+extern crate serde;
+
 extern crate colosseum;
 extern crate parking_lot;
 extern crate smol_str;
 extern crate text_unit;
 
 mod green;
+
+#[cfg(feature = "serde")]
+mod ser;
 
 #[allow(unsafe_code)]
 mod imp;
