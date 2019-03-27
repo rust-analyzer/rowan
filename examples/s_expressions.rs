@@ -22,11 +22,12 @@ enum SyntaxKind {
     // tokens
     L_PAREN,    // '('
     R_PAREN,    // ')'
-    ATOM,       // '+', '15'
+    WORD,       // '+', '15'
     WHITESPACE, // whitespaces is explicit
     ERROR,      // as well as errors
     // composite nodes
     LIST, // `(+ 2 3)`
+    ATOM, // `+`, `15`, wraps a WORD token
     ROOT, // top-level node: a list of s-expressions
 }
 /// We'll be using these a bunch, so let's add a `*` import
@@ -94,16 +95,16 @@ fn parse(text: &str) -> TreeArc<Root> {
     impl Parser {
         fn parse(mut self) -> TreeArc<Root> {
             // Make sure that the root node covers all source
-            self.builder.start_internal(ROOT);
+            self.builder.start_node(ROOT);
             // Parse a list of S-expressions
             loop {
                 match self.sexp() {
                     SexpRes::Eof => break,
                     SexpRes::RParen => {
-                        self.builder.start_internal(ERROR);
+                        self.builder.start_node(ERROR);
                         self.errors.push("unmatched `)`".to_string());
                         self.bump(); // be sure to chug along in case of error
-                        self.builder.finish_internal();
+                        self.builder.finish_node();
                     }
                     SexpRes::Ok => (),
                 }
@@ -111,7 +112,7 @@ fn parse(text: &str) -> TreeArc<Root> {
             // Don't forget to eat *trailing* whitespace
             self.skip_ws();
             // Close the root node.
-            self.builder.finish_internal();
+            self.builder.finish_node();
 
             // Turn the builder into a complete node.
             let green: GreenNode = self.builder.finish();
@@ -122,7 +123,7 @@ fn parse(text: &str) -> TreeArc<Root> {
         }
         fn list(&mut self) {
             // Start the list node
-            self.builder.start_internal(LIST);
+            self.builder.start_node(LIST);
             self.bump(); // '('
             loop {
                 match self.sexp() {
@@ -138,7 +139,7 @@ fn parse(text: &str) -> TreeArc<Root> {
                 }
             }
             // close the list node
-            self.builder.finish_internal();
+            self.builder.finish_node();
         }
         fn sexp(&mut self) -> SexpRes {
             // Eat leading whitespace
@@ -152,14 +153,19 @@ fn parse(text: &str) -> TreeArc<Root> {
             };
             match t {
                 L_PAREN => self.list(),
-                ATOM | ERROR => self.bump(),
+                WORD => {
+                    self.builder.start_node(ATOM);
+                    self.bump();
+                    self.builder.finish_node();
+                }
+                ERROR => self.bump(),
                 _ => unreachable!(),
             }
             SexpRes::Ok
         }
         fn bump(&mut self) {
             let (kind, text) = self.tokens.pop().unwrap();
-            self.builder.leaf(kind, text);
+            self.builder.token(kind, text);
         }
         fn current(&self) -> Option<SyntaxKind> {
             self.tokens.last().map(|(kind, _)| *kind)
@@ -173,12 +179,7 @@ fn parse(text: &str) -> TreeArc<Root> {
 
     let mut tokens = lex(text);
     tokens.reverse();
-    Parser {
-        tokens,
-        builder: GreenNodeBuilder::new(),
-        errors: Vec::new(),
-    }
-    .parse()
+    Parser { tokens, builder: GreenNodeBuilder::new(), errors: Vec::new() }.parse()
 }
 
 /// Let's check that the parser works as expected
@@ -192,10 +193,7 @@ fn test_parser() {
     );
     assert_eq!(node.children().count(), 1);
     let list = node.children().next().unwrap();
-    let children = list
-        .children()
-        .map(|child| format!("{:?}", child))
-        .collect::<Vec<_>>();
+    let children = list.children().map(|child| format!("{:?}", child)).collect::<Vec<_>>();
 
     assert_eq!(
         children,
@@ -297,11 +295,10 @@ enum Op {
 
 impl Atom {
     fn eval(&self) -> Option<i64> {
-        self.0.leaf_text().unwrap().parse().ok()
+        self.text().parse().ok()
     }
     fn as_op(&self) -> Option<Op> {
-        let text = self.0.leaf_text().unwrap();
-        let op = match text.as_str() {
+        let op = match self.text().as_str() {
             "+" => Op::Add,
             "-" => Op::Sub,
             "*" => Op::Mul,
@@ -309,6 +306,12 @@ impl Atom {
             _ => return None,
         };
         Some(op)
+    }
+    fn text(&self) -> &SmolStr {
+        match &self.0.green().children()[0] {
+            rowan::GreenElement::Token(token) => token.text(),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -368,7 +371,7 @@ fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
         match t.0 {
             0 => L_PAREN,
             1 => R_PAREN,
-            2 => ATOM,
+            2 => WORD,
             3 => WHITESPACE,
             4 => ERROR,
             _ => unreachable!(),
@@ -380,7 +383,7 @@ fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
         .tokens(&[
             (tok(L_PAREN), r"\("),
             (tok(R_PAREN), r"\)"),
-            (tok(ATOM), r"[^\s()]+"),
+            (tok(WORD), r"[^\s()]+"),
             (tok(WHITESPACE), r"\s+"),
         ])
         .build();
