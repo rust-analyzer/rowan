@@ -14,7 +14,7 @@
 //!     - "4" Token(Number)
 extern crate rowan;
 
-use rowan::{GreenNodeBuilder, SmolStr};
+use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement};
 use std::iter::Peekable;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -41,6 +41,7 @@ enum NodeType {
     Token(Token),
 }
 
+#[derive(Debug)]
 struct Types;
 impl rowan::Types for Types {
     type Kind = NodeType;
@@ -48,6 +49,7 @@ impl rowan::Types for Types {
 }
 
 type Node = rowan::SyntaxNode<Types>;
+type Element<'a> = rowan::SyntaxElement<'a, Types>;
 type TreeArc<T> = rowan::TreeArc<Types, T>;
 
 struct Parser<I: Iterator<Item = (Token, SmolStr)>> {
@@ -56,29 +58,23 @@ struct Parser<I: Iterator<Item = (Token, SmolStr)>> {
 }
 impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
     fn peek(&mut self) -> Option<Token> {
-        while self
-            .iter
-            .peek()
-            .map(|&(t, _)| t == Token::Whitespace)
-            .unwrap_or(false)
-        {
+        while self.iter.peek().map(|&(t, _)| t == Token::Whitespace).unwrap_or(false) {
             self.bump();
         }
         self.iter.peek().map(|&(t, _)| t)
     }
     fn bump(&mut self) {
         if let Some((token, string)) = self.iter.next() {
-            self.builder.leaf(NodeType::Token(token), string);
+            self.builder.token(NodeType::Token(token), string);
         }
     }
     fn parse_val(&mut self) {
         match self.peek() {
             Some(Token::Number) => self.bump(),
             _ => {
-                self.builder
-                    .start_internal(NodeType::Marker(ASTKind::Error));
+                self.builder.start_node(NodeType::Marker(ASTKind::Error));
                 self.bump();
-                self.builder.finish_internal();
+                self.builder.finish_node();
             }
         }
     }
@@ -86,11 +82,10 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
         let checkpoint = self.builder.checkpoint();
         next(self);
         while self.peek().map(|t| tokens.contains(&t)).unwrap_or(false) {
-            self.builder
-                .start_internal_at(checkpoint, NodeType::Marker(ASTKind::Operation));
+            self.builder.start_node_at(checkpoint, NodeType::Marker(ASTKind::Operation));
             self.bump();
             next(self);
-            self.builder.finish_internal();
+            self.builder.finish_node();
         }
     }
     fn parse_mul(&mut self) {
@@ -100,23 +95,24 @@ impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
         self.handle_operation(&[Token::Add, Token::Sub], Self::parse_mul)
     }
     fn parse(mut self) -> TreeArc<Node> {
-        self.builder.start_internal(NodeType::Marker(ASTKind::Root));
+        self.builder.start_node(NodeType::Marker(ASTKind::Root));
         self.parse_add();
-        self.builder.finish_internal();
+        self.builder.finish_node();
 
         Node::new(self.builder.finish(), ())
     }
 }
 
-fn print(indent: usize, node: &Node) {
+fn print(indent: usize, element: Element) {
     print!("{:indent$}", "", indent = indent);
-    if let Some(text) = node.leaf_text() {
-        println!("- {:?} {:?}", text, node.kind());
-    } else {
-        println!("- {:?}", node.kind());
-    }
-    for child in node.children() {
-        print(indent + 2, child);
+    match element {
+        SyntaxElement::Node(node) => {
+            println!("- {:?}", node.kind());
+            for child in node.children_with_tokens() {
+                print(indent + 2, child);
+            }
+        }
+        SyntaxElement::Token(token) => println!("- {:?} {:?}", token.text(), token.kind()),
     }
 }
 
@@ -143,5 +139,5 @@ fn main() {
         .peekable(),
     }
     .parse();
-    print(0, &ast);
+    print(0, (&*ast).into());
 }

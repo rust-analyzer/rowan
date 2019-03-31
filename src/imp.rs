@@ -5,26 +5,29 @@ use std::{
     mem,
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
+    hash::{Hash, Hasher},
     sync::Arc,
 };
 
-use crate::{swap_cell::SwapCell, GreenNode, TextUnit, Types};
+use crate::{swap_cell::SwapCell, GreenElement, GreenNode, GreenIndex, TextUnit, Types};
 use colosseum::sync::Arena;
 
-type LazyNode<T> = SwapCell<TextUnit, SyntaxNode<T>>;
+type LazyNode<T> = SwapCell<(TextUnit, GreenIndex), SyntaxNode<T>>;
 
 pub(crate) struct SyntaxRoot<T: Types> {
-    pub(crate) arena: Arena<LazyNode<T>>,
+    arena: Arena<LazyNode<T>>,
     pub(crate) data: T::RootData,
 }
 
 #[derive(Debug)]
 pub(crate) struct ParentData<T: Types> {
-    pub(crate) parent: ptr::NonNull<SyntaxNode<T>>,
+    parent: ptr::NonNull<SyntaxNode<T>>,
     pub(crate) start_offset: TextUnit,
-    pub(crate) index_in_parent: u32,
+    pub(crate) index_in_parent: SyntaxIndex,
+    pub(crate) index_in_green: GreenIndex,
 }
-/// Akn immutable lazy constructed syntax tree with offsets and parent pointers.
+
+/// An immutable lazy constructed syntax tree with offsets and parent pointers.
 ///
 /// The design is close to
 /// https://github.com/apple/swift/tree/bc3189a2d265bf7728ea0cfeb55f032bfe5beaf1/lib/Syntax
@@ -36,13 +39,13 @@ pub struct SyntaxNode<T: Types> {
     // Created from `Arc`. The ref-count on root is equal to the number of live
     // `TreeArc` which point into this tree.
     root: *const SyntaxRoot<T>,
-    pub(crate) parent: Option<ParentData<T>>,
+    parent_data: Option<ParentData<T>>,
     pub(crate) green: GreenNode<T>,
     // replace with
     // `children: [(TextUnit, AtomSetOnce<SyntaxNode<T><T>>)]`
     // once we can have var-length structs.
     // Perhaps even fold `TextUnit` into ptr using a spare bit?
-    pub(crate) children: ptr::NonNull<[LazyNode<T>]>,
+    children: ptr::NonNull<[LazyNode<T>]>,
 }
 
 // Manually send/sync impls due to `root: *const SyntaxRoot<T>` field.
@@ -78,6 +81,27 @@ where
 {
 }
 
+impl<T: Types> ToOwned for SyntaxNode<T> {
+    type Owned = TreeArc<T, SyntaxNode<T>>;
+    fn to_owned(&self) -> TreeArc<T, SyntaxNode<T>> {
+        TreeArc::new(self)
+    }
+}
+
+/// Index into a syntax node.
+/// Unlike GreenIndex, it can only refer to Nodes,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SyntaxIndex(pub(crate) u32);
+
+impl SyntaxIndex {
+    pub(crate) fn prev(self) -> SyntaxIndex {
+        SyntaxIndex(self.0.wrapping_sub(1))
+    }
+    pub(crate) fn next(self) -> SyntaxIndex {
+        SyntaxIndex(self.0 + 1)
+    }
+}
+
 /// Owned smart pointer for syntax Nodes.
 /// It can be used with any type implementing `TransparentNewType<SyntaxNode>`.
 // Conceptually, it also plays an `Arc<TreeRoot<T>>` role as well.
@@ -86,7 +110,122 @@ where
     T: Types,
     N: TransparentNewType<Repr = SyntaxNode<T>>,
 {
-    pub(crate) inner: *const N,
+    inner: *const N,
+}
+
+impl<T, N> Clone for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn clone(&self) -> TreeArc<T, N> {
+        let n: &N = &*self;
+        TreeArc::new(n)
+    }
+}
+
+impl<T, N> PartialEq<TreeArc<T, N>> for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn eq(&self, other: &TreeArc<T, N>) -> bool {
+        ptr::eq(self.inner, other.inner)
+    }
+}
+
+impl<T, N> Eq for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+}
+
+impl<T, N> Hash for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state)
+    }
+}
+
+impl<T, N> TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    /// Creates a new owned node from a reference to a node, by bumping root's
+    /// refcount.
+    fn new(node: &N) -> TreeArc<T, N> {
+        let node: &SyntaxNode<T> = node.into_repr();
+        let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
+        std::mem::forget(Arc::clone(&root));
+        std::mem::forget(root);
+        TreeArc { inner: N::from_repr(node) as *const N }
+    }
+
+    /// Casts this ptr across equivalent reprs.
+    pub fn cast<U>(this: TreeArc<T, N>) -> TreeArc<T, U>
+    where
+        U: TransparentNewType<Repr = SyntaxNode<T>>,
+    {
+        // We can avoid an Arc bump if we want here, but lets leverage existing
+        // `new`, to minimize unsafety.
+        let r: &SyntaxNode<T> = this.into_repr();
+        let n = U::from_repr(r);
+        TreeArc::new(n)
+    }
+}
+
+impl<T, N> Drop for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    // Drop refcount
+    fn drop(&mut self) {
+        // Be careful not to leave dangling references to node.
+        let root: *const SyntaxRoot<T> = {
+            let node: &N = &*self;
+            let node = node.into_repr();
+            node.root
+        };
+        drop(unsafe { Arc::from_raw(root) });
+        // inner may be a dangling pointer at this point, but it is ok: it's a
+        // raw pointer after all
+    }
+}
+
+// Manual impls due to `inner: *const N` field
+unsafe impl<T, N> Send for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+    N: Send,
+{
+}
+
+unsafe impl<T: Sync, N> Sync for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+    N: Sync,
+{
+}
+
+impl<T, N> std::ops::Deref for TreeArc<T, N>
+where
+    T: Types,
+    N: TransparentNewType<Repr = SyntaxNode<T>>,
+{
+    type Target = N;
+    fn deref(&self) -> &N {
+        // We are a `TreeArc`, so underlying `SyntaxRoot` has an count at least
+        // one, so it's safe to deref a node.
+        unsafe { &*self.inner }
+    }
 }
 
 /// A marker trait for transparent newtypes.
@@ -133,93 +272,11 @@ unsafe impl<T: Types> TransparentNewType for SyntaxNode<T> {
     }
 }
 
-impl<T, N> TreeArc<T, N>
-where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>>,
-{
-    /// Creates a new owned node from a reference to a node, by bumping root's
-    /// refcount.
-    pub(crate) fn new(node: &N) -> TreeArc<T, N> {
-        let node: &SyntaxNode<T> = node.into_repr();
-        let root: Arc<SyntaxRoot<T>> = unsafe { Arc::from_raw(node.root) };
-        std::mem::forget(Arc::clone(&root));
-        std::mem::forget(root);
-        TreeArc {
-            inner: N::from_repr(node) as *const N,
-        }
-    }
-
-    /// Casts this ptr across equivalent reprs.
-    pub fn cast<U>(this: TreeArc<T, N>) -> TreeArc<T, U>
-    where
-        U: TransparentNewType<Repr = SyntaxNode<T>>,
-    {
-        // We can avoid an Arc bump if we want here, but lets leverage existing
-        // `new`, to minimize unsafety.
-        let r: &SyntaxNode<T> = this.into_repr();
-        let n = U::from_repr(r);
-        TreeArc::new(n)
-    }
-}
-
-impl<T, N> Drop for TreeArc<T, N>
-where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>>,
-{
-    // Drop refcount
-    fn drop(&mut self) {
-        // Be careful not to leave dangling references to node.
-        let root: *const SyntaxRoot<T> = {
-            let node: &N = &*self;
-            let node = node.into_repr();
-            node.root
-        };
-        drop(unsafe { Arc::from_raw(root) });
-        // inner may be a dangling pointer at this point, but it is okey: it's a
-        // raw pointer after all
-    }
-}
-
-// Manual impls due to `inner: *const N` field
-unsafe impl<T, N> Send for TreeArc<T, N>
-where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>>,
-    N: Send,
-{
-}
-
-unsafe impl<T: Sync, N> Sync for TreeArc<T, N>
-where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>>,
-    N: Sync,
-{
-}
-
-impl<T, N> std::ops::Deref for TreeArc<T, N>
-where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>>,
-{
-    type Target = N;
-    fn deref(&self) -> &N {
-        // We are a `TreeArc`, so underlying `SyntaxRoot` has an count at least
-        // one, so it's safe to deref a node.
-        unsafe { &*self.inner }
-    }
-}
-
 impl<T: Types> SyntaxNode<T> {
     pub(crate) fn new_root(green: GreenNode<T>, data: T::RootData) -> TreeArc<T, SyntaxNode<T>> {
-        let root = SyntaxRoot {
-            arena: Arena::new(),
-            data,
-        };
+        let root = SyntaxRoot { arena: Arena::new(), data };
         let red_node: *mut SyntaxNode<T> = {
-            let mut red_node = root.arena.alloc(SwapCell::new(0.into()));
+            let red_node = root.arena.alloc(SwapCell::new((0.into(), GreenIndex(0))));
             red_node.get_or_init(|_| SyntaxNode::new_impl(&root, None, green));
             red_node.get_mut().unwrap()
         };
@@ -237,70 +294,85 @@ impl<T: Types> SyntaxNode<T> {
     fn new_child(
         &self,
         start_offset: TextUnit,
-        index_in_parent: usize,
+        index_in_parent: SyntaxIndex,
+        index_in_green: GreenIndex,
         green: GreenNode<T>,
     ) -> SyntaxNode<T> {
         let parent_data = ParentData {
             parent: ptr::NonNull::from(self),
             start_offset,
-            index_in_parent: index_in_parent as u32,
+            index_in_green,
+            index_in_parent,
         };
         SyntaxNode::new_impl(self.root(), Some(parent_data), green)
     }
 
     fn new_impl(
         root: &SyntaxRoot<T>,
-        parent: Option<ParentData<T>>,
+        parent_data: Option<ParentData<T>>,
         green: GreenNode<T>,
     ) -> SyntaxNode<T> {
-        let mut start_offset = parent
-            .as_ref()
-            .map(|it| it.start_offset)
-            .unwrap_or(0.into());
+        let mut start_offset = parent_data.as_ref().map(|it| it.start_offset).unwrap_or(0.into());
 
-        let children = root
-            .arena
-            .alloc_extend(green.children().iter().map(|child| {
-                let off = start_offset;
-                start_offset += child.text_len();
-                SwapCell::new(off)
-            }));
-        SyntaxNode {
-            root,
-            parent,
-            green,
-            children: children.into(),
-        }
+        let children = root.arena.alloc_extend(green.children().iter().enumerate().filter_map(
+            |(index_in_green, element)| match element {
+                GreenElement::Token(it) => {
+                    start_offset += it.text_len();
+                    None
+                }
+                GreenElement::Node(it) => {
+                    let off = start_offset;
+                    start_offset += it.text_len();
+                    Some(SwapCell::new((off, GreenIndex(index_in_green as u32))))
+                }
+            },
+        ));
+        SyntaxNode { root, parent_data, green, children: children.into() }
     }
 
     pub(crate) fn root(&self) -> &SyntaxRoot<T> {
-        // If we (the rerence) not dangle, then root must be alive as well.
+        // If we (the reference) not dangle, then root must be alive as well.
         unsafe { &*self.root }
     }
 
+    pub(crate) fn parent_data(&self) -> Option<&ParentData<T>> {
+        self.parent_data.as_ref()
+    }
+
     pub(crate) fn parent_impl(&self) -> Option<&SyntaxNode<T>> {
-        // If we (the rerence) not dangle, then parent must be alive as well.
-        let ptr = self.parent.as_ref()?.parent;
+        // If we (the reference) not dangle, then parent must be alive as well.
+        let ptr = self.parent_data()?.parent;
         Some(unsafe { &*ptr.as_ptr() })
     }
 
-    pub(crate) fn children_impl(&self) -> &[LazyNode<T>] {
-        // If we (the rerence) not dangle, then parent must be alive as well.
+    pub(crate) fn children_len(&self) -> SyntaxIndex {
+        SyntaxIndex(self.children_impl().len() as u32)
+    }
+
+    fn children_impl(&self) -> &[LazyNode<T>] {
+        // If we (the reference) not dangle, then SyntaxRoot is alive, and so is
+        // the Arena where children are allocated.
         unsafe { &*self.children.as_ptr() }
     }
 
-    pub(crate) fn get_child(&self, idx: usize) -> Option<&SyntaxNode<T>> {
-        if idx >= self.n_children() {
-            return None;
-        }
-        let child = self.children_impl()[idx].get_or_init(|start_offset| {
-            let green_children = self.green.children();
-            self.new_child(start_offset, idx, green_children[idx].clone())
+    pub(crate) fn get_child(&self, index_in_parent: SyntaxIndex) -> Option<&SyntaxNode<T>> {
+        let lazy_child = self.children_impl().get(index_in_parent.0 as usize)?;
+        let child = lazy_child.get_or_init(|(start_offset, index_in_green)| {
+            self.new_child(
+                start_offset,
+                index_in_parent,
+                index_in_green,
+                match self.green.get_child(index_in_green) {
+                    Some(GreenElement::Node(it)) => it.clone(),
+                    _ => unreachable!(),
+                },
+            )
         });
         Some(child)
     }
+
     /// Number of memory bytes of occupied by subtree rooted at `self`.
-    pub fn memory_size_of_red_children(&self) -> usize {
+    pub(crate) fn memory_size_of_red_children(&self) -> usize {
         self.children_impl()
             .iter()
             .map(|it| {
