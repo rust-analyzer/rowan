@@ -44,7 +44,7 @@ impl<T: Types> GreenNode<T> {
         self.children().iter().for_each(|el| match el {
             GreenElement::Token(token) => {
                 res += size_of::<GreenToken<T>>();
-                if token.text.len() > 22 {
+                if token.text.is_heap_allocated() {
                     res += token.text.len();
                 }
             }
