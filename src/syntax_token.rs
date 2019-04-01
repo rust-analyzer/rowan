@@ -1,7 +1,7 @@
-use std::{fmt, hash::{Hasher, Hash}};
+use std::fmt;
 
 use crate::{
-    Types, TextUnit, SmolStr, TextRange,
+    TextUnit, SmolStr, TextRange, SyntaxKind,
     SyntaxNode, SyntaxElement, SyntaxIndex,
     GreenToken, GreenNode, GreenElement, GreenIndex,
 };
@@ -9,8 +9,9 @@ use crate::{
 /// A token (leaf node) in a syntax tree.
 ///
 /// A token can't exist in isolation, it is always attached to a parent Node.
-pub struct SyntaxToken<'a, T: Types> {
-    pub(crate) parent: &'a SyntaxNode<T>,
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SyntaxToken<'a> {
+    pub(crate) parent: &'a SyntaxNode,
     pub(crate) start_offset: TextUnit,
     /// Index of this token in the green node
     pub(crate) index_in_green: GreenIndex,
@@ -19,56 +20,40 @@ pub struct SyntaxToken<'a, T: Types> {
     pub(crate) index_in_parent: SyntaxIndex,
 }
 
-impl<'a, T: Types> Clone for SyntaxToken<'a, T> {
-    fn clone(&self) -> SyntaxToken<'a, T> {
-        *self
-    }
-}
-
-impl<'a, T: Types> Copy for SyntaxToken<'a, T> {}
-
-impl<'a, 'b, T: Types> PartialEq<SyntaxToken<'a, T>> for SyntaxToken<'b, T> {
-    fn eq(&self, other: &SyntaxToken<T>) -> bool {
-        (self.parent(), self.index_in_green) == (other.parent(), other.index_in_green)
-    }
-}
-impl<'a, T: Types> Eq for SyntaxToken<'a, T> {}
-impl<'a, T: Types> Hash for SyntaxToken<'a, T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (self.parent(), self.index_in_green).hash(state)
-    }
-}
-
-impl<'a, T: Types> fmt::Debug for SyntaxToken<'a, T> {
+impl<'a> fmt::Debug for SyntaxToken<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?}@{:?}", self.kind(), self.range())
     }
 }
-impl<'a, T: Types> fmt::Display for SyntaxToken<'a, T> {
+impl<'a> fmt::Display for SyntaxToken<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.write_str(self.text())
     }
 }
 
-impl<'a, T: Types> SyntaxToken<'a, T> {
+impl<'a> SyntaxToken<'a> {
     /// Kind of this token.
-    pub fn kind(&self) -> T::Kind {
+    #[inline]
+    pub fn kind(&self) -> SyntaxKind {
         self.green().kind()
     }
     /// Text of this token.
+    #[inline]
     pub fn text(&self) -> &'a SmolStr {
         self.green().text()
     }
     /// Text range, covered by this token.
+    #[inline]
     pub fn range(&self) -> TextRange {
         TextRange::offset_len(self.start_offset, self.green().text_len())
     }
     /// Parent node, containing this token.
-    pub fn parent(&self) -> &'a SyntaxNode<T> {
+    #[inline]
+    pub fn parent(&self) -> &'a SyntaxNode {
         self.parent
     }
     /// Next sibling of this tokens, including both nodes and tokens.
-    pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<'a, T>> {
+    pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<'a>> {
         let index_in_green = self.index_in_green.next();
         let green = self.parent().green.get_child(index_in_green)?;
         let element = match green {
@@ -86,7 +71,7 @@ impl<'a, T: Types> SyntaxToken<'a, T> {
         Some(element)
     }
     /// Previous sibling of this tokens, including both nodes and tokens.
-    pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<'a, T>> {
+    pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<'a>> {
         let index_in_green = self.index_in_green.prev();
         let green = self.parent().green.get_child(index_in_green)?;
         let element = match green {
@@ -106,24 +91,32 @@ impl<'a, T: Types> SyntaxToken<'a, T> {
         Some(element)
     }
     /// Next token in the file (i.e, not necessary a sibling)
-    pub fn next_token(&self) -> Option<SyntaxToken<'a, T>> {
+    pub fn next_token(&self) -> Option<SyntaxToken<'a>> {
         match self.next_sibling_or_token() {
             Some(element) => element.first_token(),
-            None => self.parent().ancestors().find_map(|it| it.next_sibling_or_token()).and_then(|element| element.first_token())
+            None => self
+                .parent()
+                .ancestors()
+                .find_map(|it| it.next_sibling_or_token())
+                .and_then(|element| element.first_token()),
         }
     }
     /// Previous token in the file (i.e, not necessary a sibling)
-    pub fn prev_token(&self) -> Option<SyntaxToken<'a, T>> {
+    pub fn prev_token(&self) -> Option<SyntaxToken<'a>> {
         match self.prev_sibling_or_token() {
             Some(element) => element.last_token(),
-            None => self.parent().ancestors().find_map(|it| it.prev_sibling_or_token()).and_then(|element| element.last_token())
+            None => self
+                .parent()
+                .ancestors()
+                .find_map(|it| it.prev_sibling_or_token())
+                .and_then(|element| element.last_token()),
         }
     }
 
     /// Returns a green tree, equal to the green tree this token
     /// belongs two, except with this token substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenToken<T>) -> GreenNode<T> {
+    pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         let mut replacement = Some(replacement);
         let parent = self.parent();
@@ -148,7 +141,7 @@ impl<'a, T: Types> SyntaxToken<'a, T> {
         parent.replace_with(new_parent)
     }
 
-    fn green(&self) -> &'a GreenToken<T> {
+    fn green(&self) -> &'a GreenToken {
         match self.parent.green.get_child(self.index_in_green) {
             Some(GreenElement::Token(it)) => it,
             _ => unreachable!(),

@@ -20,11 +20,11 @@ use rowan::SmolStr;
 #[allow(non_camel_case_types)]
 enum SyntaxKind {
     // tokens
-    L_PAREN,    // '('
-    R_PAREN,    // ')'
-    WORD,       // '+', '15'
-    WHITESPACE, // whitespaces is explicit
-    ERROR,      // as well as errors
+    L_PAREN = 0, // '('
+    R_PAREN,     // ')'
+    WORD,        // '+', '15'
+    WHITESPACE,  // whitespaces is explicit
+    ERROR,       // as well as errors
     // composite nodes
     LIST, // `(+ 2 3)`
     ATOM, // `+`, `15`, wraps a WORD token
@@ -33,29 +33,37 @@ enum SyntaxKind {
 /// We'll be using these a bunch, so let's add a `*` import
 use SyntaxKind::*;
 
-/// Now, let's teach `rowan` to use this type,
-/// by implementing the `Types` trait.
-enum STypes {}
-
-impl rowan::Types for STypes {
-    /// Each node will store a `Kind`.
-    type Kind = SyntaxKind;
-    /// This is the data stored in the root of the tree.
-    /// Here, we'll use it to store error messages from
-    /// the parser.
-    type RootData = Vec<String>;
+impl From<rowan::SyntaxKind> for SyntaxKind {
+    fn from(kind: rowan::SyntaxKind) -> SyntaxKind {
+        match kind.0 {
+            0 => SyntaxKind::L_PAREN,
+            1 => SyntaxKind::R_PAREN,
+            2 => SyntaxKind::WORD,
+            3 => SyntaxKind::WHITESPACE,
+            4 => SyntaxKind::ERROR,
+            5 => SyntaxKind::LIST,
+            6 => SyntaxKind::ATOM,
+            7 => SyntaxKind::ROOT,
+            _ => unreachable!(),
+        }
+    }
 }
 
-/// Let's define type aliases for `rowan` types, specialized
-/// to `STypes`.
+impl From<SyntaxKind> for rowan::SyntaxKind {
+    fn from(kind: SyntaxKind) -> rowan::SyntaxKind {
+        rowan::SyntaxKind(kind as u16)
+    }
+}
+
+
 /// GreenNode is an immutable tree, which is cheap to change,
 /// but doesn't contain offsets and parent pointers.
-type GreenNode = rowan::GreenNode<STypes>;
+use rowan::GreenNode;
 
 /// You can construct GreenNodes by hand, but a builder
 /// is helpful for top-down parsers: it maintains a stack
 /// of currently in-progress nodes
-type GreenNodeBuilder = rowan::GreenNodeBuilder<STypes>;
+use rowan::GreenNodeBuilder;
 
 /// This is the main type this crate exports.
 /// It is also immutable, like a GreenNode,
@@ -63,11 +71,9 @@ type GreenNodeBuilder = rowan::GreenNodeBuilder<STypes>;
 /// has identity semantics.
 /// SyntaxNode exist in borrowed and owned flavors,
 /// which is controlled by the `R` parameter.
-#[allow(type_alias_bounds)]
-type SyntaxNode = rowan::SyntaxNode<STypes>;
+use rowan::SyntaxNode;
 
-type TreeArc<T> = rowan::TreeArc<STypes, T>;
-
+use rowan::TreeArc;
 use rowan::TransparentNewType;
 
 /// Now, let's write a parser.
@@ -95,13 +101,13 @@ fn parse(text: &str) -> TreeArc<Root> {
     impl Parser {
         fn parse(mut self) -> TreeArc<Root> {
             // Make sure that the root node covers all source
-            self.builder.start_node(ROOT);
+            self.builder.start_node(ROOT.into());
             // Parse a list of S-expressions
             loop {
                 match self.sexp() {
                     SexpRes::Eof => break,
                     SexpRes::RParen => {
-                        self.builder.start_node(ERROR);
+                        self.builder.start_node(ERROR.into());
                         self.errors.push("unmatched `)`".to_string());
                         self.bump(); // be sure to chug along in case of error
                         self.builder.finish_node();
@@ -118,12 +124,12 @@ fn parse(text: &str) -> TreeArc<Root> {
             let green: GreenNode = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
-            let node = SyntaxNode::new(green, self.errors);
+            let node = SyntaxNode::new(green, Some(Box::new(self.errors)));
             Root::cast(&node).unwrap().to_owned()
         }
         fn list(&mut self) {
             // Start the list node
-            self.builder.start_node(LIST);
+            self.builder.start_node(LIST.into());
             self.bump(); // '('
             loop {
                 match self.sexp() {
@@ -154,7 +160,7 @@ fn parse(text: &str) -> TreeArc<Root> {
             match t {
                 L_PAREN => self.list(),
                 WORD => {
-                    self.builder.start_node(ATOM);
+                    self.builder.start_node(ATOM.into());
                     self.bump();
                     self.builder.finish_node();
                 }
@@ -165,7 +171,7 @@ fn parse(text: &str) -> TreeArc<Root> {
         }
         fn bump(&mut self) {
             let (kind, text) = self.tokens.pop().unwrap();
-            self.builder.token(kind, text);
+            self.builder.token(kind.into(), text);
         }
         fn current(&self) -> Option<SyntaxKind> {
             self.tokens.last().map(|(kind, _)| *kind)
@@ -232,7 +238,7 @@ macro_rules! ast_node {
         impl $ast {
             #[allow(unused)]
             fn cast(node: &SyntaxNode) -> Option<&Self> {
-                if node.kind() == $kind {
+                if node.kind() == $kind.into() {
                     Some(Self::from_repr(node))
                 } else {
                     None

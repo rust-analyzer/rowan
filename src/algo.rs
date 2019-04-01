@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::{Types, generate, SyntaxNode, SyntaxElement, TextUnit, TextRange, SyntaxToken, SyntaxIndex};
+use crate::{generate, SyntaxNode, SyntaxElement, TextUnit, TextRange, SyntaxToken, SyntaxIndex};
 
 /// `WalkEvent` describes tree walking process.
 #[derive(Debug, Copy, Clone)]
@@ -59,30 +59,33 @@ impl<T> Iterator for TokenAtOffset<T> {
     }
 }
 
-/// Iterator over node's children.
+/// Iterator over node's children, excluding tokens.
 #[derive(Debug)]
-pub struct SyntaxNodeChildren<'a, T: Types> {
-    parent: &'a SyntaxNode<T>,
+pub struct SyntaxNodeChildren<'a> {
+    parent: &'a SyntaxNode,
     iter: Range<u32>,
 }
 
-impl<'a, T: Types> Iterator for SyntaxNodeChildren<'a, T> {
-    type Item = &'a SyntaxNode<T>;
+impl<'a> Iterator for SyntaxNodeChildren<'a> {
+    type Item = &'a SyntaxNode;
 
-    fn next(&mut self) -> Option<&'a SyntaxNode<T>> {
+    #[inline]
+    fn next(&mut self) -> Option<&'a SyntaxNode> {
         self.iter.next().map(|i| self.parent.get_child(SyntaxIndex(i)).unwrap())
     }
 }
 
 #[derive(Debug)]
-pub struct SyntaxElementChildren<'a, T: Types> {
-    current: Option<SyntaxElement<'a, T>>,
+/// Iterator over node's children, including tokens.
+pub struct SyntaxElementChildren<'a> {
+    current: Option<SyntaxElement<'a>>,
 }
 
-impl<'a, T: Types> Iterator for SyntaxElementChildren<'a, T> {
-    type Item = SyntaxElement<'a, T>;
+impl<'a> Iterator for SyntaxElementChildren<'a> {
+    type Item = SyntaxElement<'a>;
 
-    fn next(&mut self) -> Option<SyntaxElement<'a, T>> {
+    #[inline]
+    fn next(&mut self) -> Option<SyntaxElement<'a>> {
         self.current.take().map(|current| {
             self.current = current.next_sibling_or_token();
             current
@@ -90,25 +93,29 @@ impl<'a, T: Types> Iterator for SyntaxElementChildren<'a, T> {
     }
 }
 
-impl<T: Types> SyntaxNode<T> {
+impl SyntaxNode {
     /// Get iterator over children, excluding tokens.
-    pub fn children(&self) -> SyntaxNodeChildren<'_, T> {
+    #[inline]
+    pub fn children(&self) -> SyntaxNodeChildren<'_> {
         SyntaxNodeChildren { parent: self, iter: (0..self.children_len().0) }
     }
 
     /// Get iterator over children, including tokens.
-    pub fn children_with_tokens(&self) -> SyntaxElementChildren<'_, T> {
+    #[inline]
+    pub fn children_with_tokens(&self) -> SyntaxElementChildren<'_> {
         SyntaxElementChildren { current: self.first_child_or_token() }
     }
 
     /// All ancestors of the current node, including itself
-    pub fn ancestors(&self) -> impl Iterator<Item = &SyntaxNode<T>> {
+    #[inline]
+    pub fn ancestors(&self) -> impl Iterator<Item = &SyntaxNode> {
         generate(Some(self), |node| node.parent())
     }
 
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, excluding tokens.
-    pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<&SyntaxNode<T>>> {
+    #[inline]
+    pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<&SyntaxNode>> {
         generate(Some(WalkEvent::Enter(self)), move |pos| {
             let next = match *pos {
                 WalkEvent::Enter(node) => match node.first_child() {
@@ -131,10 +138,11 @@ impl<T: Types> SyntaxNode<T> {
 
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, including tokens.
+    #[inline]
     pub fn preorder_with_tokens<'a>(
         &'a self,
-    ) -> impl Iterator<Item = WalkEvent<SyntaxElement<'a, T>>> {
-        let start: SyntaxElement<T> = self.into();
+    ) -> impl Iterator<Item = WalkEvent<SyntaxElement<'a>>> {
+        let start: SyntaxElement = self.into();
         generate(Some(WalkEvent::Enter(start)), move |pos| {
             let next = match *pos {
                 WalkEvent::Enter(el) => match el {
@@ -160,7 +168,7 @@ impl<T: Types> SyntaxNode<T> {
 
     /// Returns common ancestor of the two nodes.
     /// Precondition: nodes must be from the same tree.
-    pub fn common_ancestor<'a>(&'a self, other: &'a SyntaxNode<T>) -> &'a SyntaxNode<T> {
+    pub fn common_ancestor<'a>(&'a self, other: &'a SyntaxNode) -> &'a SyntaxNode {
         // TODO: use small-vec to memoize other's ancestors
         for p in self.ancestors() {
             if other.ancestors().any(|a| a == p) {
@@ -172,7 +180,7 @@ impl<T: Types> SyntaxNode<T> {
 
     /// Find a token in the subtree corresponding to this node, which covers the offset.
     /// Precondition: offset must be withing node's range.
-    pub fn token_at_offset<'a>(&'a self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'a, T>> {
+    pub fn token_at_offset<'a>(&'a self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'a>> {
         // TODO: this could be faster if we first drill-down to node, and only
         // then switch to token search. We should also replace explicit
         // recursion with a loop.
@@ -213,8 +221,8 @@ impl<T: Types> SyntaxNode<T> {
     /// contains the range. If the range is empty and is contained in two leaf
     /// nodes, either one can be returned. Precondition: range must be contained
     /// withing the current node
-    pub fn covering_node(&self, range: TextRange) -> SyntaxElement<T> {
-        let mut res: SyntaxElement<T> = self.into();
+    pub fn covering_node(&self, range: TextRange) -> SyntaxElement {
+        let mut res: SyntaxElement = self.into();
         loop {
             assert!(
                 range.is_subrange(&res.range()),
@@ -245,8 +253,8 @@ impl<T: Types> SyntaxNode<T> {
     }
 }
 
-impl<'a, T: Types> SyntaxElement<'a, T> {
-    fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'a, T>> {
+impl<'a> SyntaxElement<'a> {
+    fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'a>> {
         assert!(self.range().start() <= offset && offset <= self.range().end());
         match *self {
             SyntaxElement::Token(token) => TokenAtOffset::Single(token),
