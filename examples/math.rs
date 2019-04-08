@@ -14,105 +14,117 @@
 //!     - "4" Token(Number)
 extern crate rowan;
 
-use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement};
+use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement, SyntaxKind};
 use std::iter::Peekable;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum Token {
-    Whitespace,
+#[repr(u16)]
+enum Kind {
+    Whitespace = 0,
 
     Add,
     Sub,
     Mul,
     Div,
     Number,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum ASTKind {
+
     Error,
     Operation,
     Root,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum NodeType {
-    /// A marker node, will have tokens as children
-    Marker(ASTKind),
-    /// A raw token in the AST
-    Token(Token),
+
+impl From<SyntaxKind> for Kind {
+    fn from(kind: SyntaxKind) -> Kind {
+        match kind.0 {
+            0 => Kind::Whitespace,
+
+            1 => Kind::Add,
+            2 => Kind::Sub,
+            3 => Kind::Mul,
+            4 => Kind::Div,
+            5 => Kind::Number,
+
+            6 => Kind::Error,
+            7 => Kind::Operation,
+            8 => Kind::Root,
+            _ => unreachable!(),
+        }
+    }
 }
 
-#[derive(Debug)]
-struct Types;
-impl rowan::Types for Types {
-    type Kind = NodeType;
-    type RootData = ();
+impl From<Kind> for SyntaxKind {
+    fn from(kind: Kind) -> SyntaxKind {
+        SyntaxKind(kind as u16)
+    }
 }
 
-type Node = rowan::SyntaxNode<Types>;
-type Element<'a> = rowan::SyntaxElement<'a, Types>;
-type TreeArc<T> = rowan::TreeArc<Types, T>;
+type Node = rowan::SyntaxNode;
+type Element<'a> = rowan::SyntaxElement<'a>;
+type TreeArc<T> = rowan::TreeArc<T>;
 
-struct Parser<I: Iterator<Item = (Token, SmolStr)>> {
-    builder: GreenNodeBuilder<Types>,
+struct Parser<I: Iterator<Item = (Kind, SmolStr)>> {
+    builder: GreenNodeBuilder,
     iter: Peekable<I>,
 }
-impl<I: Iterator<Item = (Token, SmolStr)>> Parser<I> {
-    fn peek(&mut self) -> Option<Token> {
-        while self.iter.peek().map(|&(t, _)| t == Token::Whitespace).unwrap_or(false) {
+impl<I: Iterator<Item = (Kind, SmolStr)>> Parser<I> {
+    fn peek(&mut self) -> Option<Kind> {
+        while self.iter.peek().map(|&(t, _)| t == Kind::Whitespace).unwrap_or(false) {
             self.bump();
         }
         self.iter.peek().map(|&(t, _)| t)
     }
     fn bump(&mut self) {
         if let Some((token, string)) = self.iter.next() {
-            self.builder.token(NodeType::Token(token), string);
+            self.builder.token(token.into(), string);
         }
     }
     fn parse_val(&mut self) {
         match self.peek() {
-            Some(Token::Number) => self.bump(),
+            Some(Kind::Number) => self.bump(),
             _ => {
-                self.builder.start_node(NodeType::Marker(ASTKind::Error));
+                self.builder.start_node(Kind::Error.into());
                 self.bump();
                 self.builder.finish_node();
             }
         }
     }
-    fn handle_operation(&mut self, tokens: &[Token], next: fn(&mut Self)) {
+    fn handle_operation(&mut self, tokens: &[Kind], next: fn(&mut Self)) {
         let checkpoint = self.builder.checkpoint();
         next(self);
         while self.peek().map(|t| tokens.contains(&t)).unwrap_or(false) {
-            self.builder.start_node_at(checkpoint, NodeType::Marker(ASTKind::Operation));
+            self.builder.start_node_at(checkpoint, Kind::Operation.into());
             self.bump();
             next(self);
             self.builder.finish_node();
         }
     }
     fn parse_mul(&mut self) {
-        self.handle_operation(&[Token::Mul, Token::Div], Self::parse_val)
+        self.handle_operation(&[Kind::Mul, Kind::Div], Self::parse_val)
     }
     fn parse_add(&mut self) {
-        self.handle_operation(&[Token::Add, Token::Sub], Self::parse_mul)
+        self.handle_operation(&[Kind::Add, Kind::Sub], Self::parse_mul)
     }
     fn parse(mut self) -> TreeArc<Node> {
-        self.builder.start_node(NodeType::Marker(ASTKind::Root));
+        self.builder.start_node(Kind::Root.into());
         self.parse_add();
         self.builder.finish_node();
 
-        Node::new(self.builder.finish(), ())
+        Node::new(self.builder.finish(), None)
     }
 }
 
 fn print(indent: usize, element: Element) {
+    let kind: Kind = element.kind().into();
     print!("{:indent$}", "", indent = indent);
     match element {
         SyntaxElement::Node(node) => {
-            println!("- {:?}", node.kind());
+            println!("- {:?}", kind);
             for child in node.children_with_tokens() {
                 print(indent + 2, child);
             }
         }
-        SyntaxElement::Token(token) => println!("- {:?} {:?}", token.text(), token.kind()),
+
+        SyntaxElement::Token(token) => println!("- {:?} {:?}", token.text(), kind),
     }
 }
 
@@ -121,19 +133,19 @@ fn main() {
         builder: GreenNodeBuilder::new(),
         iter: vec![
             // 1 + 2 * 3 + 4
-            (Token::Number, "1".into()),
-            (Token::Whitespace, " ".into()),
-            (Token::Add, "+".into()),
-            (Token::Whitespace, " ".into()),
-            (Token::Number, "2".into()),
-            (Token::Whitespace, " ".into()),
-            (Token::Mul, "*".into()),
-            (Token::Whitespace, " ".into()),
-            (Token::Number, "3".into()),
-            (Token::Whitespace, " ".into()),
-            (Token::Add, "+".into()),
-            (Token::Whitespace, " ".into()),
-            (Token::Number, "4".into()),
+            (Kind::Number, "1".into()),
+            (Kind::Whitespace, " ".into()),
+            (Kind::Add, "+".into()),
+            (Kind::Whitespace, " ".into()),
+            (Kind::Number, "2".into()),
+            (Kind::Whitespace, " ".into()),
+            (Kind::Mul, "*".into()),
+            (Kind::Whitespace, " ".into()),
+            (Kind::Number, "3".into()),
+            (Kind::Whitespace, " ".into()),
+            (Kind::Add, "+".into()),
+            (Kind::Whitespace, " ".into()),
+            (Kind::Number, "4".into()),
         ]
         .into_iter()
         .peekable(),

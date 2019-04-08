@@ -1,40 +1,44 @@
 use std::{mem::size_of, sync::Arc};
 
-use crate::{SmolStr, TextUnit, Types};
+use crate::{SmolStr, TextUnit, SyntaxKind};
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
-#[derive(Debug)]
-pub struct GreenNode<T: Types> {
-    kind: T::Kind,
+#[derive(Debug, Clone)]
+pub struct GreenNode {
+    kind: SyntaxKind,
     text_len: TextUnit,
     //TODO: implement llvm::trailing_objects trick
-    children: Arc<[GreenElement<T>]>,
+    children: Arc<[GreenElement]>,
 }
 
-impl<T: Types> GreenNode<T> {
+impl GreenNode {
     /// Creates new Node.
-    pub fn new(kind: T::Kind, children: Box<[GreenElement<T>]>) -> GreenNode<T> {
+    #[inline]
+    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
         GreenNode { kind, text_len, children: children.into() }
     }
 
     /// Kind of this node.
-    pub fn kind(&self) -> T::Kind {
+    #[inline]
+    pub fn kind(&self) -> SyntaxKind {
         self.kind
     }
 
     /// Length of the text, covered by this node.
+    #[inline]
     pub fn text_len(&self) -> TextUnit {
         self.text_len
     }
     /// Children of this node.
-    pub fn children(&self) -> &[GreenElement<T>] {
+    #[inline]
+    pub fn children(&self) -> &[GreenElement] {
         &self.children
     }
 
     /// Gets the child at index.
-    pub(crate) fn get_child(&self, index: GreenIndex) -> Option<&GreenElement<T>> {
+    pub(crate) fn get_child(&self, index: GreenIndex) -> Option<&GreenElement> {
         self.children.get(index.0 as usize)
     }
 
@@ -43,7 +47,7 @@ impl<T: Types> GreenNode<T> {
         let mut res = size_of::<Self>();
         self.children().iter().for_each(|el| match el {
             GreenElement::Token(token) => {
-                res += size_of::<GreenToken<T>>();
+                res += size_of::<GreenToken>();
                 if token.text.is_heap_allocated() {
                     res += token.text.len();
                 }
@@ -52,12 +56,6 @@ impl<T: Types> GreenNode<T> {
         });
 
         res
-    }
-}
-
-impl<T: Types> Clone for GreenNode<T> {
-    fn clone(&self) -> GreenNode<T> {
-        GreenNode { kind: self.kind, text_len: self.text_len, children: Arc::clone(&self.children) }
     }
 }
 
@@ -77,76 +75,67 @@ impl GreenIndex {
 }
 
 /// Leaf node in the immutable tree.
-#[derive(Debug)]
-pub struct GreenToken<T: Types> {
-    kind: T::Kind,
+#[derive(Debug, Clone)]
+pub struct GreenToken {
+    kind: SyntaxKind,
     text: SmolStr,
 }
 
-impl<T: Types> GreenToken<T> {
+impl GreenToken {
     /// Creates new Token.
-    pub fn new(kind: T::Kind, text: SmolStr) -> GreenToken<T> {
+    #[inline]
+    pub fn new(kind: SyntaxKind, text: SmolStr) -> GreenToken {
         GreenToken { kind, text }
     }
     /// Kind of this Token.
-    pub fn kind(&self) -> T::Kind {
+    #[inline]
+    pub fn kind(&self) -> SyntaxKind {
         self.kind
     }
     /// Text of this Token.
+    #[inline]
     pub fn text(&self) -> &SmolStr {
         &self.text
     }
     /// Text of this Token.
+    #[inline]
     pub fn text_len(&self) -> TextUnit {
         TextUnit::from_usize(self.text.len())
     }
 }
 
-impl<T: Types> Clone for GreenToken<T> {
-    fn clone(&self) -> GreenToken<T> {
-        GreenToken { kind: self.kind, text: self.text.clone() }
-    }
-}
-
 /// Leaf or internal node in the immutable tree.
-#[derive(Debug)]
-pub enum GreenElement<T: Types> {
+#[derive(Debug, Clone)]
+pub enum GreenElement {
     /// Internal node.
-    Node(GreenNode<T>),
+    Node(GreenNode),
     /// Leaf token.
-    Token(GreenToken<T>),
+    Token(GreenToken),
 }
 
-impl<T: Types> Clone for GreenElement<T> {
-    fn clone(&self) -> GreenElement<T> {
-        match self {
-            GreenElement::Node(it) => GreenElement::Node(it.clone()),
-            GreenElement::Token(it) => GreenElement::Token(it.clone()),
-        }
-    }
-}
-
-impl<T: Types> From<GreenNode<T>> for GreenElement<T> {
-    fn from(node: GreenNode<T>) -> GreenElement<T> {
+impl From<GreenNode> for GreenElement {
+    fn from(node: GreenNode) -> GreenElement {
         GreenElement::Node(node)
     }
 }
 
-impl<T: Types> From<GreenToken<T>> for GreenElement<T> {
-    fn from(token: GreenToken<T>) -> GreenElement<T> {
+impl From<GreenToken> for GreenElement {
+    fn from(token: GreenToken) -> GreenElement {
         GreenElement::Token(token)
     }
 }
 
-impl<T: Types> GreenElement<T> {
+impl GreenElement {
     /// Returns kind of this element.
-    pub fn kind(&self) -> T::Kind {
+    #[inline]
+    pub fn kind(&self) -> SyntaxKind {
         match self {
             GreenElement::Node(it) => it.kind(),
             GreenElement::Token(it) => it.kind(),
         }
     }
     /// Returns length of the text covered by this element.
+    #[inline]
     pub fn text_len(&self) -> TextUnit {
         match self {
             GreenElement::Node(it) => it.text_len(),
@@ -161,28 +150,32 @@ pub struct Checkpoint(usize);
 
 /// A builder for a green tree.
 #[derive(Debug)]
-pub struct GreenNodeBuilder<T: Types> {
-    parents: Vec<(T::Kind, usize)>,
-    children: Vec<GreenElement<T>>,
+pub struct GreenNodeBuilder {
+    parents: Vec<(SyntaxKind, usize)>,
+    children: Vec<GreenElement>,
 }
 
-impl<T: Types> GreenNodeBuilder<T> {
+impl GreenNodeBuilder {
     /// Creates new builder.
+    #[inline]
     pub fn new() -> Self {
         GreenNodeBuilder { parents: Vec::new(), children: Vec::new() }
     }
     /// Adds new token to the current branch.
-    pub fn token(&mut self, kind: T::Kind, text: SmolStr) {
+    #[inline]
+    pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
         let token = GreenToken { kind, text };
         self.children.push(token.into());
     }
     /// Start new node and make it current.
-    pub fn start_node(&mut self, kind: T::Kind) {
+    #[inline]
+    pub fn start_node(&mut self, kind: SyntaxKind) {
         let len = self.children.len();
         self.parents.push((kind, len));
     }
     /// Finish current branch and restore previous
     /// branch as current.
+    #[inline]
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
         let children: Vec<_> = self.children.drain(first_child..).collect();
@@ -203,12 +196,14 @@ impl<T: Types> GreenNodeBuilder<T> {
     ///   builder.finish_internal();
     /// }
     /// ```
+    #[inline]
     pub fn checkpoint(&self) -> Checkpoint {
         Checkpoint(self.children.len())
     }
     /// Wrap the previous branch marked by `checkpoint` in a new branch and
     /// make it current.
-    pub fn start_node_at(&mut self, checkpoint: Checkpoint, kind: T::Kind) {
+    #[inline]
+    pub fn start_node_at(&mut self, checkpoint: Checkpoint, kind: SyntaxKind) {
         let Checkpoint(checkpoint) = checkpoint;
         assert!(
             checkpoint <= self.children.len(),
@@ -227,7 +222,8 @@ impl<T: Types> GreenNodeBuilder<T> {
     /// Complete tree building. Make sure that
     /// `start_internal` and `finish_internal` calls
     /// are paired!
-    pub fn finish(mut self) -> GreenNode<T> {
+    #[inline]
+    pub fn finish(mut self) -> GreenNode {
         assert_eq!(self.children.len(), 1);
         match self.children.pop().unwrap() {
             GreenElement::Node(node) => node,

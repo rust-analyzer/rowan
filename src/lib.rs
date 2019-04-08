@@ -4,7 +4,7 @@
     missing_debug_implementations,
     unconditional_recursion,
     future_incompatible,
-    // missing_docs
+    missing_docs,
 )]
 #![deny(unsafe_code)]
 
@@ -13,8 +13,8 @@ mod swap_cell;
 mod green;
 #[allow(unsafe_code)]
 mod imp;
-mod syntax_token;
 mod syntax_node;
+mod syntax_token;
 mod syntax_element;
 mod algo;
 
@@ -36,38 +36,27 @@ pub use crate::{
     algo::{WalkEvent, TokenAtOffset, SyntaxNodeChildren, SyntaxElementChildren},
 };
 
-/// `Types` customizes data, stored in the
-/// syntax tree. All types in this crate are
-/// parametrized over `T: Types`.
-pub trait Types: Send + Sync + 'static {
-    /// `Kind` is stored in each node and designates
-    /// it's class. Typically it is a fieldless enum.
-    type Kind: fmt::Debug + Copy + Eq + Send + Sync;
-    /// `RootData` is stored in the root of the syntax trees.
-    /// It can be just `()`, but you can use it to store,
-    /// for example, syntax errors.
-    type RootData: fmt::Debug + Send + Sync;
-}
+/// SyntaxKind is a type tag for each token or node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SyntaxKind(pub u16);
 
 pub use crate::imp::{TransparentNewType, TreeArc};
 
 // NB: borrow requires that Eq & Hash for `Owned` are consistent with thouse for
 // `Borrowed`. This is true for `TreeArc`, but for a slightly peculiar reason:
 // it forces "identity" (comparisons of pointers) semantics on the contents.
-impl<T, N> std::borrow::Borrow<N> for TreeArc<T, N>
+impl<N> std::borrow::Borrow<N> for TreeArc<N>
 where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>>,
+    N: TransparentNewType<Repr = SyntaxNode>,
 {
     fn borrow(&self) -> &N {
         &*self
     }
 }
 
-impl<T, N> fmt::Debug for TreeArc<T, N>
+impl<N> fmt::Debug for TreeArc<N>
 where
-    T: Types,
-    N: TransparentNewType<Repr = SyntaxNode<T>> + fmt::Debug,
+    N: TransparentNewType<Repr = SyntaxNode> + fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let inner: &N = &*self;
@@ -92,31 +81,24 @@ fn generate<'a, T: 'a, F: Fn(&T) -> Option<T> + 'a>(
 mod tests {
     use super::*;
 
-    #[derive(Clone, Copy)]
-    enum SillyTypes {}
-    impl Types for SillyTypes {
-        type Kind = u16;
-        type RootData = ();
-    }
-
     #[test]
     fn assert_send_sync() {
         fn f<T: Send + Sync>() {}
-        f::<GreenNode<SillyTypes>>();
-        f::<SyntaxNode<SillyTypes>>();
-        f::<TreeArc<SillyTypes, SyntaxNode<SillyTypes>>>();
+        f::<GreenNode>();
+        f::<SyntaxNode>();
+        f::<TreeArc<SyntaxNode>>();
     }
 
     #[test]
     fn test_size_of() {
         use std::mem::size_of;
 
-        eprintln!("GreenNode    {}", size_of::<GreenNode<SillyTypes>>());
-        eprintln!("GreenToken   {}", size_of::<GreenToken<SillyTypes>>());
-        eprintln!("GreenElement {}", size_of::<GreenElement<SillyTypes>>());
+        eprintln!("GreenNode    {}", size_of::<GreenNode>());
+        eprintln!("GreenToken   {}", size_of::<GreenToken>());
+        eprintln!("GreenElement {}", size_of::<GreenElement>());
         eprintln!();
-        eprintln!("SyntaxNode    {}", size_of::<SyntaxNode<SillyTypes>>());
-        eprintln!("SyntaxToken   {}", size_of::<SyntaxToken<SillyTypes>>());
-        eprintln!("SyntaxElement {}", size_of::<SyntaxElement<SillyTypes>>());
+        eprintln!("SyntaxNode    {}", size_of::<SyntaxNode>());
+        eprintln!("SyntaxToken   {}", size_of::<SyntaxToken>());
+        eprintln!("SyntaxElement {}", size_of::<SyntaxElement>());
     }
 }
