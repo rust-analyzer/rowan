@@ -16,45 +16,18 @@ use rowan::SmolStr;
 
 /// Let's start with defining all kinds of tokens and
 /// composite nodes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
-enum SyntaxKind {
-    // tokens
-    L_PAREN = 0, // '('
-    R_PAREN,     // ')'
-    WORD,        // '+', '15'
-    WHITESPACE,  // whitespaces is explicit
-    ERROR,       // as well as errors
-    // composite nodes
-    LIST, // `(+ 2 3)`
-    ATOM, // `+`, `15`, wraps a WORD token
-    ROOT, // top-level node: a list of s-expressions
-}
-/// We'll be using these a bunch, so let's add a `*` import
-use SyntaxKind::*;
+use rowan::SyntaxKind;
 
-impl From<rowan::SyntaxKind> for SyntaxKind {
-    fn from(kind: rowan::SyntaxKind) -> SyntaxKind {
-        match kind.0 {
-            0 => SyntaxKind::L_PAREN,
-            1 => SyntaxKind::R_PAREN,
-            2 => SyntaxKind::WORD,
-            3 => SyntaxKind::WHITESPACE,
-            4 => SyntaxKind::ERROR,
-            5 => SyntaxKind::LIST,
-            6 => SyntaxKind::ATOM,
-            7 => SyntaxKind::ROOT,
-            _ => unreachable!(),
-        }
-    }
-}
+const L_PAREN: SyntaxKind = SyntaxKind(0); // '('
+const R_PAREN: SyntaxKind = SyntaxKind(1); // ')'
+const WORD: SyntaxKind = SyntaxKind(2); // '+', '15'
+const WHITESPACE: SyntaxKind = SyntaxKind(3); // whitespaces is explicit
+const ERROR: SyntaxKind = SyntaxKind(4); // as well as errors
 
-impl From<SyntaxKind> for rowan::SyntaxKind {
-    fn from(kind: SyntaxKind) -> rowan::SyntaxKind {
-        rowan::SyntaxKind(kind as u16)
-    }
-}
-
+// composite nodes
+const LIST: SyntaxKind = SyntaxKind(5); // `(+ 2 3)`
+const ATOM: SyntaxKind = SyntaxKind(6); // `+`, `15`, wraps a WORD token
+const ROOT: SyntaxKind = SyntaxKind(7); // top-level node: a list of s-expressions
 
 /// GreenNode is an immutable tree, which is cheap to change,
 /// but doesn't contain offsets and parent pointers.
@@ -368,10 +341,8 @@ nan
 }
 
 fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
-    use SyntaxKind::*;
-
     fn tok(t: SyntaxKind) -> m_lexer::TokenKind {
-        m_lexer::TokenKind(t as u16)
+        m_lexer::TokenKind(t.0)
     }
     fn kind(t: m_lexer::TokenKind) -> SyntaxKind {
         match t.0 {

@@ -251,6 +251,7 @@ impl SyntaxNode {
         TreeArc { inner: red_node }
     }
 
+    #[cold]
     fn new_child(
         &self,
         start_offset: TextUnit,

@@ -114,12 +114,14 @@ pub enum GreenElement {
 }
 
 impl From<GreenNode> for GreenElement {
+    #[inline]
     fn from(node: GreenNode) -> GreenElement {
         GreenElement::Node(node)
     }
 }
 
 impl From<GreenToken> for GreenElement {
+    #[inline]
     fn from(token: GreenToken) -> GreenElement {
         GreenElement::Token(token)
     }
