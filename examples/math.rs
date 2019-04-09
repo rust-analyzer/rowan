@@ -14,61 +14,28 @@
 //!     - "4" Token(Number)
 extern crate rowan;
 
-use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement, SyntaxKind};
+use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement, SyntaxKind, TreeArc, SyntaxNode};
 use std::iter::Peekable;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u16)]
-enum Kind {
-    Whitespace = 0,
+const WHITESPACE: SyntaxKind = SyntaxKind(0);
 
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Number,
+const ADD: SyntaxKind = SyntaxKind(1);
+const SUB: SyntaxKind = SyntaxKind(2);
+const MUL: SyntaxKind = SyntaxKind(3);
+const DIV: SyntaxKind = SyntaxKind(4);
 
-    Error,
-    Operation,
-    Root,
-}
+const NUMBER: SyntaxKind = SyntaxKind(5);
+const ERROR: SyntaxKind = SyntaxKind(6);
+const OPERATION: SyntaxKind = SyntaxKind(7);
+const ROOT: SyntaxKind = SyntaxKind(8);
 
-impl From<SyntaxKind> for Kind {
-    fn from(kind: SyntaxKind) -> Kind {
-        match kind.0 {
-            0 => Kind::Whitespace,
-
-            1 => Kind::Add,
-            2 => Kind::Sub,
-            3 => Kind::Mul,
-            4 => Kind::Div,
-            5 => Kind::Number,
-
-            6 => Kind::Error,
-            7 => Kind::Operation,
-            8 => Kind::Root,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<Kind> for SyntaxKind {
-    fn from(kind: Kind) -> SyntaxKind {
-        SyntaxKind(kind as u16)
-    }
-}
-
-type Node = rowan::SyntaxNode;
-type Element<'a> = rowan::SyntaxElement<'a>;
-type TreeArc<T> = rowan::TreeArc<T>;
-
-struct Parser<I: Iterator<Item = (Kind, SmolStr)>> {
+struct Parser<I: Iterator<Item = (SyntaxKind, SmolStr)>> {
     builder: GreenNodeBuilder,
     iter: Peekable<I>,
 }
-impl<I: Iterator<Item = (Kind, SmolStr)>> Parser<I> {
-    fn peek(&mut self) -> Option<Kind> {
-        while self.iter.peek().map(|&(t, _)| t == Kind::Whitespace).unwrap_or(false) {
+impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
+    fn peek(&mut self) -> Option<SyntaxKind> {
+        while self.iter.peek().map(|&(t, _)| t == WHITESPACE).unwrap_or(false) {
             self.bump();
         }
         self.iter.peek().map(|&(t, _)| t)
@@ -80,41 +47,41 @@ impl<I: Iterator<Item = (Kind, SmolStr)>> Parser<I> {
     }
     fn parse_val(&mut self) {
         match self.peek() {
-            Some(Kind::Number) => self.bump(),
+            Some(NUMBER) => self.bump(),
             _ => {
-                self.builder.start_node(Kind::Error.into());
+                self.builder.start_node(ERROR.into());
                 self.bump();
                 self.builder.finish_node();
             }
         }
     }
-    fn handle_operation(&mut self, tokens: &[Kind], next: fn(&mut Self)) {
+    fn handle_operation(&mut self, tokens: &[SyntaxKind], next: fn(&mut Self)) {
         let checkpoint = self.builder.checkpoint();
         next(self);
         while self.peek().map(|t| tokens.contains(&t)).unwrap_or(false) {
-            self.builder.start_node_at(checkpoint, Kind::Operation.into());
+            self.builder.start_node_at(checkpoint, OPERATION.into());
             self.bump();
             next(self);
             self.builder.finish_node();
         }
     }
     fn parse_mul(&mut self) {
-        self.handle_operation(&[Kind::Mul, Kind::Div], Self::parse_val)
+        self.handle_operation(&[MUL, DIV], Self::parse_val)
     }
     fn parse_add(&mut self) {
-        self.handle_operation(&[Kind::Add, Kind::Sub], Self::parse_mul)
+        self.handle_operation(&[ADD, SUB], Self::parse_mul)
     }
-    fn parse(mut self) -> TreeArc<Node> {
-        self.builder.start_node(Kind::Root.into());
+    fn parse(mut self) -> TreeArc<SyntaxNode> {
+        self.builder.start_node(ROOT.into());
         self.parse_add();
         self.builder.finish_node();
 
-        Node::new(self.builder.finish(), None)
+        SyntaxNode::new(self.builder.finish(), None)
     }
 }
 
-fn print(indent: usize, element: Element) {
-    let kind: Kind = element.kind().into();
+fn print(indent: usize, element: SyntaxElement) {
+    let kind: SyntaxKind = element.kind().into();
     print!("{:indent$}", "", indent = indent);
     match element {
         SyntaxElement::Node(node) => {
@@ -133,19 +100,19 @@ fn main() {
         builder: GreenNodeBuilder::new(),
         iter: vec![
             // 1 + 2 * 3 + 4
-            (Kind::Number, "1".into()),
-            (Kind::Whitespace, " ".into()),
-            (Kind::Add, "+".into()),
-            (Kind::Whitespace, " ".into()),
-            (Kind::Number, "2".into()),
-            (Kind::Whitespace, " ".into()),
-            (Kind::Mul, "*".into()),
-            (Kind::Whitespace, " ".into()),
-            (Kind::Number, "3".into()),
-            (Kind::Whitespace, " ".into()),
-            (Kind::Add, "+".into()),
-            (Kind::Whitespace, " ".into()),
-            (Kind::Number, "4".into()),
+            (NUMBER, "1".into()),
+            (WHITESPACE, " ".into()),
+            (ADD, "+".into()),
+            (WHITESPACE, " ".into()),
+            (NUMBER, "2".into()),
+            (WHITESPACE, " ".into()),
+            (MUL, "*".into()),
+            (WHITESPACE, " ".into()),
+            (NUMBER, "3".into()),
+            (WHITESPACE, " ".into()),
+            (ADD, "+".into()),
+            (WHITESPACE, " ".into()),
+            (NUMBER, "4".into()),
         ]
         .into_iter()
         .peekable(),
