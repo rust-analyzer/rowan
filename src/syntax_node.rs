@@ -88,7 +88,6 @@ impl SyntaxNode {
     }
 
     /// Get the first, including tokens.
-    #[inline]
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
         let res = match self.green().children().first()? {
             GreenElement::Node(_) => self.first_child()?.into(),

@@ -42,7 +42,7 @@ pub struct SyntaxKind(pub u16);
 
 pub use crate::imp::{TransparentNewType, TreeArc};
 
-// NB: borrow requires that Eq & Hash for `Owned` are consistent with thouse for
+// NB: borrow requires that Eq & Hash for `Owned` are consistent with those for
 // `Borrowed`. This is true for `TreeArc`, but for a slightly peculiar reason:
 // it forces "identity" (comparisons of pointers) semantics on the contents.
 impl<N> std::borrow::Borrow<N> for TreeArc<N>
