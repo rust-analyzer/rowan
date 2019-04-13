@@ -28,7 +28,7 @@ where
         if let Some(text) = self.leaf_text() {
             map.serialize_entry(&self.kind(), text.as_str())?;
         } else {
-            map.serialize_entry(&self.kind(), &NodeContentSer::Branch(self.children()))?;
+            map.serialize_entry(&self.kind(), self.children())?;
         }
         map.end()
     }
