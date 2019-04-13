@@ -26,7 +26,7 @@ where
     {
         let mut map = serializer.serialize_map(Some(1))?;
         if let Some(text) = self.leaf_text() {
-            map.serialize_entry(&self.kind(), &NodeContentSer::<T>::Leaf(text.as_str()))?;
+            map.serialize_entry(&self.kind(), text.as_str())?;
         } else {
             map.serialize_entry(&self.kind(), &NodeContentSer::Branch(self.children()))?;
         }
