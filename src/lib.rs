@@ -64,19 +64,6 @@ where
     }
 }
 
-// FIXME: replace with successors once it is stable
-fn generate<'a, T: 'a, F: Fn(&T) -> Option<T> + 'a>(
-    seed: Option<T>,
-    step: F,
-) -> impl Iterator<Item = T> + 'a {
-    std::iter::repeat(()).scan(seed, move |state, ()| {
-        state.take().map(|curr| {
-            *state = step(&curr);
-            curr
-        })
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
