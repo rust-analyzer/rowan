@@ -1,6 +1,7 @@
+use std::iter;
 use std::ops::Range;
 
-use crate::{generate, SyntaxNode, SyntaxElement, TextUnit, TextRange, SyntaxToken, SyntaxIndex};
+use crate::{SyntaxNode, SyntaxElement, TextUnit, TextRange, SyntaxToken, SyntaxIndex};
 
 /// `WalkEvent` describes tree walking process.
 #[derive(Debug, Copy, Clone)]
@@ -109,14 +110,14 @@ impl SyntaxNode {
     /// All ancestors of the current node, including itself
     #[inline]
     pub fn ancestors(&self) -> impl Iterator<Item = &SyntaxNode> {
-        generate(Some(self), |node| node.parent())
+        iter::successors(Some(self), |node| node.parent())
     }
 
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, excluding tokens.
     #[inline]
     pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<&SyntaxNode>> {
-        generate(Some(WalkEvent::Enter(self)), move |pos| {
+        iter::successors(Some(WalkEvent::Enter(self)), move |pos| {
             let next = match *pos {
                 WalkEvent::Enter(node) => match node.first_child() {
                     Some(child) => WalkEvent::Enter(child),
@@ -143,7 +144,7 @@ impl SyntaxNode {
         &'a self,
     ) -> impl Iterator<Item = WalkEvent<SyntaxElement<'a>>> {
         let start: SyntaxElement = self.into();
-        generate(Some(WalkEvent::Enter(start)), move |pos| {
+        iter::successors(Some(WalkEvent::Enter(start)), move |pos| {
             let next = match *pos {
                 WalkEvent::Enter(el) => match el {
                     SyntaxElement::Node(node) => match node.first_child_or_token() {
