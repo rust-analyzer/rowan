@@ -58,7 +58,17 @@ impl<T> Iterator for TokenAtOffset<T> {
             }
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            TokenAtOffset::None => (0, Some(0)),
+            TokenAtOffset::Single(_) => (1, Some(1)),
+            TokenAtOffset::Between(_,_) => (2, Some(2)),
+        }
+    }
 }
+
+impl<T> ExactSizeIterator for TokenAtOffset<T> {}
 
 /// Iterator over node's children, excluding tokens.
 #[derive(Debug)]
