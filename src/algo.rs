@@ -1,4 +1,4 @@
-use std::iter;
+use std::{fmt, iter};
 use std::ops::Range;
 
 use crate::{SyntaxNode, SyntaxElement, TextUnit, TextRange, SyntaxToken, SyntaxIndex};
@@ -104,6 +104,59 @@ impl<'a> Iterator for SyntaxElementChildren<'a> {
     }
 }
 
+/// Display implementor which indents the AST and executes a callback
+/// on each element
+#[derive(Clone, Debug)]
+pub struct SyntaxNodeDump<'a, FE, FL>
+where
+    FE: Fn(&mut fmt::Formatter, SyntaxElement) -> fmt::Result,
+    FL: Fn(&mut fmt::Formatter, &SyntaxNode) -> fmt::Result
+{
+    indent: usize,
+    node: &'a SyntaxNode,
+    enter: FE,
+    leave: Option<FL>
+}
+impl<'a, FE, FL> fmt::Display for SyntaxNodeDump<'a, FE, FL>
+where
+    FE: Fn(&mut fmt::Formatter, SyntaxElement) -> fmt::Result,
+    FL: Fn(&mut fmt::Formatter, &SyntaxNode) -> fmt::Result
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut first = true;
+        let mut indent = 0;
+        for event in self.node.preorder_with_tokens() {
+            match event {
+                WalkEvent::Enter(elem) => {
+                    if !first {
+                        writeln!(f)?;
+                    }
+                    write!(f, "{:indent$}", "", indent=indent)?;
+                    (self.enter)(f, elem)?;
+
+                    if let SyntaxElement::Node(_) = elem {
+                        indent += self.indent;
+                    }
+                },
+                WalkEvent::Leave(SyntaxElement::Node(node)) => {
+                    indent -= self.indent;
+
+                    if let Some(ref leave) = self.leave {
+                        if !first {
+                            writeln!(f)?;
+                        }
+                        write!(f, "{:indent$}", "", indent=indent)?;
+                        leave(f, node)?;
+                    }
+                },
+                WalkEvent::Leave(SyntaxElement::Token(_)) => {}
+            }
+            first = false;
+        }
+        Ok(())
+    }
+}
+
 impl SyntaxNode {
     /// Get iterator over children, excluding tokens.
     #[inline]
@@ -175,6 +228,43 @@ impl SyntaxNode {
             };
             Some(next)
         })
+    }
+
+    /// Traverse the subtree and call an function for printing the
+    /// representation of each SyntaxElement.
+    /// ```rust
+    /// use rowan::{syntax, GreenNode, GreenToken, GreenElement, SyntaxElement, SyntaxNode, SmolStr};
+    /// use std::fmt::{Formatter, Display};
+    /// syntax! { start 0; resolver MyResolver; MY_SYNTAX_TOKEN MY_SYNTAX_NODE}
+    ///
+    /// fn my_dump<'a>(node: &'a SyntaxNode) -> impl Display + 'a {
+    ///     node.dump(2, |f, elem| match elem {
+    ///         SyntaxElement::Node(node) => write!(f, "{} {{", node.kind().name::<MyResolver>()),
+    ///         SyntaxElement::Token(token) => write!(f, "{} = \"{}\"", token.kind().name::<MyResolver>(), token.text().escape_default()),
+    ///     }, Some(|f: &mut Formatter, _: &_| write!(f, "}}")))
+    /// }
+    ///
+    /// let node = SyntaxNode::new(GreenNode::new(
+    ///     MY_SYNTAX_NODE,
+    ///     Box::new([GreenElement::Token(GreenToken::new(MY_SYNTAX_TOKEN, SmolStr::new("hi!")))])
+    /// ), None);
+    ///
+    /// assert_eq!(format!("{}", my_dump(&node)),
+    /// r#"MY_SYNTAX_NODE {
+    ///   MY_SYNTAX_TOKEN = "hi!"
+    /// }"#);
+    /// ```
+    pub fn dump<'a, FE, FL>(&'a self, indent: usize, enter: FE, leave: Option<FL>) -> SyntaxNodeDump<'a, FE, FL>
+    where
+        FE: Fn(&mut fmt::Formatter, SyntaxElement) -> fmt::Result,
+        FL: Fn(&mut fmt::Formatter, &SyntaxNode) -> fmt::Result
+    {
+        SyntaxNodeDump {
+            node: self,
+            indent,
+            enter,
+            leave
+        }
     }
 
     /// Returns common ancestor of the two nodes.

@@ -17,6 +17,7 @@ mod syntax_node;
 mod syntax_token;
 mod syntax_element;
 mod algo;
+mod macros;
 
 use std::fmt;
 use crate::{green::GreenIndex, imp::SyntaxIndex};
@@ -34,11 +35,28 @@ pub use crate::{
     syntax_token::SyntaxToken,
     syntax_element::SyntaxElement,
     algo::{WalkEvent, TokenAtOffset, SyntaxNodeChildren, SyntaxElementChildren},
+    macros::*
 };
 
 /// SyntaxKind is a type tag for each token or node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SyntaxKind(pub u16);
+
+/// Optional trait that enables a pretty name for a SyntaxKind. Most
+/// users should not have to worry about this directly, but rather use
+/// the `syntax!()` macro.
+pub trait SyntaxResolver {
+    /// Returns the name for the SyntaxKind, if defined
+    fn name(kind: SyntaxKind) -> Option<&'static str>;
+}
+impl SyntaxKind {
+    /// Uses the SyntaxResolver trait to look up the name for this
+    /// SyntaxKind
+    pub fn name<T: SyntaxResolver>(self) -> &'static str {
+        T::name(self).expect("the name of this syntax kind is not \
+        available in the given resolver")
+    }
+}
 
 pub use crate::imp::{TransparentNewType, TreeArc};
 
