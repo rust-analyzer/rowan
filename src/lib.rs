@@ -29,7 +29,7 @@ pub use smol_str::SmolStr;
 pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
-    green::{GreenNode, GreenToken, GreenElement, GreenNodeBuilder},
+    green::{GreenNode, GreenToken, GreenElement, GreenNodeBuilder, Checkpoint},
     imp::SyntaxNode,
     syntax_token::SyntaxToken,
     syntax_element::SyntaxElement,
