@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, mem};
 
-use parking_lot::{Once, OnceState, ONCE_INIT};
+use parking_lot::{Once, OnceState};
 
 #[derive(Debug)]
 enum State<U, V> {
@@ -19,7 +19,7 @@ pub(crate) struct SwapCell<U, V> {
 
 impl<U, V> SwapCell<U, V> {
     pub(crate) fn new(seed: U) -> SwapCell<U, V> {
-        SwapCell { once: ONCE_INIT, state: UnsafeCell::new(State::Uninit(seed)) }
+        SwapCell { once: Once::new(), state: UnsafeCell::new(State::Uninit(seed)) }
     }
 
     pub(crate) fn get_mut(&mut self) -> Option<&mut V> {
