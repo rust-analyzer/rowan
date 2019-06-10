@@ -30,7 +30,7 @@ impl<'a> SyntaxElement<'a> {
     }
     /// If this element is a node, return it.
     #[inline]
-    pub fn as_node(&self) -> Option<&SyntaxNode> {
+    pub fn as_node(&self) -> Option<&'a SyntaxNode> {
         match self {
             SyntaxElement::Node(node) => Some(node),
             SyntaxElement::Token(_) => None,
