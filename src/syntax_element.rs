@@ -20,6 +20,22 @@ impl<'a> From<SyntaxToken<'a>> for SyntaxElement<'a> {
 }
 
 impl<'a> SyntaxElement<'a> {
+    /// If this element is a token, return it.
+    #[inline]
+    pub fn as_token(&self) -> Option<SyntaxToken<'a>> {
+        match *self {
+            SyntaxElement::Token(token) => Some(token),
+            SyntaxElement::Node(_) => None,
+        }
+    }
+    /// If this element is a node, return it.
+    #[inline]
+    pub fn as_node(&self) -> Option<&SyntaxNode> {
+        match self {
+            SyntaxElement::Node(node) => Some(node),
+            SyntaxElement::Token(_) => None,
+        }
+    }
     /// Kind of this element.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
