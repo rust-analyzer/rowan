@@ -4,7 +4,7 @@ use crate::{SmolStr, TextUnit, SyntaxKind};
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GreenNode {
     kind: SyntaxKind,
     text_len: TextUnit,
@@ -75,7 +75,7 @@ impl GreenIndex {
 }
 
 /// Leaf node in the immutable tree.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GreenToken {
     kind: SyntaxKind,
     text: SmolStr,
@@ -105,7 +105,7 @@ impl GreenToken {
 }
 
 /// Leaf or internal node in the immutable tree.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GreenElement {
     /// Internal node.
     Node(GreenNode),
@@ -151,8 +151,9 @@ impl GreenElement {
 pub struct Checkpoint(usize);
 
 /// A builder for a green tree.
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct GreenNodeBuilder {
+    cache: rustc_hash::FxHashSet<GreenNode>,
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
@@ -160,8 +161,8 @@ pub struct GreenNodeBuilder {
 impl GreenNodeBuilder {
     /// Creates new builder.
     #[inline]
-    pub fn new() -> Self {
-        GreenNodeBuilder { parents: Vec::new(), children: Vec::new() }
+    pub fn new() -> GreenNodeBuilder {
+        GreenNodeBuilder::default()
     }
     /// Adds new token to the current branch.
     #[inline]
@@ -181,7 +182,21 @@ impl GreenNodeBuilder {
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
         let children: Vec<_> = self.children.drain(first_child..).collect();
-        let node = GreenNode::new(kind, children.into_boxed_slice());
+        let mut node = GreenNode::new(kind, children.into_boxed_slice());
+        // Green nodes are fully immutable, so it's ok to deduplicate them.
+        // This is the same optimization that Roslyn does
+        // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
+        //
+        // For example, all `#[inline]` in this file share the same green node!
+        // For `libsyntax/parse/parser.rs`, measurments show that deduping saves
+        // 17% of the memory for green nodes!
+        // Future work: make hashing faster by avoiding rehashing of subtrees.
+        if node.children.len() <= 3 {
+            match self.cache.get(&node) {
+                Some(existing) => node = existing.clone(),
+                None => assert!(self.cache.insert(node.clone())),
+            }
+        }
         self.children.push(node.into());
     }
     /// Prepare for maybe wrapping the next node.
