@@ -188,7 +188,7 @@ impl GreenNodeBuilder {
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
         //
         // For example, all `#[inline]` in this file share the same green node!
-        // For `libsyntax/parse/parser.rs`, measurments show that deduping saves
+        // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
         if node.children.len() <= 3 {
