@@ -248,7 +248,7 @@ impl GreenNodeBuilder {
         self.parents.push((kind, checkpoint));
     }
     /// Complete tree building. Make sure that
-    /// `start_internal` and `finish_internal` calls
+    /// `start_node_at` and `finish_node` calls
     /// are paired!
     #[inline]
     pub fn finish(mut self) -> GreenNode {
