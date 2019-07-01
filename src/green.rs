@@ -201,16 +201,27 @@ impl GreenNodeBuilder {
     }
     /// Prepare for maybe wrapping the next node.
     /// The way wrapping works is that you first of all get a checkpoint,
-    /// then you place all tokens you want to wrap, and then *maybe* call start_internal_at.
+    /// then you place all tokens you want to wrap, and then *maybe* call
+    /// `start_node_at`.
     /// Example:
-    /// ```rust,ignore
+    /// ```rust
+    /// # use rowan::{GreenNodeBuilder, SyntaxKind};
+    /// # const PLUS: SyntaxKind = SyntaxKind(0);
+    /// # const OPERATION: SyntaxKind = SyntaxKind(1);
+    /// # struct Parser;
+    /// # impl Parser {
+    /// #     fn peek(&self) -> Option<SyntaxKind> { None }
+    /// #     fn parse_expr(&mut self) {}
+    /// # }
+    /// # let mut builder = GreenNodeBuilder::new();
+    /// # let mut parser = Parser;
     /// let checkpoint = builder.checkpoint();
-    /// self.parse_expr();
-    /// if self.peek() == Some(Token::Plus) {
+    /// parser.parse_expr();
+    /// if parser.peek() == Some(PLUS) {
     ///   // 1 + 2 = Add(1, 2)
-    ///   builder.start_internal_at(checkpoint, Token::Operation);
-    ///   self.parse_expr();
-    ///   builder.finish_internal();
+    ///   builder.start_node_at(checkpoint, OPERATION);
+    ///   parser.parse_expr();
+    ///   builder.finish_node();
     /// }
     /// ```
     #[inline]
