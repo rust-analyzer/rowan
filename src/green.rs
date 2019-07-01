@@ -235,13 +235,13 @@ impl GreenNodeBuilder {
         let Checkpoint(checkpoint) = checkpoint;
         assert!(
             checkpoint <= self.children.len(),
-            "checkpoint no longer valid, was finish_internal called early?"
+            "checkpoint no longer valid, was finish_node called early?"
         );
 
         if let Some(&(_, first_child)) = self.parents.last() {
             assert!(
                 checkpoint >= first_child,
-                "checkpoint no longer valid, was an unmatched start_internal called?"
+                "checkpoint no longer valid, was an unmatched start_node_at called?"
             );
         }
 
