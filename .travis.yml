@@ -1,0 +1,15 @@
+branches:
+  only:
+    - staging
+    - master
+    - trying
+
+
+language: rust
+rust:
+  - stable
+  - beta
+
+script:
+  - cargo test
+  - cargo test --release
