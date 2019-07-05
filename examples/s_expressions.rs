@@ -74,13 +74,13 @@ fn parse(text: &str) -> TreeArc<Root> {
     impl Parser {
         fn parse(mut self) -> TreeArc<Root> {
             // Make sure that the root node covers all source
-            self.builder.start_node(ROOT.into());
+            self.builder.start_node(ROOT);
             // Parse a list of S-expressions
             loop {
                 match self.sexp() {
                     SexpRes::Eof => break,
                     SexpRes::RParen => {
-                        self.builder.start_node(ERROR.into());
+                        self.builder.start_node(ERROR);
                         self.errors.push("unmatched `)`".to_string());
                         self.bump(); // be sure to chug along in case of error
                         self.builder.finish_node();
@@ -102,7 +102,7 @@ fn parse(text: &str) -> TreeArc<Root> {
         }
         fn list(&mut self) {
             // Start the list node
-            self.builder.start_node(LIST.into());
+            self.builder.start_node(LIST);
             self.bump(); // '('
             loop {
                 match self.sexp() {
@@ -133,7 +133,7 @@ fn parse(text: &str) -> TreeArc<Root> {
             match t {
                 L_PAREN => self.list(),
                 WORD => {
-                    self.builder.start_node(ATOM.into());
+                    self.builder.start_node(ATOM);
                     self.bump();
                     self.builder.finish_node();
                 }
@@ -144,7 +144,7 @@ fn parse(text: &str) -> TreeArc<Root> {
         }
         fn bump(&mut self) {
             let (kind, text) = self.tokens.pop().unwrap();
-            self.builder.token(kind.into(), text);
+            self.builder.token(kind, text);
         }
         fn current(&self) -> Option<SyntaxKind> {
             self.tokens.last().map(|(kind, _)| *kind)
@@ -211,7 +211,7 @@ macro_rules! ast_node {
         impl $ast {
             #[allow(unused)]
             fn cast(node: &SyntaxNode) -> Option<&Self> {
-                if node.kind() == $kind.into() {
+                if node.kind() == $kind {
                     Some(Self::from_repr(node))
                 } else {
                     None
