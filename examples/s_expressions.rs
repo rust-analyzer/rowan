@@ -44,16 +44,24 @@ use rowan::GreenNodeBuilder;
 /// has identity semantics.
 /// SyntaxNode exist in borrowed and owned flavors,
 /// which is controlled by the `R` parameter.
-use rowan::SyntaxNode;
+use rowan::cursor::SyntaxNode;
 
-use rowan::TreeArc;
-use rowan::TransparentNewType;
+struct Parse {
+    green_node: rowan::GreenNode,
+    errors: Vec<String>,
+}
+
+impl Parse {
+    fn syntax(&self) -> Root {
+        Root::cast(SyntaxNode::new_root(self.green_node.clone())).unwrap()
+    }
+}
 
 /// Now, let's write a parser.
 /// Note that `parse` does not return a `Result`:
 /// by design, syntax tree can be build even for
 /// completely invalid source code.
-fn parse(text: &str) -> TreeArc<Root> {
+fn parse(text: &str) -> Parse {
     struct Parser {
         /// input tokens, including whitespace,
         /// in *reverse* order.
@@ -72,7 +80,7 @@ fn parse(text: &str) -> TreeArc<Root> {
     }
 
     impl Parser {
-        fn parse(mut self) -> TreeArc<Root> {
+        fn parse(mut self) -> Parse {
             // Make sure that the root node covers all source
             self.builder.start_node(ROOT);
             // Parse a list of S-expressions
@@ -97,8 +105,7 @@ fn parse(text: &str) -> TreeArc<Root> {
             let green: GreenNode = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
-            let node = SyntaxNode::new(green, Some(Box::new(self.errors)));
-            Root::cast(&node).unwrap().to_owned()
+            Parse { green_node: green, errors: self.errors }
         }
         fn list(&mut self) {
             // Start the list node
@@ -205,22 +212,14 @@ macro_rules! ast_node {
         #[derive(PartialEq, Eq, Hash)]
         #[repr(transparent)]
         struct $ast(SyntaxNode);
-        unsafe impl TransparentNewType for $ast {
-            type Repr = SyntaxNode;
-        }
         impl $ast {
             #[allow(unused)]
-            fn cast(node: &SyntaxNode) -> Option<&Self> {
+            fn cast(node: SyntaxNode) -> Option<Self> {
                 if node.kind() == $kind {
-                    Some(Self::from_repr(node))
+                    Some(Self(node))
                 } else {
                     None
                 }
-            }
-            #[allow(unused)]
-            fn to_owned(&self) -> TreeArc<Self> {
-                let owned = self.0.to_owned();
-                TreeArc::cast(owned)
             }
         }
     };
@@ -235,24 +234,24 @@ ast_node!(List, LIST);
 #[repr(transparent)]
 struct Sexp(SyntaxNode);
 
-enum SexpKind<'a> {
-    Atom(&'a Atom),
-    List(&'a List),
+enum SexpKind {
+    Atom(Atom),
+    List(List),
 }
 
 impl Sexp {
-    fn cast(node: &SyntaxNode) -> Option<&Self> {
-        if Atom::cast(node).is_some() || List::cast(node).is_some() {
-            Some(unsafe { std::mem::transmute(node) })
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        if Atom::cast(node.clone()).is_some() || List::cast(node.clone()).is_some() {
+            Some(Sexp(node))
         } else {
             None
         }
     }
 
     fn kind(&self) -> SexpKind {
-        Atom::cast(&self.0)
+        Atom::cast(self.0.clone())
             .map(SexpKind::Atom)
-            .or_else(|| List::cast(&self.0).map(SexpKind::List))
+            .or_else(|| List::cast(self.0.clone()).map(SexpKind::List))
             .unwrap()
     }
 }
@@ -260,7 +259,7 @@ impl Sexp {
 // Let's enhance AST nodes with ancillary functions and
 // eval.
 impl Root {
-    fn sexps(&self) -> impl Iterator<Item = &Sexp> {
+    fn sexps(&self) -> impl Iterator<Item = Sexp> + '_ {
         self.0.children().filter_map(Sexp::cast)
     }
 }
@@ -295,7 +294,7 @@ impl Atom {
 }
 
 impl List {
-    fn sexps(&self) -> impl Iterator<Item = &Sexp> {
+    fn sexps(&self) -> impl Iterator<Item = Sexp> + '_ {
         self.0.children().filter_map(Sexp::cast)
     }
     fn eval(&self) -> Option<i64> {
@@ -335,7 +334,7 @@ nan
 (+ (* 15 2) 62)
 ";
     let root = parse(sexps);
-    let res = root.sexps().map(|it| it.eval()).collect::<Vec<_>>();
+    let res = root.syntax().sexps().map(|it| it.eval()).collect::<Vec<_>>();
     eprintln!("{:?}", res);
     assert_eq!(res, vec![Some(92), Some(92), None, None, Some(92),])
 }

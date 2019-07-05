@@ -1,16 +1,20 @@
 //! A generic library for lossless syntax trees.
 //! See `examples/s_expressions.rs` for a tutorial.
 #![forbid(
-    missing_debug_implementations,
+    // missing_debug_implementations,
     unconditional_recursion,
     future_incompatible,
-    missing_docs,
+    // missing_docs,
 )]
 #![deny(unsafe_code)]
+#![allow(unused)]
 
 #[allow(unsafe_code)]
 mod swap_cell;
 mod green;
+#[allow(unsafe_code)]
+pub mod cursor;
+mod api;
 #[allow(unsafe_code)]
 mod imp;
 mod syntax_node;
