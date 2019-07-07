@@ -151,8 +151,8 @@ impl SyntaxNode {
     /// node) in preorder, including tokens.
     #[inline]
     pub fn preorder_with_tokens(
-        &self,
-    ) -> impl Iterator<Item = WalkEvent<SyntaxElement>> {
+        &'_ self,
+    ) -> impl Iterator<Item = WalkEvent<SyntaxElement<'_>>> {
         let start: SyntaxElement = self.into();
         iter::successors(Some(WalkEvent::Enter(start)), move |pos| {
             let next = match *pos {
@@ -191,7 +191,7 @@ impl SyntaxNode {
 
     /// Find a token in the subtree corresponding to this node, which covers the offset.
     /// Precondition: offset must be withing node's range.
-    pub fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken> {
+    pub fn token_at_offset(&'_ self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'_>> {
         // TODO: this could be faster if we first drill-down to node, and only
         // then switch to token search. We should also replace explicit
         // recursion with a loop.
