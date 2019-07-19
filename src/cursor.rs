@@ -333,6 +333,10 @@ impl SyntaxNode {
         self.last_child_or_token()?.last_token()
     }
 
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+        iter::successors(Some(self.clone()), SyntaxNode::parent)
+    }
+
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, excluding tokens.
     #[inline]
