@@ -14,6 +14,7 @@ mod swap_cell;
 mod green;
 #[allow(unsafe_code)]
 pub mod cursor;
+mod syntax_text;
 mod api;
 #[allow(unsafe_code)]
 mod imp;
@@ -38,6 +39,7 @@ pub use crate::{
     syntax_token::SyntaxToken,
     syntax_element::SyntaxElement,
     algo::{WalkEvent, TokenAtOffset, SyntaxNodeChildren, SyntaxElementChildren},
+    syntax_text::SyntaxText
 };
 
 /// SyntaxKind is a type tag for each token or node.

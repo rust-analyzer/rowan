@@ -1,7 +1,8 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    cursor, GreenNode, GreenToken, SmolStr, TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    cursor, GreenNode, GreenToken, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset,
+    WalkEvent,
 };
 
 pub trait Props: Sized {
@@ -168,6 +169,10 @@ impl<P: Props> SyntaxNode<P> {
         self.raw.text_range()
     }
 
+    pub fn text(&self) -> SyntaxText {
+        self.raw.text()
+    }
+
     pub fn green(&self) -> &GreenNode {
         self.raw.green()
     }
@@ -262,12 +267,12 @@ impl<P: Props> SyntaxToken<P> {
         SyntaxKind::from(self.raw.kind())
     }
 
-    pub fn text(&self) -> &SmolStr {
-        self.raw.text()
-    }
-
     pub fn text_range(&self) -> TextRange {
         self.raw.text_range()
+    }
+
+    pub fn text(&self) -> &SmolStr {
+        self.raw.text()
     }
 
     pub fn green(&self) -> &GreenToken {

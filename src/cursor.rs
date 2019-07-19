@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     GreenElement, GreenNode, GreenToken, SmolStr, SyntaxKind, TextRange, TextUnit, TokenAtOffset,
-    WalkEvent,
+    WalkEvent, SyntaxText,
 };
 
 #[derive(Debug, Clone)]
@@ -253,6 +253,10 @@ impl SyntaxNode {
             _ => 0.into(),
         };
         TextRange::offset_len(offset, self.green().text_len())
+    }
+
+    pub fn text(&self) -> SyntaxText {
+        SyntaxText::new(self.clone())
     }
 
     pub fn green(&self) -> &GreenNode {
@@ -534,12 +538,12 @@ impl SyntaxToken {
         self.green().kind()
     }
 
-    pub fn text(&self) -> &SmolStr {
-        self.green().text()
-    }
-
     pub fn text_range(&self) -> TextRange {
         TextRange::offset_len(self.offset, self.green().text_len())
+    }
+
+    pub fn text(&self) -> &SmolStr {
+        self.green().text()
     }
 
     pub fn green(&self) -> &GreenToken {
