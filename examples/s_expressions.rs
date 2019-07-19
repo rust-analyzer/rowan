@@ -4,8 +4,8 @@
 //! ```
 //! (+ (* 15 2) 62)
 //! ```
-extern crate m_lexer;
-extern crate rowan;
+
+use std::fmt;
 
 /// Currently, rowan doesn't have a hook to add your own interner,
 /// but `SmolStr` should be a "good enough" type for representing
@@ -16,18 +16,41 @@ use rowan::SmolStr;
 
 /// Let's start with defining all kinds of tokens and
 /// composite nodes.
-use rowan::SyntaxKind;
 
-const L_PAREN: SyntaxKind = SyntaxKind(0); // '('
-const R_PAREN: SyntaxKind = SyntaxKind(1); // ')'
-const WORD: SyntaxKind = SyntaxKind(2); // '+', '15'
-const WHITESPACE: SyntaxKind = SyntaxKind(3); // whitespaces is explicit
-const ERROR: SyntaxKind = SyntaxKind(4); // as well as errors
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Props {}
+impl rowan::api::Props for Props {
+    fn debug_kind(kind: &SyntaxKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tag = match *kind {
+            L_PAREN => "L_PAREN",
+            R_PAREN => "R_PAREN",
+            WORD => "WORD",
+            WHITESPACE => "WHITESPACE",
+            ERROR => "ERROR",
+            LIST => "LIST",
+            ATOM => "ATOM",
+            ROOT => "ROOT",
+            _ => unreachable!(),
+        };
+        write!(f, "{}", tag)
+    }
+}
+
+type SyntaxKind = rowan::api::SyntaxKind<Props>;
+type SyntaxNode = rowan::api::SyntaxNode<Props>;
+type SyntaxToken = rowan::api::SyntaxToken<Props>;
+type SyntaxElement = rowan::api::SyntaxElement<Props>;
+
+const L_PAREN: SyntaxKind = SyntaxKind::new(0); // '('
+const R_PAREN: SyntaxKind = SyntaxKind::new(1); // ')'
+const WORD: SyntaxKind = SyntaxKind::new(2); // '+', '15'
+const WHITESPACE: SyntaxKind = SyntaxKind::new(3); // whitespaces is explicit
+const ERROR: SyntaxKind = SyntaxKind::new(4); // as well as errors
 
 // composite nodes
-const LIST: SyntaxKind = SyntaxKind(5); // `(+ 2 3)`
-const ATOM: SyntaxKind = SyntaxKind(6); // `+`, `15`, wraps a WORD token
-const ROOT: SyntaxKind = SyntaxKind(7); // top-level node: a list of s-expressions
+const LIST: SyntaxKind = SyntaxKind::new(5); // `(+ 2 3)`
+const ATOM: SyntaxKind = SyntaxKind::new(6); // `+`, `15`, wraps a WORD token
+const ROOT: SyntaxKind = SyntaxKind::new(7); // top-level node: a list of s-expressions
 
 /// GreenNode is an immutable tree, which is cheap to change,
 /// but doesn't contain offsets and parent pointers.
@@ -44,7 +67,6 @@ use rowan::GreenNodeBuilder;
 /// has identity semantics.
 /// SyntaxNode exist in borrowed and owned flavors,
 /// which is controlled by the `R` parameter.
-use rowan::cursor::SyntaxNode;
 
 struct Parse {
     green_node: rowan::GreenNode,
@@ -82,13 +104,13 @@ fn parse(text: &str) -> Parse {
     impl Parser {
         fn parse(mut self) -> Parse {
             // Make sure that the root node covers all source
-            self.builder.start_node(ROOT);
+            self.builder.start_node(ROOT.into());
             // Parse a list of S-expressions
             loop {
                 match self.sexp() {
                     SexpRes::Eof => break,
                     SexpRes::RParen => {
-                        self.builder.start_node(ERROR);
+                        self.builder.start_node(ERROR.into());
                         self.errors.push("unmatched `)`".to_string());
                         self.bump(); // be sure to chug along in case of error
                         self.builder.finish_node();
@@ -109,7 +131,7 @@ fn parse(text: &str) -> Parse {
         }
         fn list(&mut self) {
             // Start the list node
-            self.builder.start_node(LIST);
+            self.builder.start_node(LIST.into());
             self.bump(); // '('
             loop {
                 match self.sexp() {
@@ -140,7 +162,7 @@ fn parse(text: &str) -> Parse {
             match t {
                 L_PAREN => self.list(),
                 WORD => {
-                    self.builder.start_node(ATOM);
+                    self.builder.start_node(ATOM.into());
                     self.bump();
                     self.builder.finish_node();
                 }
@@ -151,7 +173,7 @@ fn parse(text: &str) -> Parse {
         }
         fn bump(&mut self) {
             let (kind, text) = self.tokens.pop().unwrap();
-            self.builder.token(kind, text);
+            self.builder.token(kind.into(), text);
         }
         fn current(&self) -> Option<SyntaxKind> {
             self.tokens.last().map(|(kind, _)| *kind)
@@ -341,7 +363,7 @@ nan
 
 fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
     fn tok(t: SyntaxKind) -> m_lexer::TokenKind {
-        m_lexer::TokenKind(t.0)
+        m_lexer::TokenKind(rowan::SyntaxKind::from(t).0)
     }
     fn kind(t: m_lexer::TokenKind) -> SyntaxKind {
         match t.0 {

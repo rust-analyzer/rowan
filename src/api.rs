@@ -5,13 +5,14 @@ use crate::{
     WalkEvent,
 };
 
-pub trait Props: Sized {
+pub trait Props: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
     fn debug_kind(kind: &SyntaxKind<Self>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&kind.raw, f)
     }
 }
 
-pub struct SyntaxKind<P: Props> {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SyntaxKind<P> {
     raw: crate::SyntaxKind,
     _p: PhantomData<P>,
 }
@@ -34,6 +35,7 @@ impl<P: Props> fmt::Debug for SyntaxKind<P> {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxNode<P: Props> {
     raw: cursor::SyntaxNode,
     _p: PhantomData<P>,
@@ -63,6 +65,7 @@ impl<P: Props> fmt::Display for SyntaxNode<P> {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxToken<P: Props> {
     raw: cursor::SyntaxToken,
     _p: PhantomData<P>,
@@ -103,6 +106,7 @@ impl<P: Props> fmt::Display for SyntaxToken<P> {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum SyntaxElement<P: Props> {
     Node(SyntaxNode<P>),
     Token(SyntaxToken<P>),
@@ -156,7 +160,16 @@ impl<P: Props> fmt::Display for SyntaxElement<P> {
     }
 }
 
+impl<P> SyntaxKind<P> {
+    pub const fn new(kind: u16) -> SyntaxKind<P> {
+        SyntaxKind { raw: crate::SyntaxKind(kind), _p: PhantomData }
+    }
+}
+
 impl<P: Props> SyntaxNode<P> {
+    pub fn new_root(green: GreenNode) -> SyntaxNode<P> {
+        SyntaxNode::from(cursor::SyntaxNode::new_root(green))
+    }
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         self.raw.replace_with(replacement)
     }
