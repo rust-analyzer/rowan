@@ -1,14 +1,17 @@
 use std::{
-    slice, ptr, iter, mem,
-    rc::Rc,
-    marker::PhantomData,
     cell::{Cell, RefCell},
+    fmt,
     hash::{Hash, Hasher},
+    iter,
+    marker::PhantomData,
+    mem, ptr,
+    rc::Rc,
+    slice,
 };
 
 use crate::{
-    GreenNode, GreenElement, TextUnit, TextRange, GreenToken, SyntaxKind, SmolStr, WalkEvent,
-    TokenAtOffset,
+    GreenElement, GreenNode, GreenToken, SmolStr, SyntaxKind, TextRange, TextUnit, TokenAtOffset,
+    WalkEvent,
 };
 
 #[derive(Debug, Clone)]
@@ -36,11 +39,28 @@ impl Hash for SyntaxNode {
     }
 }
 
+impl fmt::Display for SyntaxNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.preorder_with_tokens()
+            .filter_map(|event| match event {
+                WalkEvent::Enter(SyntaxElement::Token(token)) => Some(token),
+                _ => None,
+            })
+            .try_for_each(|it| fmt::Display::fmt(&it, f))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxToken {
     parent: SyntaxNode,
     index: u32,
     offset: TextUnit,
+}
+
+impl fmt::Display for SyntaxToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.text(), f)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -58,6 +78,15 @@ impl From<SyntaxNode> for SyntaxElement {
 impl From<SyntaxToken> for SyntaxElement {
     fn from(token: SyntaxToken) -> SyntaxElement {
         SyntaxElement::Token(token)
+    }
+}
+
+impl fmt::Display for SyntaxElement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SyntaxElement::Node(it) => fmt::Display::fmt(it, f),
+            SyntaxElement::Token(it) => fmt::Display::fmt(it, f),
+        }
     }
 }
 
@@ -214,16 +243,16 @@ impl SyntaxNode {
         }
     }
 
+    pub fn kind(&self) -> SyntaxKind {
+        self.green().kind()
+    }
+
     pub fn text_range(&self) -> TextRange {
         let offset = match self.0.kind.as_child() {
             Some((_, _, it)) => it,
             _ => 0.into(),
         };
         TextRange::offset_len(offset, self.green().text_len())
-    }
-
-    pub fn kind(&self) -> SyntaxKind {
-        self.green().kind()
     }
 
     pub fn green(&self) -> &GreenNode {
@@ -244,6 +273,38 @@ impl SyntaxNode {
 
     pub fn children_with_tokens(&self) -> SyntaxElementChildren {
         SyntaxElementChildren::new(self.clone())
+    }
+
+    #[inline]
+    pub fn first_child(&self) -> Option<SyntaxNode> {
+        let (node, (index, offset)) =
+            filter_nodes(self.green().children_from(0, self.text_range().start())).next()?;
+
+        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
+    }
+
+    pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
+        let (element, (index, offset)) =
+            self.green().children_from(0, self.text_range().start()).next()?;
+        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+    }
+
+    #[inline]
+    pub fn last_child(&self) -> Option<SyntaxNode> {
+        let (node, (index, offset)) = filter_nodes(
+            self.green().children_to(self.green().children().len(), self.text_range().end()),
+        )
+        .next()?;
+
+        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
+    }
+
+    pub fn last_child_or_token(&self) -> Option<SyntaxElement> {
+        let (element, (index, offset)) = self
+            .green()
+            .children_to(self.green().children().len(), self.text_range().end())
+            .next()?;
+        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
@@ -285,42 +346,6 @@ impl SyntaxNode {
         Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
     }
 
-    /// Get first child, excluding tokens.
-    #[inline]
-    pub fn first_child(&self) -> Option<SyntaxNode> {
-        let (node, (index, offset)) =
-            filter_nodes(self.green().children_from(0, self.text_range().start())).next()?;
-
-        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
-    }
-
-    /// Get the first, including tokens.
-    pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) =
-            self.green().children_from(0, self.text_range().start()).next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
-    }
-
-    /// Get last child, excluding tokens.
-    #[inline]
-    pub fn last_child(&self) -> Option<SyntaxNode> {
-        let (node, (index, offset)) = filter_nodes(
-            self.green().children_to(self.green().children().len(), self.text_range().end()),
-        )
-        .next()?;
-
-        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
-    }
-
-    /// Get last child, including tokens.
-    pub fn last_child_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) = self
-            .green()
-            .children_to(self.green().children().len(), self.text_range().end())
-            .next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
-    }
-
     /// Return the leftmost token in the subtree of this node
     #[inline]
     pub fn first_token(&self) -> Option<SyntaxToken> {
@@ -335,6 +360,20 @@ impl SyntaxNode {
 
     pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
         iter::successors(Some(self.clone()), SyntaxNode::parent)
+    }
+
+    pub fn descendants(&self) -> impl Iterator<Item = SyntaxNode> {
+        self.preorder().filter_map(|event| match event {
+            WalkEvent::Enter(node) => Some(node),
+            WalkEvent::Leave(_) => None,
+        })
+    }
+
+    pub fn descendants_with_tokens(&self) -> impl Iterator<Item = SyntaxElement> {
+        self.preorder_with_tokens().filter_map(|event| match event {
+            WalkEvent::Enter(it) => Some(it),
+            WalkEvent::Leave(_) => None,
+        })
     }
 
     /// Traverse the subtree rooted at the current node (including the current
@@ -491,16 +530,16 @@ impl SyntaxToken {
         parent.replace_with(new_parent)
     }
 
-    pub fn text_range(&self) -> TextRange {
-        TextRange::offset_len(self.offset, self.green().text_len())
-    }
-
     pub fn kind(&self) -> SyntaxKind {
         self.green().kind()
     }
 
     pub fn text(&self) -> &SmolStr {
         self.green().text()
+    }
+
+    pub fn text_range(&self) -> TextRange {
+        TextRange::offset_len(self.offset, self.green().text_len())
     }
 
     pub fn green(&self) -> &GreenToken {

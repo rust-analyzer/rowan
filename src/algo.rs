@@ -12,6 +12,15 @@ pub enum WalkEvent<T> {
     Leave(T),
 }
 
+impl<T> WalkEvent<T> {
+    pub fn map<F: FnOnce(T) -> U, U>(self, f: F) -> WalkEvent<U> {
+        match self {
+            WalkEvent::Enter(it) => WalkEvent::Enter(f(it)),
+            WalkEvent::Leave(it) => WalkEvent::Leave(f(it)),
+        }
+    }
+}
+
 /// There might be zero, one or two leaves at a given offset.
 #[derive(Clone, Debug)]
 pub enum TokenAtOffset<T> {
@@ -24,6 +33,14 @@ pub enum TokenAtOffset<T> {
 }
 
 impl<T> TokenAtOffset<T> {
+    pub fn map<F: Fn(T) -> U, U>(self, f: F) -> TokenAtOffset<U> {
+        match self {
+            TokenAtOffset::None => TokenAtOffset::None,
+            TokenAtOffset::Single(it) => TokenAtOffset::Single(f(it)),
+            TokenAtOffset::Between(l, r) => TokenAtOffset::Between(f(l), f(r)),
+        }
+    }
+    
     /// Convert to option, preferring the right leaf in case of a tie.
     pub fn right_biased(self) -> Option<T> {
         match self {
