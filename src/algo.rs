@@ -1,7 +1,6 @@
-use std::iter;
-use std::ops::Range;
+use std::{iter, ops::Range};
 
-use crate::{SyntaxNode, SyntaxElement, TextUnit, TextRange, SyntaxToken, SyntaxIndex};
+use crate::{TextRange, TextUnit};
 
 /// `WalkEvent` describes tree walking process.
 #[derive(Debug, Copy, Clone)]
@@ -40,7 +39,7 @@ impl<T> TokenAtOffset<T> {
             TokenAtOffset::Between(l, r) => TokenAtOffset::Between(f(l), f(r)),
         }
     }
-    
+
     /// Convert to option, preferring the right leaf in case of a tie.
     pub fn right_biased(self) -> Option<T> {
         match self {
@@ -80,213 +79,9 @@ impl<T> Iterator for TokenAtOffset<T> {
         match self {
             TokenAtOffset::None => (0, Some(0)),
             TokenAtOffset::Single(_) => (1, Some(1)),
-            TokenAtOffset::Between(_,_) => (2, Some(2)),
+            TokenAtOffset::Between(_, _) => (2, Some(2)),
         }
     }
 }
 
 impl<T> ExactSizeIterator for TokenAtOffset<T> {}
-
-/// Iterator over node's children, excluding tokens.
-#[derive(Debug)]
-pub struct SyntaxNodeChildren<'a> {
-    parent: &'a SyntaxNode,
-    iter: Range<u32>,
-}
-
-impl<'a> Iterator for SyntaxNodeChildren<'a> {
-    type Item = &'a SyntaxNode;
-
-    #[inline]
-    fn next(&mut self) -> Option<&'a SyntaxNode> {
-        self.iter.next().map(|i| self.parent.get_child(SyntaxIndex(i)).unwrap())
-    }
-}
-
-#[derive(Debug)]
-/// Iterator over node's children, including tokens.
-pub struct SyntaxElementChildren<'a> {
-    current: Option<SyntaxElement<'a>>,
-}
-
-impl<'a> Iterator for SyntaxElementChildren<'a> {
-    type Item = SyntaxElement<'a>;
-
-    #[inline]
-    fn next(&mut self) -> Option<SyntaxElement<'a>> {
-        self.current.take().map(|current| {
-            self.current = current.next_sibling_or_token();
-            current
-        })
-    }
-}
-
-impl SyntaxNode {
-    /// Get iterator over children, excluding tokens.
-    #[inline]
-    pub fn children(&self) -> SyntaxNodeChildren<'_> {
-        SyntaxNodeChildren { parent: self, iter: (0..self.children_len().0) }
-    }
-
-    /// Get iterator over children, including tokens.
-    #[inline]
-    pub fn children_with_tokens(&self) -> SyntaxElementChildren<'_> {
-        SyntaxElementChildren { current: self.first_child_or_token() }
-    }
-
-    /// All ancestors of the current node, including itself
-    #[inline]
-    pub fn ancestors(&self) -> impl Iterator<Item = &SyntaxNode> {
-        iter::successors(Some(self), |node| node.parent())
-    }
-
-    /// Traverse the subtree rooted at the current node (including the current
-    /// node) in preorder, excluding tokens.
-    #[inline]
-    pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<&SyntaxNode>> {
-        iter::successors(Some(WalkEvent::Enter(self)), move |pos| {
-            let next = match *pos {
-                WalkEvent::Enter(node) => match node.first_child() {
-                    Some(child) => WalkEvent::Enter(child),
-                    None => WalkEvent::Leave(node),
-                },
-                WalkEvent::Leave(node) => {
-                    if node == self {
-                        return None;
-                    }
-                    match node.next_sibling() {
-                        Some(sibling) => WalkEvent::Enter(sibling),
-                        None => WalkEvent::Leave(node.parent().unwrap()),
-                    }
-                }
-            };
-            Some(next)
-        })
-    }
-
-    /// Traverse the subtree rooted at the current node (including the current
-    /// node) in preorder, including tokens.
-    #[inline]
-    pub fn preorder_with_tokens<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = WalkEvent<SyntaxElement<'a>>> {
-        let start: SyntaxElement = self.into();
-        iter::successors(Some(WalkEvent::Enter(start)), move |pos| {
-            let next = match *pos {
-                WalkEvent::Enter(el) => match el {
-                    SyntaxElement::Node(node) => match node.first_child_or_token() {
-                        Some(child) => WalkEvent::Enter(child),
-                        None => WalkEvent::Leave(node.into()),
-                    },
-                    SyntaxElement::Token(token) => WalkEvent::Leave(token.into()),
-                },
-                WalkEvent::Leave(el) => {
-                    if el == start {
-                        return None;
-                    }
-                    match el.next_sibling_or_token() {
-                        Some(sibling) => WalkEvent::Enter(sibling),
-                        None => WalkEvent::Leave(el.parent().unwrap().into()),
-                    }
-                }
-            };
-            Some(next)
-        })
-    }
-
-    /// Returns common ancestor of the two nodes.
-    /// Precondition: nodes must be from the same tree.
-    pub fn common_ancestor<'a>(&'a self, other: &'a SyntaxNode) -> &'a SyntaxNode {
-        // TODO: use small-vec to memoize other's ancestors
-        for p in self.ancestors() {
-            if other.ancestors().any(|a| a == p) {
-                return p;
-            }
-        }
-        panic!("No common ancestor for {:?} and {:?}", self, other)
-    }
-
-    /// Find a token in the subtree corresponding to this node, which covers the offset.
-    /// Precondition: offset must be withing node's range.
-    pub fn token_at_offset<'a>(&'a self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'a>> {
-        // TODO: this could be faster if we first drill-down to node, and only
-        // then switch to token search. We should also replace explicit
-        // recursion with a loop.
-        let range = self.range();
-        assert!(
-            range.start() <= offset && offset <= range.end(),
-            "Bad offset: range {:?} offset {:?}",
-            range,
-            offset
-        );
-        if range.is_empty() {
-            return TokenAtOffset::None;
-        }
-
-        let mut children = self.children_with_tokens().filter(|child| {
-            let child_range = child.range();
-            !child_range.is_empty()
-                && (child_range.start() <= offset && offset <= child_range.end())
-        });
-
-        let left = children.next().unwrap();
-        let right = children.next();
-        assert!(children.next().is_none());
-
-        if let Some(right) = right {
-            match (left.token_at_offset(offset), right.token_at_offset(offset)) {
-                (TokenAtOffset::Single(left), TokenAtOffset::Single(right)) => {
-                    TokenAtOffset::Between(left, right)
-                }
-                _ => unreachable!(),
-            }
-        } else {
-            left.token_at_offset(offset)
-        }
-    }
-
-    /// Return the deepest node or token in the current subtree that fully
-    /// contains the range. If the range is empty and is contained in two leaf
-    /// nodes, either one can be returned. Precondition: range must be contained
-    /// withing the current node
-    pub fn covering_node(&self, range: TextRange) -> SyntaxElement {
-        let mut res: SyntaxElement = self.into();
-        loop {
-            assert!(
-                range.is_subrange(&res.range()),
-                "Bad range: node range {:?}, range {:?}",
-                res.range(),
-                range,
-            );
-            res = match res {
-                SyntaxElement::Token(_) => return res,
-                SyntaxElement::Node(node) => {
-                    match node
-                        .children_with_tokens()
-                        .find(|child| range.is_subrange(&child.range()))
-                    {
-                        Some(child) => child,
-                        None => return res,
-                    }
-                }
-            };
-        }
-    }
-
-    /// Number of memory bytes of occupied by subtree rooted at `self`.
-    pub fn memory_size_of_subtree(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self.green().memory_size_of_subtree()
-            + self.memory_size_of_red_children()
-    }
-}
-
-impl<'a> SyntaxElement<'a> {
-    fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<'a>> {
-        assert!(self.range().start() <= offset && offset <= self.range().end());
-        match *self {
-            SyntaxElement::Token(token) => TokenAtOffset::Single(token),
-            SyntaxElement::Node(node) => node.token_at_offset(offset),
-        }
-    }
-}

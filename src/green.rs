@@ -36,42 +36,6 @@ impl GreenNode {
     pub fn children(&self) -> &[GreenElement] {
         &self.children
     }
-
-    /// Gets the child at index.
-    pub(crate) fn get_child(&self, index: GreenIndex) -> Option<&GreenElement> {
-        self.children.get(index.0 as usize)
-    }
-
-    /// Number of memory bytes of occupied by subtree rooted at `self`.
-    pub(crate) fn memory_size_of_subtree(&self) -> usize {
-        let mut res = size_of::<Self>();
-        self.children().iter().for_each(|el| match el {
-            GreenElement::Token(token) => {
-                res += size_of::<GreenToken>();
-                if token.text.is_heap_allocated() {
-                    res += token.text.len();
-                }
-            }
-            GreenElement::Node(node) => res += node.memory_size_of_subtree(),
-        });
-
-        res
-    }
-}
-
-/// Index into a green node, which might refer to either Token or Node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct GreenIndex(pub(crate) u32);
-
-impl GreenIndex {
-    pub(crate) fn next(self) -> GreenIndex {
-        GreenIndex(self.0 + 1)
-    }
-
-    pub(crate) fn prev(self) -> GreenIndex {
-        // `GreenNode::get` does a bounds check anyway, so its ok to overflow
-        GreenIndex(self.0.wrapping_sub(1))
-    }
 }
 
 /// Leaf node in the immutable tree.
