@@ -17,8 +17,8 @@ use rowan::SmolStr;
 /// composite nodes.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum Props {}
-impl rowan::Props for Props {
+enum Lang {}
+impl rowan::Language for Lang {
     fn debug_kind(kind: &SyntaxKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag = match *kind {
             L_PAREN => "L_PAREN",
@@ -35,12 +35,12 @@ impl rowan::Props for Props {
     }
 }
 
-type SyntaxKind = rowan::SyntaxKind<Props>;
-type SyntaxNode = rowan::SyntaxNode<Props>;
+type SyntaxKind = rowan::SyntaxKind<Lang>;
+type SyntaxNode = rowan::SyntaxNode<Lang>;
 #[allow(unused)]
-type SyntaxToken = rowan::SyntaxToken<Props>;
+type SyntaxToken = rowan::SyntaxToken<Lang>;
 #[allow(unused)]
-type SyntaxElement = rowan::SyntaxElement<Props>;
+type SyntaxElement = rowan::SyntaxElement<Lang>;
 
 const L_PAREN: SyntaxKind = SyntaxKind::new(0); // '('
 const R_PAREN: SyntaxKind = SyntaxKind::new(1); // ')'
