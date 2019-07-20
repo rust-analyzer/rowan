@@ -14,7 +14,7 @@ mod green;
 pub mod cursor;
 pub mod api;
 mod syntax_text;
-mod algo;
+mod utility_types;
 
 // Reexport types for working with strings. We might be too opinionated about
 // these, as a custom interner might work better, but `SmolStr` is a pretty good
@@ -23,7 +23,7 @@ pub use smol_str::SmolStr;
 pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
-    algo::{TokenAtOffset, WalkEvent},
+    utility_types::{TokenAtOffset, WalkEvent},
     green::{Checkpoint, GreenElement, GreenNode, GreenNodeBuilder, GreenToken},
     syntax_text::SyntaxText,
     api::*,
