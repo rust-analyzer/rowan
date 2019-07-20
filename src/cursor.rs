@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-    GreenElement, GreenNode, GreenToken, SmolStr, SyntaxText, TextRange, TextUnit,
-    TokenAtOffset, WalkEvent, NodeOrToken,
+    GreenElement, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange, TextUnit,
+    TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -547,10 +547,7 @@ impl SyntaxToken {
     }
 
     pub fn green(&self) -> &GreenToken {
-        match &self.parent.green().children()[self.index as usize] {
-            NodeOrToken::Token(it) => it,
-            NodeOrToken::Node(_) => unreachable!(),
-        }
+        self.parent.green().children()[self.index as usize].as_token().unwrap()
     }
 
     pub fn parent(&self) -> SyntaxNode {
@@ -721,7 +718,7 @@ impl Iterator for SyntaxNodeChildren {
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.0.parent.clone();
         while let Some((element, index, offset)) = self.0.next() {
-            if let NodeOrToken::Node(node) = element {
+            if let Some(node) = element.as_node() {
                 return Some(SyntaxNode::new_child(node, parent, index, offset));
             }
         }

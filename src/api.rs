@@ -343,34 +343,6 @@ impl<L: Language> SyntaxElement<L> {
         }
     }
 
-    pub fn as_node(&self) -> Option<&SyntaxNode<L>> {
-        match self {
-            NodeOrToken::Node(it) => Some(it),
-            NodeOrToken::Token(_) => None,
-        }
-    }
-
-    pub fn into_node(self) -> Option<SyntaxNode<L>> {
-        match self {
-            NodeOrToken::Node(it) => Some(it),
-            NodeOrToken::Token(_) => None,
-        }
-    }
-
-    pub fn as_token(&self) -> Option<&SyntaxToken<L>> {
-        match self {
-            NodeOrToken::Node(_) => None,
-            NodeOrToken::Token(it) => Some(it),
-        }
-    }
-
-    pub fn into_token(self) -> Option<SyntaxToken<L>> {
-        match self {
-            NodeOrToken::Node(_) => None,
-            NodeOrToken::Token(it) => Some(it),
-        }
-    }
-
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         match self {
             NodeOrToken::Node(it) => it.next_sibling_or_token(),
