@@ -10,9 +10,13 @@ use std::{
 };
 
 use crate::{
-    GreenElement, GreenNode, GreenToken, SmolStr, SyntaxKind, TextRange, TextUnit, TokenAtOffset,
-    WalkEvent, SyntaxText,
+    GreenElement, GreenNode, GreenToken, SmolStr, SyntaxText, TextRange, TextUnit,
+    TokenAtOffset, WalkEvent,
 };
+
+/// SyntaxKind is a type tag for each token or node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SyntaxKind(pub u16);
 
 #[derive(Debug, Clone)]
 pub struct SyntaxNode(Rc<NodeData>);
@@ -476,7 +480,7 @@ impl SyntaxNode {
     /// contains the range. If the range is empty and is contained in two leaf
     /// nodes, either one can be returned. Precondition: range must be contained
     /// withing the current node
-    pub fn covering_node(&self, range: TextRange) -> SyntaxElement {
+    pub fn covering_element(&self, range: TextRange) -> SyntaxElement {
         let mut res: SyntaxElement = self.clone().into();
         loop {
             assert!(

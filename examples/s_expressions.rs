@@ -4,7 +4,6 @@
 //! ```
 //! (+ (* 15 2) 62)
 //! ```
-
 use std::fmt;
 
 /// Currently, rowan doesn't have a hook to add your own interner,
@@ -19,7 +18,7 @@ use rowan::SmolStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Props {}
-impl rowan::api::Props for Props {
+impl rowan::Props for Props {
     fn debug_kind(kind: &SyntaxKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let tag = match *kind {
             L_PAREN => "L_PAREN",
@@ -36,10 +35,12 @@ impl rowan::api::Props for Props {
     }
 }
 
-type SyntaxKind = rowan::api::SyntaxKind<Props>;
-type SyntaxNode = rowan::api::SyntaxNode<Props>;
-type SyntaxToken = rowan::api::SyntaxToken<Props>;
-type SyntaxElement = rowan::api::SyntaxElement<Props>;
+type SyntaxKind = rowan::SyntaxKind<Props>;
+type SyntaxNode = rowan::SyntaxNode<Props>;
+#[allow(unused)]
+type SyntaxToken = rowan::SyntaxToken<Props>;
+#[allow(unused)]
+type SyntaxElement = rowan::SyntaxElement<Props>;
 
 const L_PAREN: SyntaxKind = SyntaxKind::new(0); // '('
 const R_PAREN: SyntaxKind = SyntaxKind::new(1); // ')'
@@ -70,6 +71,7 @@ use rowan::GreenNodeBuilder;
 
 struct Parse {
     green_node: rowan::GreenNode,
+    #[allow(unused)]
     errors: Vec<String>,
 }
 
@@ -363,7 +365,7 @@ nan
 
 fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
     fn tok(t: SyntaxKind) -> m_lexer::TokenKind {
-        m_lexer::TokenKind(rowan::SyntaxKind::from(t).0)
+        m_lexer::TokenKind(rowan::cursor::SyntaxKind::from(t).0)
     }
     fn kind(t: m_lexer::TokenKind) -> SyntaxKind {
         match t.0 {

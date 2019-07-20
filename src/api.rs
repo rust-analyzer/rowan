@@ -13,18 +13,18 @@ pub trait Props: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash 
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxKind<P> {
-    raw: crate::SyntaxKind,
+    raw: cursor::SyntaxKind,
     _p: PhantomData<P>,
 }
 
-impl<P: Props> From<crate::SyntaxKind> for SyntaxKind<P> {
-    fn from(raw: crate::SyntaxKind) -> SyntaxKind<P> {
+impl<P: Props> From<cursor::SyntaxKind> for SyntaxKind<P> {
+    fn from(raw: cursor::SyntaxKind) -> SyntaxKind<P> {
         SyntaxKind { raw, _p: PhantomData }
     }
 }
 
-impl<P: Props> From<SyntaxKind<P>> for crate::SyntaxKind {
-    fn from(kind: SyntaxKind<P>) -> crate::SyntaxKind {
+impl<P: Props> From<SyntaxKind<P>> for cursor::SyntaxKind {
+    fn from(kind: SyntaxKind<P>) -> cursor::SyntaxKind {
         kind.raw
     }
 }
@@ -162,7 +162,7 @@ impl<P: Props> fmt::Display for SyntaxElement<P> {
 
 impl<P> SyntaxKind<P> {
     pub const fn new(kind: u16) -> SyntaxKind<P> {
-        SyntaxKind { raw: crate::SyntaxKind(kind), _p: PhantomData }
+        SyntaxKind { raw: cursor::SyntaxKind(kind), _p: PhantomData }
     }
 }
 
@@ -266,8 +266,8 @@ impl<P: Props> SyntaxNode<P> {
         self.raw.token_at_offset(offset).map(SyntaxToken::from)
     }
 
-    pub fn covering_node(&self, range: TextRange) -> SyntaxElement<P> {
-        SyntaxElement::from(self.raw.covering_node(range))
+    pub fn covering_element(&self, range: TextRange) -> SyntaxElement<P> {
+        SyntaxElement::from(self.raw.covering_element(range))
     }
 }
 
