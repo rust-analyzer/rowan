@@ -6,33 +6,10 @@ use crate::{
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
-    fn debug_kind(kind: &SyntaxKind<Self>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&kind.raw, f)
-    }
-}
+    type Kind: fmt::Debug;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SyntaxKind<L> {
-    raw: cursor::SyntaxKind,
-    _p: PhantomData<L>,
-}
-
-impl<L: Language> From<cursor::SyntaxKind> for SyntaxKind<L> {
-    fn from(raw: cursor::SyntaxKind) -> SyntaxKind<L> {
-        SyntaxKind { raw, _p: PhantomData }
-    }
-}
-
-impl<L: Language> From<SyntaxKind<L>> for cursor::SyntaxKind {
-    fn from(kind: SyntaxKind<L>) -> cursor::SyntaxKind {
-        kind.raw
-    }
-}
-
-impl<L: Language> fmt::Debug for SyntaxKind<L> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Language::debug_kind(self, f)
-    }
+    fn kind_from_raw(raw: cursor::SyntaxKind) -> Self::Kind;
+    fn kind_to_raw(kind: Self::Kind) -> cursor::SyntaxKind;
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -168,12 +145,6 @@ impl<L: Language> fmt::Display for SyntaxElement<L> {
     }
 }
 
-impl<L> SyntaxKind<L> {
-    pub const fn new(kind: u16) -> SyntaxKind<L> {
-        SyntaxKind { raw: cursor::SyntaxKind(kind), _p: PhantomData }
-    }
-}
-
 impl<L: Language> SyntaxNode<L> {
     pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))
@@ -182,8 +153,8 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.replace_with(replacement)
     }
 
-    pub fn kind(&self) -> SyntaxKind<L> {
-        SyntaxKind::from(self.raw.kind())
+    pub fn kind(&self) -> L::Kind {
+        L::kind_from_raw(self.raw.kind())
     }
 
     pub fn text_range(&self) -> TextRange {
@@ -200,6 +171,10 @@ impl<L: Language> SyntaxNode<L> {
 
     pub fn parent(&self) -> Option<SyntaxNode<L>> {
         self.raw.parent().map(Self::from)
+    }
+
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {
+        self.raw.ancestors().map(SyntaxNode::from)
     }
 
     pub fn children(&self) -> SyntaxNodeChildren<L> {
@@ -250,10 +225,6 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.last_token().map(SyntaxToken::from)
     }
 
-    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {
-        self.raw.ancestors().map(SyntaxNode::from)
-    }
-
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode<L>> {
         self.raw.siblings(direction).map(SyntaxNode::from)
     }
@@ -295,8 +266,8 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.replace_with(new_token)
     }
 
-    pub fn kind(&self) -> SyntaxKind<L> {
-        SyntaxKind::from(self.raw.kind())
+    pub fn kind(&self) -> L::Kind {
+        L::kind_from_raw(self.raw.kind())
     }
 
     pub fn text_range(&self) -> TextRange {
@@ -313,6 +284,10 @@ impl<L: Language> SyntaxToken<L> {
 
     pub fn parent(&self) -> SyntaxNode<L> {
         SyntaxNode::from(self.raw.parent())
+    }
+
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {
+        self.raw.ancestors().map(SyntaxNode::from)
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
@@ -347,7 +322,7 @@ impl<L: Language> SyntaxElement<L> {
         }
     }
 
-    pub fn kind(&self) -> SyntaxKind<L> {
+    pub fn kind(&self) -> L::Kind {
         match self {
             NodeOrToken::Node(it) => it.kind(),
             NodeOrToken::Token(it) => it.kind(),
@@ -358,6 +333,13 @@ impl<L: Language> SyntaxElement<L> {
         match self {
             NodeOrToken::Node(it) => it.parent(),
             NodeOrToken::Token(it) => Some(it.parent()),
+        }
+    }
+
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.ancestors(),
+            NodeOrToken::Token(it) => it.parent().ancestors(),
         }
     }
 
@@ -376,6 +358,7 @@ impl<L: Language> SyntaxElement<L> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SyntaxNodeChildren<L: Language> {
     raw: cursor::SyntaxNodeChildren,
     _p: PhantomData<L>,
@@ -388,6 +371,7 @@ impl<L: Language> Iterator for SyntaxNodeChildren<L> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SyntaxElementChildren<L: Language> {
     raw: cursor::SyntaxElementChildren,
     _p: PhantomData<L>,

@@ -271,6 +271,10 @@ impl SyntaxNode {
         }
     }
 
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+        iter::successors(Some(self.clone()), SyntaxNode::parent)
+    }
+
     pub fn children(&self) -> SyntaxNodeChildren {
         SyntaxNodeChildren::new(self.clone())
     }
@@ -360,10 +364,6 @@ impl SyntaxNode {
     #[inline]
     pub fn last_token(&self) -> Option<SyntaxToken> {
         self.last_child_or_token()?.last_token()
-    }
-
-    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
-        iter::successors(Some(self.clone()), SyntaxNode::parent)
     }
 
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode> {
@@ -572,6 +572,10 @@ impl SyntaxToken {
         self.parent.clone()
     }
 
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+        self.parent().ancestors()
+    }
+
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
         let (element, (index, offset)) = self
             .parent
@@ -661,6 +665,13 @@ impl SyntaxElement {
         match self {
             NodeOrToken::Node(it) => it.parent(),
             NodeOrToken::Token(it) => Some(it.parent()),
+        }
+    }
+
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+        match self {
+            NodeOrToken::Node(it) => it.ancestors(),
+            NodeOrToken::Token(it) => it.parent().ancestors(),
         }
     }
 
