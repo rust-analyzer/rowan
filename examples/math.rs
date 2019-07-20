@@ -12,9 +12,9 @@
 //!         - "3" Token(Number)
 //!     - "+" Token(Add)
 //!     - "4" Token(Number)
-extern crate rowan;
 
-use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement, SyntaxKind, TreeArc, SyntaxNode};
+use rowan::{GreenNodeBuilder, SmolStr};
+use rowan::cursor::{SyntaxElement, SyntaxKind, SyntaxNode};
 use std::iter::Peekable;
 
 const WHITESPACE: SyntaxKind = SyntaxKind(0);
@@ -71,12 +71,12 @@ impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
     fn parse_add(&mut self) {
         self.handle_operation(&[ADD, SUB], Self::parse_mul)
     }
-    fn parse(mut self) -> TreeArc<SyntaxNode> {
+    fn parse(mut self) -> SyntaxNode {
         self.builder.start_node(ROOT.into());
         self.parse_add();
         self.builder.finish_node();
 
-        SyntaxNode::new(self.builder.finish(), None)
+        SyntaxNode::new_root(self.builder.finish())
     }
 }
 
@@ -118,5 +118,5 @@ fn main() {
         .peekable(),
     }
     .parse();
-    print(0, (&*ast).into());
+    print(0, ast.into());
 }
