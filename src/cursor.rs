@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     GreenElement, GreenNode, GreenToken, SmolStr, SyntaxText, TextRange, TextUnit,
-    TokenAtOffset, WalkEvent,
+    TokenAtOffset, WalkEvent, NodeOrToken,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -47,7 +47,7 @@ impl fmt::Display for SyntaxNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.preorder_with_tokens()
             .filter_map(|event| match event {
-                WalkEvent::Enter(SyntaxElement::Token(token)) => Some(token),
+                WalkEvent::Enter(NodeOrToken::Token(token)) => Some(token),
                 _ => None,
             })
             .try_for_each(|it| fmt::Display::fmt(&it, f))
@@ -67,29 +67,25 @@ impl fmt::Display for SyntaxToken {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SyntaxElement {
-    Node(SyntaxNode),
-    Token(SyntaxToken),
-}
+pub(crate) type SyntaxElement = NodeOrToken<SyntaxNode, SyntaxToken>;
 
 impl From<SyntaxNode> for SyntaxElement {
     fn from(node: SyntaxNode) -> SyntaxElement {
-        SyntaxElement::Node(node)
+        NodeOrToken::Node(node)
     }
 }
 
 impl From<SyntaxToken> for SyntaxElement {
     fn from(token: SyntaxToken) -> SyntaxElement {
-        SyntaxElement::Token(token)
+        NodeOrToken::Token(token)
     }
 }
 
 impl fmt::Display for SyntaxElement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SyntaxElement::Node(it) => fmt::Display::fmt(it, f),
-            SyntaxElement::Token(it) => fmt::Display::fmt(it, f),
+            NodeOrToken::Node(it) => fmt::Display::fmt(it, f),
+            NodeOrToken::Token(it) => fmt::Display::fmt(it, f),
         }
     }
 }
@@ -294,7 +290,7 @@ impl SyntaxNode {
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
         let (element, (index, offset)) =
             self.green().children_from(0, self.text_range().start()).next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+        Some(NodeOrToken::new(element, self.clone(), index as u32, offset))
     }
 
     #[inline]
@@ -312,7 +308,7 @@ impl SyntaxNode {
             .green()
             .children_to(self.green().children().len(), self.text_range().end())
             .next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+        Some(NodeOrToken::new(element, self.clone(), index as u32, offset))
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
@@ -332,7 +328,7 @@ impl SyntaxNode {
         let (element, (index, offset)) =
             parent.green().children_from((index + 1) as usize, self.text_range().end()).next()?;
 
-        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
+        Some(NodeOrToken::new(element, parent.clone(), index as u32, offset))
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
@@ -351,7 +347,7 @@ impl SyntaxNode {
         let (element, (index, offset)) =
             parent.green().children_to(index as usize, self.text_range().start()).next()?;
 
-        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
+        Some(NodeOrToken::new(element, parent.clone(), index as u32, offset))
     }
 
     /// Return the leftmost token in the subtree of this node
@@ -417,11 +413,11 @@ impl SyntaxNode {
         iter::successors(Some(WalkEvent::Enter(start.clone())), move |pos| {
             let next = match pos {
                 WalkEvent::Enter(el) => match el {
-                    SyntaxElement::Node(node) => match node.first_child_or_token() {
+                    NodeOrToken::Node(node) => match node.first_child_or_token() {
                         Some(child) => WalkEvent::Enter(child),
                         None => WalkEvent::Leave(node.clone().into()),
                     },
-                    SyntaxElement::Token(token) => WalkEvent::Leave(token.clone().into()),
+                    NodeOrToken::Token(token) => WalkEvent::Leave(token.clone().into()),
                 },
                 WalkEvent::Leave(el) => {
                     if el == &start {
@@ -490,8 +486,8 @@ impl SyntaxNode {
                 range,
             );
             res = match &res {
-                SyntaxElement::Token(_) => return res,
-                SyntaxElement::Node(node) => {
+                NodeOrToken::Token(_) => return res,
+                NodeOrToken::Node(node) => {
                     match node
                         .children_with_tokens()
                         .find(|child| range.is_subrange(&child.text_range()))
@@ -552,8 +548,8 @@ impl SyntaxToken {
 
     pub fn green(&self) -> &GreenToken {
         match &self.parent.green().children()[self.index as usize] {
-            GreenElement::Token(it) => it,
-            GreenElement::Node(_) => unreachable!(),
+            NodeOrToken::Token(it) => it,
+            NodeOrToken::Node(_) => unreachable!(),
         }
     }
 
@@ -568,7 +564,7 @@ impl SyntaxToken {
             .children_from((self.index + 1) as usize, self.text_range().end())
             .next()?;
 
-        Some(SyntaxElement::new(element, self.parent(), index as u32, offset))
+        Some(NodeOrToken::new(element, self.parent(), index as u32, offset))
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
@@ -579,7 +575,7 @@ impl SyntaxToken {
             .children_to(self.index as usize, self.text_range().start())
             .next()?;
 
-        Some(SyntaxElement::new(element, self.parent(), index as u32, offset))
+        Some(NodeOrToken::new(element, self.parent(), index as u32, offset))
     }
 
     /// Next token in the file (i.e, not necessary a sibling)
@@ -614,69 +610,69 @@ impl SyntaxElement {
         offset: TextUnit,
     ) -> SyntaxElement {
         match element {
-            GreenElement::Node(node) => {
+            NodeOrToken::Node(node) => {
                 SyntaxNode::new_child(node, parent, index as u32, offset).into()
             }
-            GreenElement::Token(_) => SyntaxToken::new(parent, index as u32, offset).into(),
+            NodeOrToken::Token(_) => SyntaxToken::new(parent, index as u32, offset).into(),
         }
     }
 
     pub fn text_range(&self) -> TextRange {
         match self {
-            SyntaxElement::Node(it) => it.text_range(),
-            SyntaxElement::Token(it) => it.text_range(),
+            NodeOrToken::Node(it) => it.text_range(),
+            NodeOrToken::Token(it) => it.text_range(),
         }
     }
 
     pub fn kind(&self) -> SyntaxKind {
         match self {
-            SyntaxElement::Node(it) => it.kind(),
-            SyntaxElement::Token(it) => it.kind(),
+            NodeOrToken::Node(it) => it.kind(),
+            NodeOrToken::Token(it) => it.kind(),
         }
     }
 
     pub fn parent(&self) -> Option<SyntaxNode> {
         match self {
-            SyntaxElement::Node(it) => it.parent(),
-            SyntaxElement::Token(it) => Some(it.parent()),
+            NodeOrToken::Node(it) => it.parent(),
+            NodeOrToken::Token(it) => Some(it.parent()),
         }
     }
 
     #[inline]
     pub fn first_token(&self) -> Option<SyntaxToken> {
         match self {
-            SyntaxElement::Node(it) => it.first_token(),
-            SyntaxElement::Token(it) => Some(it.clone()),
+            NodeOrToken::Node(it) => it.first_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
         }
     }
 
     #[inline]
     pub fn last_token(&self) -> Option<SyntaxToken> {
         match self {
-            SyntaxElement::Node(it) => it.last_token(),
-            SyntaxElement::Token(it) => Some(it.clone()),
+            NodeOrToken::Node(it) => it.last_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
         }
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
         match self {
-            SyntaxElement::Node(it) => it.next_sibling_or_token(),
-            SyntaxElement::Token(it) => it.next_sibling_or_token(),
+            NodeOrToken::Node(it) => it.next_sibling_or_token(),
+            NodeOrToken::Token(it) => it.next_sibling_or_token(),
         }
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
         match self {
-            SyntaxElement::Node(it) => it.prev_sibling_or_token(),
-            SyntaxElement::Token(it) => it.prev_sibling_or_token(),
+            NodeOrToken::Node(it) => it.prev_sibling_or_token(),
+            NodeOrToken::Token(it) => it.prev_sibling_or_token(),
         }
     }
 
     fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken> {
         assert!(self.text_range().start() <= offset && offset <= self.text_range().end());
         match self {
-            SyntaxElement::Token(token) => TokenAtOffset::Single(token.clone()),
-            SyntaxElement::Node(node) => node.token_at_offset(offset),
+            NodeOrToken::Token(token) => TokenAtOffset::Single(token.clone()),
+            NodeOrToken::Node(node) => node.token_at_offset(offset),
         }
     }
 }
@@ -725,7 +721,7 @@ impl Iterator for SyntaxNodeChildren {
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.0.parent.clone();
         while let Some((element, index, offset)) = self.0.next() {
-            if let GreenElement::Node(node) = element {
+            if let NodeOrToken::Node(node) = element {
                 return Some(SyntaxNode::new_child(node, parent, index, offset));
             }
         }
@@ -746,7 +742,7 @@ impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.0.parent.clone();
-        self.0.next().map(|(green, index, offset)| SyntaxElement::new(green, parent, index, offset))
+        self.0.next().map(|(green, index, offset)| NodeOrToken::new(green, parent, index, offset))
     }
 }
 
@@ -779,7 +775,7 @@ fn filter_nodes<'a, I: Iterator<Item = (&'a GreenElement, T)>, T>(
     iter: I,
 ) -> impl Iterator<Item = (&'a GreenNode, T)> {
     iter.filter_map(|(element, data)| match element {
-        GreenElement::Node(it) => Some((it, data)),
-        GreenElement::Token(_) => None,
+        NodeOrToken::Node(it) => Some((it, data)),
+        NodeOrToken::Token(_) => None,
     })
 }

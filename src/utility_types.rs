@@ -2,6 +2,12 @@ use std::{iter, ops::Range};
 
 use crate::{TextRange, TextUnit};
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NodeOrToken<N, T> {
+    Node(N),
+    Token(T),
+}
+
 /// `WalkEvent` describes tree walking process.
 #[derive(Debug, Copy, Clone)]
 pub enum WalkEvent<T> {

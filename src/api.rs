@@ -1,8 +1,8 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    cursor, GreenNode, GreenToken, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset,
-    WalkEvent,
+    cursor, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange, TextUnit,
+    TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -106,17 +106,13 @@ impl<L: Language> fmt::Display for SyntaxToken<L> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub enum SyntaxElement<L: Language> {
-    Node(SyntaxNode<L>),
-    Token(SyntaxToken<L>),
-}
+pub(crate) type SyntaxElement<L> = NodeOrToken<SyntaxNode<L>, SyntaxToken<L>>;
 
 impl<L: Language> From<cursor::SyntaxElement> for SyntaxElement<L> {
     fn from(raw: cursor::SyntaxElement) -> SyntaxElement<L> {
         match raw {
-            cursor::SyntaxElement::Node(it) => SyntaxElement::Node(it.into()),
-            cursor::SyntaxElement::Token(it) => SyntaxElement::Token(it.into()),
+            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
+            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
         }
     }
 }
@@ -124,38 +120,29 @@ impl<L: Language> From<cursor::SyntaxElement> for SyntaxElement<L> {
 impl<L: Language> From<SyntaxElement<L>> for cursor::SyntaxElement {
     fn from(element: SyntaxElement<L>) -> cursor::SyntaxElement {
         match element {
-            SyntaxElement::Node(it) => cursor::SyntaxElement::Node(it.into()),
-            SyntaxElement::Token(it) => cursor::SyntaxElement::Token(it.into()),
+            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
+            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
         }
     }
 }
 
 impl<L: Language> From<SyntaxNode<L>> for SyntaxElement<L> {
     fn from(node: SyntaxNode<L>) -> SyntaxElement<L> {
-        SyntaxElement::Node(node)
+        NodeOrToken::Node(node)
     }
 }
 
 impl<L: Language> From<SyntaxToken<L>> for SyntaxElement<L> {
     fn from(token: SyntaxToken<L>) -> SyntaxElement<L> {
-        SyntaxElement::Token(token)
-    }
-}
-
-impl<L: Language> fmt::Debug for SyntaxElement<L> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SyntaxElement::Node(it) => fmt::Debug::fmt(it, f),
-            SyntaxElement::Token(it) => fmt::Debug::fmt(it, f),
-        }
+        NodeOrToken::Token(token)
     }
 }
 
 impl<L: Language> fmt::Display for SyntaxElement<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SyntaxElement::Node(it) => fmt::Display::fmt(it, f),
-            SyntaxElement::Token(it) => fmt::Display::fmt(it, f),
+            NodeOrToken::Node(it) => fmt::Display::fmt(it, f),
+            NodeOrToken::Token(it) => fmt::Display::fmt(it, f),
         }
     }
 }
@@ -207,7 +194,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn first_child_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.first_child_or_token().map(SyntaxElement::from)
+        self.raw.first_child_or_token().map(NodeOrToken::from)
     }
 
     pub fn last_child(&self) -> Option<SyntaxNode<L>> {
@@ -215,7 +202,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn last_child_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.last_child_or_token().map(SyntaxElement::from)
+        self.raw.last_child_or_token().map(NodeOrToken::from)
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode<L>> {
@@ -223,7 +210,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.next_sibling_or_token().map(SyntaxElement::from)
+        self.raw.next_sibling_or_token().map(NodeOrToken::from)
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode<L>> {
@@ -231,7 +218,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.prev_sibling_or_token().map(SyntaxElement::from)
+        self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
 
     pub fn first_token(&self) -> Option<SyntaxToken<L>> {
@@ -251,7 +238,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn descendants_with_tokens(&self) -> impl Iterator<Item = SyntaxElement<L>> {
-        self.raw.descendants_with_tokens().map(SyntaxElement::from)
+        self.raw.descendants_with_tokens().map(NodeOrToken::from)
     }
 
     pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<SyntaxNode<L>>> {
@@ -259,7 +246,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn preorder_with_tokens(&self) -> impl Iterator<Item = WalkEvent<SyntaxElement<L>>> {
-        self.raw.preorder_with_tokens().map(|event| event.map(SyntaxElement::from))
+        self.raw.preorder_with_tokens().map(|event| event.map(NodeOrToken::from))
     }
 
     pub fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<L>> {
@@ -267,7 +254,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn covering_element(&self, range: TextRange) -> SyntaxElement<L> {
-        SyntaxElement::from(self.raw.covering_element(range))
+        NodeOrToken::from(self.raw.covering_element(range))
     }
 }
 
@@ -297,11 +284,11 @@ impl<L: Language> SyntaxToken<L> {
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.next_sibling_or_token().map(SyntaxElement::from)
+        self.raw.next_sibling_or_token().map(NodeOrToken::from)
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.prev_sibling_or_token().map(SyntaxElement::from)
+        self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
 
     pub fn next_token(&self) -> Option<SyntaxToken<L>> {
@@ -316,64 +303,64 @@ impl<L: Language> SyntaxToken<L> {
 impl<L: Language> SyntaxElement<L> {
     pub fn text_range(&self) -> TextRange {
         match self {
-            SyntaxElement::Node(it) => it.text_range(),
-            SyntaxElement::Token(it) => it.text_range(),
+            NodeOrToken::Node(it) => it.text_range(),
+            NodeOrToken::Token(it) => it.text_range(),
         }
     }
 
     pub fn kind(&self) -> SyntaxKind<L> {
         match self {
-            SyntaxElement::Node(it) => it.kind(),
-            SyntaxElement::Token(it) => it.kind(),
+            NodeOrToken::Node(it) => it.kind(),
+            NodeOrToken::Token(it) => it.kind(),
         }
     }
 
     pub fn parent(&self) -> Option<SyntaxNode<L>> {
         match self {
-            SyntaxElement::Node(it) => it.parent(),
-            SyntaxElement::Token(it) => Some(it.parent()),
+            NodeOrToken::Node(it) => it.parent(),
+            NodeOrToken::Token(it) => Some(it.parent()),
         }
     }
 
     pub fn as_node(&self) -> Option<&SyntaxNode<L>> {
         match self {
-            SyntaxElement::Node(it) => Some(it),
-            SyntaxElement::Token(_) => None,
+            NodeOrToken::Node(it) => Some(it),
+            NodeOrToken::Token(_) => None,
         }
     }
 
     pub fn into_node(self) -> Option<SyntaxNode<L>> {
         match self {
-            SyntaxElement::Node(it) => Some(it),
-            SyntaxElement::Token(_) => None,
+            NodeOrToken::Node(it) => Some(it),
+            NodeOrToken::Token(_) => None,
         }
     }
 
     pub fn as_token(&self) -> Option<&SyntaxToken<L>> {
         match self {
-            SyntaxElement::Node(_) => None,
-            SyntaxElement::Token(it) => Some(it),
+            NodeOrToken::Node(_) => None,
+            NodeOrToken::Token(it) => Some(it),
         }
     }
 
     pub fn into_token(self) -> Option<SyntaxToken<L>> {
         match self {
-            SyntaxElement::Node(_) => None,
-            SyntaxElement::Token(it) => Some(it),
+            NodeOrToken::Node(_) => None,
+            NodeOrToken::Token(it) => Some(it),
         }
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         match self {
-            SyntaxElement::Node(it) => it.next_sibling_or_token(),
-            SyntaxElement::Token(it) => it.next_sibling_or_token(),
+            NodeOrToken::Node(it) => it.next_sibling_or_token(),
+            NodeOrToken::Token(it) => it.next_sibling_or_token(),
         }
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         match self {
-            SyntaxElement::Node(it) => it.prev_sibling_or_token(),
-            SyntaxElement::Token(it) => it.prev_sibling_or_token(),
+            NodeOrToken::Node(it) => it.prev_sibling_or_token(),
+            NodeOrToken::Token(it) => it.prev_sibling_or_token(),
         }
     }
 }
@@ -398,6 +385,6 @@ pub struct SyntaxElementChildren<L: Language> {
 impl<L: Language> Iterator for SyntaxElementChildren<L> {
     type Item = SyntaxElement<L>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(SyntaxElement::from)
+        self.raw.next().map(NodeOrToken::from)
     }
 }

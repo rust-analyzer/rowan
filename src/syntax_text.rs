@@ -2,7 +2,7 @@ use std::{fmt, ops};
 
 use crate::{
     cursor::{SyntaxElement, SyntaxNode},
-    SmolStr, TextRange, TextUnit,
+    NodeOrToken, SmolStr, TextRange, TextUnit,
 };
 
 #[derive(Clone)]
@@ -86,7 +86,7 @@ impl SyntaxText {
     {
         self.node.descendants_with_tokens().try_fold(init, move |acc, element| {
             let res = match element {
-                SyntaxElement::Token(token) => {
+                NodeOrToken::Token(token) => {
                     let token_range = token.text_range();
                     let range = match self.range.intersection(&token_range) {
                         None => return Ok(acc),
@@ -100,7 +100,7 @@ impl SyntaxText {
                     };
                     f(acc, slice)?
                 }
-                SyntaxElement::Node(_) => acc,
+                NodeOrToken::Node(_) => acc,
             };
             Ok(res)
         })
