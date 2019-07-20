@@ -25,7 +25,7 @@ pub use smol_str::SmolStr;
 pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
-    utility_types::{TokenAtOffset, WalkEvent, NodeOrToken},
+    utility_types::{TokenAtOffset, WalkEvent, NodeOrToken, Direction},
     green::{Checkpoint, GreenNode, GreenNodeBuilder, GreenToken},
     syntax_text::SyntaxText,
     api::*,

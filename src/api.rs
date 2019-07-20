@@ -1,8 +1,8 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    cursor, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange, TextUnit,
-    TokenAtOffset, WalkEvent,
+    cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
+    TextUnit, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -254,6 +254,17 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.ancestors().map(SyntaxNode::from)
     }
 
+    pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode<L>> {
+        self.raw.siblings(direction).map(SyntaxNode::from)
+    }
+
+    pub fn siblings_with_tokens(
+        &self,
+        direction: Direction,
+    ) -> impl Iterator<Item = SyntaxElement<L>> {
+        self.raw.siblings_with_tokens(direction).map(SyntaxElement::from)
+    }
+
     pub fn descendants(&self) -> impl Iterator<Item = SyntaxNode<L>> {
         self.raw.descendants().map(SyntaxNode::from)
     }
@@ -310,6 +321,13 @@ impl<L: Language> SyntaxToken<L> {
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
+    }
+
+    pub fn siblings_with_tokens(
+        &self,
+        direction: Direction,
+    ) -> impl Iterator<Item = SyntaxElement<L>> {
+        self.raw.siblings_with_tokens(direction).map(SyntaxElement::from)
     }
 
     pub fn next_token(&self) -> Option<SyntaxToken<L>> {

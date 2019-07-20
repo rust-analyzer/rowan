@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-    GreenElement, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange, TextUnit,
-    TokenAtOffset, WalkEvent,
+    Direction, GreenElement, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
+    TextUnit, TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -366,6 +366,24 @@ impl SyntaxNode {
         iter::successors(Some(self.clone()), SyntaxNode::parent)
     }
 
+    pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode> {
+        iter::successors(Some(self.clone()), move |node| match direction {
+            Direction::Next => node.next_sibling(),
+            Direction::Prev => node.prev_sibling(),
+        })
+    }
+
+    pub fn siblings_with_tokens(
+        &self,
+        direction: Direction,
+    ) -> impl Iterator<Item = SyntaxElement> {
+        let me: SyntaxElement = self.clone().into();
+        iter::successors(Some(me), move |el| match direction {
+            Direction::Next => el.next_sibling_or_token(),
+            Direction::Prev => el.prev_sibling_or_token(),
+        })
+    }
+
     pub fn descendants(&self) -> impl Iterator<Item = SyntaxNode> {
         self.preorder().filter_map(|event| match event {
             WalkEvent::Enter(node) => Some(node),
@@ -575,7 +593,18 @@ impl SyntaxToken {
         Some(NodeOrToken::new(element, self.parent(), index as u32, offset))
     }
 
-    /// Next token in the file (i.e, not necessary a sibling)
+    pub fn siblings_with_tokens(
+        &self,
+        direction: Direction,
+    ) -> impl Iterator<Item = SyntaxElement> {
+        let me: SyntaxElement = self.clone().into();
+        iter::successors(Some(me), move |el| match direction {
+            Direction::Next => el.next_sibling_or_token(),
+            Direction::Prev => el.prev_sibling_or_token(),
+        })
+    }
+
+    /// Next token in the tree (i.e, not necessary a sibling)
     pub fn next_token(&self) -> Option<SyntaxToken> {
         match self.next_sibling_or_token() {
             Some(element) => element.first_token(),
@@ -586,7 +615,7 @@ impl SyntaxToken {
                 .and_then(|element| element.first_token()),
         }
     }
-    /// Previous token in the file (i.e, not necessary a sibling)
+    /// Previous token in the tree (i.e, not necessary a sibling)
     pub fn prev_token(&self) -> Option<SyntaxToken> {
         match self.prev_sibling_or_token() {
             Some(element) => element.last_token(),
