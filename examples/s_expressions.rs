@@ -4,7 +4,6 @@
 //! ```
 //! (+ (* 15 2) 62)
 //! ```
-use std::fmt;
 
 /// Currently, rowan doesn't have a hook to add your own interner,
 /// but `SmolStr` should be a "good enough" type for representing
@@ -15,43 +14,47 @@ use rowan::SmolStr;
 
 /// Let's start with defining all kinds of tokens and
 /// composite nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(non_camel_case_types)]
+#[repr(u16)]
+enum SyntaxKind {
+    L_PAREN = 0, // '('
+    R_PAREN,     // ')'
+    WORD,        // '+', '15'
+    WHITESPACE,  // whitespaces is explicit
+    ERROR,       // as well as errors
+
+    // composite nodes
+    LIST, // `(+ 2 3)`
+    ATOM, // `+`, `15`, wraps a WORD token
+    ROOT, // top-level node: a list of s-expressions
+}
+use SyntaxKind::*;
+
+impl From<SyntaxKind> for rowan::cursor::SyntaxKind {
+    fn from(kind: SyntaxKind) -> Self {
+        Self(kind as u16)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Lang {}
 impl rowan::Language for Lang {
-    fn debug_kind(kind: &SyntaxKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let tag = match *kind {
-            L_PAREN => "L_PAREN",
-            R_PAREN => "R_PAREN",
-            WORD => "WORD",
-            WHITESPACE => "WHITESPACE",
-            ERROR => "ERROR",
-            LIST => "LIST",
-            ATOM => "ATOM",
-            ROOT => "ROOT",
-            _ => unreachable!(),
-        };
-        write!(f, "{}", tag)
+    type Kind = SyntaxKind;
+    fn kind_from_raw(raw: rowan::cursor::SyntaxKind) -> Self::Kind {
+        assert!(raw.0 <= ROOT as u16);
+        unsafe { std::mem::transmute::<u16, SyntaxKind>(raw.0) }
+    }
+    fn kind_to_raw(kind: Self::Kind) -> rowan::cursor::SyntaxKind {
+        kind.into()
     }
 }
 
-type SyntaxKind = rowan::SyntaxKind<Lang>;
 type SyntaxNode = rowan::SyntaxNode<Lang>;
 #[allow(unused)]
 type SyntaxToken = rowan::SyntaxToken<Lang>;
 #[allow(unused)]
-type SyntaxElement = rowan::SyntaxElement<Lang>;
-
-const L_PAREN: SyntaxKind = SyntaxKind::new(0); // '('
-const R_PAREN: SyntaxKind = SyntaxKind::new(1); // ')'
-const WORD: SyntaxKind = SyntaxKind::new(2); // '+', '15'
-const WHITESPACE: SyntaxKind = SyntaxKind::new(3); // whitespaces is explicit
-const ERROR: SyntaxKind = SyntaxKind::new(4); // as well as errors
-
-// composite nodes
-const LIST: SyntaxKind = SyntaxKind::new(5); // `(+ 2 3)`
-const ATOM: SyntaxKind = SyntaxKind::new(6); // `+`, `15`, wraps a WORD token
-const ROOT: SyntaxKind = SyntaxKind::new(7); // top-level node: a list of s-expressions
+type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
 /// GreenNode is an immutable tree, which is cheap to change,
 /// but doesn't contain offsets and parent pointers.
@@ -311,7 +314,7 @@ impl Atom {
     }
     fn text(&self) -> &SmolStr {
         match &self.0.green().children()[0] {
-            rowan::GreenElement::Token(token) => token.text(),
+            rowan::NodeOrToken::Token(token) => token.text(),
             _ => unreachable!(),
         }
     }
