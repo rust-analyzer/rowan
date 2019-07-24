@@ -1,6 +1,6 @@
 use std::{mem::size_of, sync::Arc};
 
-use crate::{SmolStr, TextUnit, SyntaxKind};
+use crate::{SmolStr, TextUnit, cursor::SyntaxKind, NodeOrToken};
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
@@ -36,42 +36,6 @@ impl GreenNode {
     pub fn children(&self) -> &[GreenElement] {
         &self.children
     }
-
-    /// Gets the child at index.
-    pub(crate) fn get_child(&self, index: GreenIndex) -> Option<&GreenElement> {
-        self.children.get(index.0 as usize)
-    }
-
-    /// Number of memory bytes of occupied by subtree rooted at `self`.
-    pub(crate) fn memory_size_of_subtree(&self) -> usize {
-        let mut res = size_of::<Self>();
-        self.children().iter().for_each(|el| match el {
-            GreenElement::Token(token) => {
-                res += size_of::<GreenToken>();
-                if token.text.is_heap_allocated() {
-                    res += token.text.len();
-                }
-            }
-            GreenElement::Node(node) => res += node.memory_size_of_subtree(),
-        });
-
-        res
-    }
-}
-
-/// Index into a green node, which might refer to either Token or Node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct GreenIndex(pub(crate) u32);
-
-impl GreenIndex {
-    pub(crate) fn next(self) -> GreenIndex {
-        GreenIndex(self.0 + 1)
-    }
-
-    pub(crate) fn prev(self) -> GreenIndex {
-        // `GreenNode::get` does a bounds check anyway, so its ok to overflow
-        GreenIndex(self.0.wrapping_sub(1))
-    }
 }
 
 /// Leaf node in the immutable tree.
@@ -104,26 +68,19 @@ impl GreenToken {
     }
 }
 
-/// Leaf or internal node in the immutable tree.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum GreenElement {
-    /// Internal node.
-    Node(GreenNode),
-    /// Leaf token.
-    Token(GreenToken),
-}
+pub(crate) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
 
 impl From<GreenNode> for GreenElement {
     #[inline]
     fn from(node: GreenNode) -> GreenElement {
-        GreenElement::Node(node)
+        NodeOrToken::Node(node)
     }
 }
 
 impl From<GreenToken> for GreenElement {
     #[inline]
     fn from(token: GreenToken) -> GreenElement {
-        GreenElement::Token(token)
+        NodeOrToken::Token(token)
     }
 }
 
@@ -132,16 +89,16 @@ impl GreenElement {
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
         match self {
-            GreenElement::Node(it) => it.kind(),
-            GreenElement::Token(it) => it.kind(),
+            NodeOrToken::Node(it) => it.kind(),
+            NodeOrToken::Token(it) => it.kind(),
         }
     }
     /// Returns length of the text covered by this element.
     #[inline]
     pub fn text_len(&self) -> TextUnit {
         match self {
-            GreenElement::Node(it) => it.text_len(),
-            GreenElement::Token(it) => it.text_len(),
+            NodeOrToken::Node(it) => it.text_len(),
+            NodeOrToken::Token(it) => it.text_len(),
         }
     }
 }
@@ -205,7 +162,7 @@ impl GreenNodeBuilder {
     /// `start_node_at`.
     /// Example:
     /// ```rust
-    /// # use rowan::{GreenNodeBuilder, SyntaxKind};
+    /// # use rowan::{GreenNodeBuilder, cursor::SyntaxKind};
     /// # const PLUS: SyntaxKind = SyntaxKind(0);
     /// # const OPERATION: SyntaxKind = SyntaxKind(1);
     /// # struct Parser;
@@ -254,8 +211,8 @@ impl GreenNodeBuilder {
     pub fn finish(mut self) -> GreenNode {
         assert_eq!(self.children.len(), 1);
         match self.children.pop().unwrap() {
-            GreenElement::Node(node) => node,
-            GreenElement::Token(_) => panic!(),
+            NodeOrToken::Node(node) => node,
+            NodeOrToken::Token(_) => panic!(),
         }
     }
 }

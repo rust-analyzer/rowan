@@ -12,22 +12,52 @@
 //!         - "3" Token(Number)
 //!     - "+" Token(Add)
 //!     - "4" Token(Number)
-extern crate rowan;
 
-use rowan::{GreenNodeBuilder, SmolStr, SyntaxElement, SyntaxKind, TreeArc, SyntaxNode};
+use rowan::{GreenNodeBuilder, NodeOrToken, SmolStr};
 use std::iter::Peekable;
 
-const WHITESPACE: SyntaxKind = SyntaxKind(0);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(non_camel_case_types)]
+#[repr(u16)]
+enum SyntaxKind {
+    WHITESPACE = 0,
 
-const ADD: SyntaxKind = SyntaxKind(1);
-const SUB: SyntaxKind = SyntaxKind(2);
-const MUL: SyntaxKind = SyntaxKind(3);
-const DIV: SyntaxKind = SyntaxKind(4);
+    ADD,
+    SUB,
+    MUL,
+    DIV,
 
-const NUMBER: SyntaxKind = SyntaxKind(5);
-const ERROR: SyntaxKind = SyntaxKind(6);
-const OPERATION: SyntaxKind = SyntaxKind(7);
-const ROOT: SyntaxKind = SyntaxKind(8);
+    NUMBER,
+    ERROR,
+    OPERATION,
+    ROOT,
+}
+use SyntaxKind::*;
+
+impl From<SyntaxKind> for rowan::cursor::SyntaxKind {
+    fn from(kind: SyntaxKind) -> Self {
+        Self(kind as u16)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Lang {}
+impl rowan::Language for Lang {
+    type Kind = SyntaxKind;
+    fn kind_from_raw(raw: rowan::cursor::SyntaxKind) -> Self::Kind {
+        assert!(raw.0 <= ROOT as u16);
+        unsafe { std::mem::transmute::<u16, SyntaxKind>(raw.0) }
+    }
+    fn kind_to_raw(kind: Self::Kind) -> rowan::cursor::SyntaxKind {
+        kind.into()
+    }
+}
+
+type SyntaxNode = rowan::SyntaxNode<Lang>;
+#[allow(unused)]
+type SyntaxToken = rowan::SyntaxToken<Lang>;
+#[allow(unused)]
+type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
 struct Parser<I: Iterator<Item = (SyntaxKind, SmolStr)>> {
     builder: GreenNodeBuilder,
@@ -71,12 +101,12 @@ impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
     fn parse_add(&mut self) {
         self.handle_operation(&[ADD, SUB], Self::parse_mul)
     }
-    fn parse(mut self) -> TreeArc<SyntaxNode> {
+    fn parse(mut self) -> SyntaxNode {
         self.builder.start_node(ROOT.into());
         self.parse_add();
         self.builder.finish_node();
 
-        SyntaxNode::new(self.builder.finish(), None)
+        SyntaxNode::new_root(self.builder.finish())
     }
 }
 
@@ -84,14 +114,14 @@ fn print(indent: usize, element: SyntaxElement) {
     let kind: SyntaxKind = element.kind().into();
     print!("{:indent$}", "", indent = indent);
     match element {
-        SyntaxElement::Node(node) => {
+        NodeOrToken::Node(node) => {
             println!("- {:?}", kind);
             for child in node.children_with_tokens() {
                 print(indent + 2, child);
             }
         }
 
-        SyntaxElement::Token(token) => println!("- {:?} {:?}", token.text(), kind),
+        NodeOrToken::Token(token) => println!("- {:?} {:?}", token.text(), kind),
     }
 }
 
@@ -118,5 +148,5 @@ fn main() {
         .peekable(),
     }
     .parse();
-    print(0, (&*ast).into());
+    print(0, ast.into());
 }
