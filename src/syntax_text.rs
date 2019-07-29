@@ -1,7 +1,7 @@
 use std::{fmt, ops};
 
 use crate::{
-    cursor::{SyntaxElement, SyntaxNode},
+    cursor::{SyntaxElement, SyntaxNode, SyntaxToken},
     NodeOrToken, SmolStr, TextRange, TextUnit,
 };
 
@@ -84,26 +84,8 @@ impl SyntaxText {
     where
         F: FnMut(T, &str) -> Result<T, E>,
     {
-        self.node.descendants_with_tokens().try_fold(init, move |acc, element| {
-            let res = match element {
-                NodeOrToken::Token(token) => {
-                    let token_range = token.text_range();
-                    let range = match self.range.intersection(&token_range) {
-                        None => return Ok(acc),
-                        Some(it) => it,
-                    };
-                    let slice = if range == token_range {
-                        token.text()
-                    } else {
-                        let range = range - token_range.start();
-                        &token.text()[range]
-                    };
-                    f(acc, slice)?
-                }
-                NodeOrToken::Node(_) => acc,
-            };
-            Ok(res)
-        })
+        self.tokens_with_ranges()
+            .try_fold(init, move |acc, (token, range)| f(acc, &token.text()[range]))
     }
 
     pub fn try_for_each_chunk<F: FnMut(&str) -> Result<(), E>, E>(
@@ -119,6 +101,17 @@ impl SyntaxText {
             Ok(()) => (),
             Err(void) => match void {},
         }
+    }
+
+    fn tokens_with_ranges(&self) -> impl Iterator<Item = (SyntaxToken, TextRange)> {
+        let text_range = self.range;
+        self.node.descendants_with_tokens().filter_map(|element| element.into_token()).filter_map(
+            move |token| {
+                let token_range = token.text_range();
+                let range = text_range.intersection(&token_range)?;
+                Some((token, range - token_range.start()))
+            },
+        )
     }
 }
 
@@ -165,6 +158,43 @@ impl PartialEq<&'_ str> for SyntaxText {
         self == *rhs
     }
 }
+
+impl PartialEq for SyntaxText {
+    fn eq(&self, other: &SyntaxText) -> bool {
+        if self.range.len() != other.range.len() {
+            return false;
+        }
+        let mut lhs = self.tokens_with_ranges();
+        let mut rhs = self.tokens_with_ranges();
+        zip_texts(&mut lhs, &mut rhs).is_none()
+            && lhs.all(|it| it.1.is_empty())
+            && rhs.all(|it| it.1.is_empty())
+    }
+}
+
+fn zip_texts<I: Iterator<Item = (SyntaxToken, TextRange)>>(xs: &mut I, ys: &mut I) -> Option<()> {
+    let mut x = xs.next()?;
+    let mut y = ys.next()?;
+    loop {
+        while x.1.is_empty() {
+            x = xs.next()?;
+        }
+        while y.1.is_empty() {
+            y = ys.next()?;
+        }
+        let x_text = &x.0.text()[x.1];
+        let y_text = &y.0.text()[y.1];
+        if !(x_text.starts_with(y_text) || y_text.starts_with(x_text)) {
+            return Some(());
+        }
+        let advance = std::cmp::min(x.1.len(), y.1.len());
+        x.1 = TextRange::from_to(x.1.start(), x.1.len() - advance);
+        y.1 = TextRange::from_to(y.1.start(), y.1.len() - advance);
+    }
+    None
+}
+
+impl Eq for SyntaxText {}
 
 mod private {
     use std::ops;
@@ -219,5 +249,43 @@ mod private {
         fn end(&self) -> Option<TextUnit> {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{cursor::SyntaxKind, GreenNodeBuilder};
+
+    fn build_tree(chunks: &[&str]) -> SyntaxNode {
+        let mut builder = GreenNodeBuilder::new();
+        builder.start_node(SyntaxKind(62));
+        for &chunk in chunks.iter() {
+            builder.token(SyntaxKind(92), chunk.into())
+        }
+        builder.finish_node();
+        SyntaxNode::new_root(builder.finish())
+    }
+
+    #[test]
+    fn test_text_equality() {
+        fn do_check(t1: &[&str], t2: &[&str]) {
+            let t1 = build_tree(t1).text();
+            let t2 = build_tree(t2).text();
+            let expected = t1.to_string() == t2.to_string();
+            let actual = t1 == t2;
+            assert_eq!(expected, actual, "`{}` `{}`", t1, t2)
+        }
+        fn check(t1: &[&str], t2: &[&str]) {
+            do_check(t1, t2);
+            do_check(t2, t1)
+        }
+
+        check(&[""], &[""]);
+        check(&["a"], &[""]);
+        check(&["a"], &["a"]);
+        check(&["hello", "world"], &["hello", "world"]);
+        check(&["hellowo", "rld"], &["hell", "oworld"]);
+        check(&["hel", "lowo", "rld"], &["helloworld"]);
     }
 }
