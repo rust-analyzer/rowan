@@ -15,6 +15,8 @@ pub mod cursor;
 pub mod api;
 mod syntax_text;
 mod utility_types;
+#[cfg(feature = "serde1")]
+mod serde_impls;
 
 use green::GreenElement;
 
