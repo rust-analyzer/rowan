@@ -1,6 +1,6 @@
 use std::{mem::size_of, sync::Arc};
 
-use crate::{SmolStr, TextUnit, cursor::SyntaxKind, NodeOrToken};
+use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr, TextUnit};
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.

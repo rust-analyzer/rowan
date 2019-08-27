@@ -27,10 +27,10 @@ pub use smol_str::SmolStr;
 pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
-    utility_types::{TokenAtOffset, WalkEvent, NodeOrToken, Direction},
+    api::*,
     green::{Checkpoint, GreenNode, GreenNodeBuilder, GreenToken},
     syntax_text::SyntaxText,
-    api::*,
+    utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };
 
 #[cfg(test)]
