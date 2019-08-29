@@ -38,7 +38,7 @@ impl<N, T> NodeOrToken<N, T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Direction {
     Next,
-    Prev
+    Prev,
 }
 
 /// `WalkEvent` describes tree walking process.
