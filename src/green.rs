@@ -1,4 +1,10 @@
-use std::{mem::size_of, sync::Arc};
+use std::{
+    alloc::{alloc, Layout, dealloc},
+    mem::size_of,
+    mem::{self, ManuallyDrop},
+    ptr,
+    sync::Arc,
+};
 
 use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr, TextUnit};
 
@@ -6,10 +12,79 @@ use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr, TextUnit};
 /// It has other nodes and tokens as children.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GreenNode {
+    inner: Arc<GreenNodeInner>,
+}
+
+#[repr(C)] // for defined layout
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct GreenNodeInner {
     kind: SyntaxKind,
     text_len: TextUnit,
-    //TODO: implement llvm::trailing_objects trick
-    children: Arc<[GreenElement]>,
+    children: [GreenElement],
+}
+
+impl GreenNodeInner {
+    /// Construct a `GreenNodeInner` UNSOUNDLY
+    ///
+    /// This requires being able to create fat pointers from a `alloc`ed
+    /// pointer without knowing the array length at runtime.
+    #[inline]
+    unsafe fn new(
+        kind: SyntaxKind,
+        text_len: TextUnit,
+        children: Box<[GreenElement]>,
+    ) -> Box<GreenNodeInner> {
+        // We're manually allocating, make sure these things stay the size/align we expect
+        assert_eq!(mem::size_of::<SyntaxKind>(), 2); // u16
+        assert_eq!(mem::align_of::<SyntaxKind>(), 2);
+        assert_eq!(mem::size_of::<TextUnit>(), 4); // u32
+        assert_eq!(mem::align_of::<TextUnit>(), 4);
+        assert_eq!(mem::size_of::<GreenElement>(), mem::size_of::<(usize, GreenToken)>());
+        assert_eq!(mem::align_of::<GreenElement>(), mem::align_of::<(usize, GreenToken)>());
+        assert_eq!(mem::size_of::<GreenElement>() % mem::align_of::<GreenElement>(), 0);
+        assert_eq!(mem::size_of::<GreenToken>(), mem::size_of::<(SyntaxKind, String)>());
+        assert_eq!(mem::align_of::<GreenToken>(), mem::align_of::<(SyntaxKind, String)>());
+        // Layout: https://play.rust-lang.org/?edition=2018&gist=4d4657232b4b68bb7157064dd4bb099b
+        //     offset_of!(GreenNodeInner, kind) = 0
+        //     offset_of!(GreenNodeInner, text_len) = 4
+        //     offset_of!(GreenNodeInner, children) = 8
+        // With usize == u64:
+        //     mem::align_of::<GreenNodeInner>() = 8
+        //     mem::size_of::<GreenElement>() = 40
+        //     mem::align_of::<GreenElement>() = 8
+        // With usize == u32:
+        //     mem::align_of::<GreenNodeInner>() = 4
+        //     mem::size_of::<GreenElement>() = 20
+        //     mem::align_of::<GreenElement>() = 4
+
+        let old_layout = Layout::for_value(&*children);
+        let new_layout =
+            Layout::from_size_align(old_layout.size() + 8, old_layout.align()).unwrap();
+        #[allow(clippy::cast_ptr_alignment)]
+        unsafe {
+            let new = alloc(new_layout);
+            ptr::write(new.offset(0) as *mut SyntaxKind, kind);
+            ptr::write(new.offset(4) as *mut TextUnit, text_len);
+            // REQUIRES that `[GreenElement]` does not have padding!
+            // (I.e. `size_of<GreenElement> % align_of<GreenElement> == 0`)
+            ptr::copy_nonoverlapping(children.as_ptr(), new.offset(8) as *mut GreenElement, children.len());
+            // XXX: UNSOUND DO NOT MERGE D:
+            // Guess the fat pointer layout as `(ptr, len)`.
+            let ptr: *mut GreenNodeInner = mem::transmute((new, children.len()));
+            // Carefully check that `ptr` does indeed point where we think it does.
+            if ptr::eq(ptr as *mut u8, new) {
+                // We guessed the fat pointer layout correctly! (Probably.)
+                assert_eq!((*ptr).children.len(), children.len());
+                drop(mem::transmute::<_, Box<[ManuallyDrop<GreenElement>]>>(children));
+                Box::from_raw(ptr)
+            } else {
+                // We guessed the fat pointer layout incorrectly :(
+                // Clean up our mess and panic.
+                dealloc(new, new_layout);
+                panic!("Expected `*mut [u8]` to be `(*mut u8, usize)` but it wasn't.");
+            }
+        }
+    }
 }
 
 impl GreenNode {
@@ -17,24 +92,24 @@ impl GreenNode {
     #[inline]
     pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { kind, text_len, children: children.into() }
+        unsafe { GreenNode { inner: GreenNodeInner::new(kind, text_len, children).into() } }
     }
 
     /// Kind of this node.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
-        self.kind
+        self.inner.kind
     }
 
     /// Length of the text, covered by this node.
     #[inline]
     pub fn text_len(&self) -> TextUnit {
-        self.text_len
+        self.inner.text_len
     }
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> &[GreenElement] {
-        &self.children
+        &self.inner.children
     }
 }
 
@@ -148,7 +223,7 @@ impl GreenNodeBuilder {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children.len() <= 3 {
+        if node.children().len() <= 3 {
             match self.cache.get(&node) {
                 Some(existing) => node = existing.clone(),
                 None => assert!(self.cache.insert(node.clone())),

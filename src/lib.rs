@@ -6,7 +6,7 @@
     future_incompatible,
     // missing_docs,
 )]
-#![deny(unsafe_code)]
+#![warn(unsafe_code)]
 #![allow(unused)]
 
 mod green;
