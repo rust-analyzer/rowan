@@ -7,6 +7,7 @@ use std::{
     mem, ptr,
     rc::Rc,
     slice,
+    sync::Arc,
 };
 
 use crate::{
@@ -92,7 +93,7 @@ impl fmt::Display for SyntaxElement {
 
 #[derive(Debug)]
 enum Kind {
-    Root(GreenNode),
+    Root(Arc<GreenNode>),
     Child { parent: SyntaxNode, index: u32, offset: TextUnit },
     Free { next_free: Option<Rc<NodeData>> },
 }
@@ -107,7 +108,7 @@ impl Kind {
 }
 
 #[derive(Debug)]
-struct NodeData {
+pub(crate) struct NodeData {
     kind: Kind,
     green: ptr::NonNull<GreenNode>,
 }
@@ -125,7 +126,7 @@ impl FreeList {
         for _ in 0..FREE_LIST_LEN {
             res.try_push(&mut Rc::new(NodeData {
                 kind: Kind::Free { next_free: None },
-                green: ptr::NonNull::dangling(),
+                green: GreenNode::dangling(),
             }))
         }
         res
@@ -164,10 +165,7 @@ impl FreeList {
 impl NodeData {
     fn new(kind: Kind, green: ptr::NonNull<GreenNode>) -> Rc<NodeData> {
         let mut node = FreeList::with(|it| it.pop()).unwrap_or_else(|| {
-            Rc::new(NodeData {
-                kind: Kind::Free { next_free: None },
-                green: ptr::NonNull::dangling(),
-            })
+            Rc::new(NodeData { kind: Kind::Free { next_free: None }, green: GreenNode::dangling() })
         });
 
         {
@@ -191,11 +189,11 @@ impl SyntaxNode {
         SyntaxNode(data)
     }
 
-    pub fn new_root(green: GreenNode) -> SyntaxNode {
-        let data = NodeData::new(Kind::Root(green), ptr::NonNull::dangling());
+    pub fn new_root(green: Arc<GreenNode>) -> SyntaxNode {
+        let data = NodeData::new(Kind::Root(green), GreenNode::dangling());
         let mut ret = SyntaxNode::new(data);
         let green: ptr::NonNull<GreenNode> = match &ret.0.kind {
-            Kind::Root(green) => green.into(),
+            Kind::Root(green) => (&**green).into(),
             _ => unreachable!(),
         };
         Rc::get_mut(&mut ret.0).unwrap().green = green;
@@ -217,7 +215,7 @@ impl SyntaxNode {
     /// Returns a green tree, equal to the green tree this node
     /// belongs two, except with this node substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenNode>) -> Arc<GreenNode> {
         assert_eq!(self.kind(), replacement.kind());
         match self.0.kind.as_child() {
             None => replacement,
@@ -527,7 +525,7 @@ impl SyntaxToken {
     /// Returns a green tree, equal to the green tree this token
     /// belongs two, except with this token substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
+    pub fn replace_with(&self, replacement: GreenToken) -> Arc<GreenNode> {
         assert_eq!(self.kind(), replacement.kind());
         let mut replacement = Some(replacement);
         let parent = self.parent();
@@ -812,7 +810,7 @@ fn filter_nodes<'a, I: Iterator<Item = (&'a GreenElement, T)>, T>(
     iter: I,
 ) -> impl Iterator<Item = (&'a GreenNode, T)> {
     iter.filter_map(|(element, data)| match element {
-        NodeOrToken::Node(it) => Some((it, data)),
+        NodeOrToken::Node(it) => Some((&**it, data)),
         NodeOrToken::Token(_) => None,
     })
 }

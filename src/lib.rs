@@ -9,6 +9,7 @@
 #![deny(unsafe_code)]
 #![allow(unused)]
 
+#[allow(unsafe_code)]
 mod green;
 #[allow(unsafe_code)]
 pub mod cursor;
@@ -36,23 +37,26 @@ pub use crate::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn assert_send_sync() {
         fn f<T: Send + Sync>() {}
-        f::<GreenNode>();
+        f::<Box<GreenNode>>();
     }
 
     #[test]
     fn test_size_of() {
         use std::mem::size_of;
 
-        eprintln!("GreenNode    {}", size_of::<GreenNode>());
-        eprintln!("GreenToken   {}", size_of::<GreenToken>());
-        eprintln!("GreenElement {}", size_of::<GreenElement>());
+        eprintln!("Arc<GreenNode> {}", size_of::<Arc<GreenNode>>());
+        eprintln!("GreenToken     {}", size_of::<GreenToken>());
+        eprintln!("GreenElement   {}", size_of::<GreenElement>());
         eprintln!();
         eprintln!("SyntaxNode    {}", size_of::<cursor::SyntaxNode>());
         eprintln!("SyntaxToken   {}", size_of::<cursor::SyntaxToken>());
         eprintln!("SyntaxElement {}", size_of::<cursor::SyntaxElement>());
+        eprintln!();
+        eprintln!("NodeData {}", size_of::<cursor::NodeData>());
     }
 }

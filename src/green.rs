@@ -1,23 +1,102 @@
-use std::{mem::size_of, sync::Arc};
+use std::{
+    alloc::{alloc, Layout},
+    mem, ptr, slice,
+    sync::Arc,
+};
 
 use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr, TextUnit};
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
+#[repr(C)] // defined layout
 pub struct GreenNode {
     kind: SyntaxKind,
     text_len: TextUnit,
-    //TODO: implement llvm::trailing_objects trick
-    children: Arc<[GreenElement]>,
+    /// # Safety
+    ///
+    /// Trailing objects manual DST
+    children: [GreenElement],
+    // DST code by @CAD97, blame them if something goes wrong
+}
+
+#[cfg(test)]
+mod assumptions {
+    use super::*;
+
+    #[test]
+    fn align_of_green_node() {
+        let real_align = mem::align_of_val(&*GreenNode::default());
+        let assumed_align = GreenNode::align();
+        assert_eq!(assumed_align, real_align);
+    }
+
+    #[test]
+    fn offset_of_green_node() {
+        let real = GreenNode::default();
+
+        let node_ptr_addr = &*real as *const GreenNode as *const u8 as usize;
+        let kind_ptr_addr = &real.kind as *const SyntaxKind as usize;
+        let text_ptr_addr = &real.text_len as *const TextUnit as usize;
+        let child_ptr_addr = &real.children as *const [GreenElement] as *const u8 as usize;
+
+        let offset_kind = kind_ptr_addr - node_ptr_addr;
+        assert_eq!(offset_kind, 0);
+        let offset_text_len = text_ptr_addr - node_ptr_addr;
+        assert_eq!(offset_text_len, 4);
+        let offset_children = child_ptr_addr - node_ptr_addr;
+        assert_eq!(offset_children, 8);
+    }
 }
 
 impl GreenNode {
+    /// For testing with. Dummy node.
+    #[cfg(test)]
+    fn default() -> Arc<GreenNode> {
+        GreenNode::new(
+            SyntaxKind(0),
+            Box::new([GreenToken { kind: SyntaxKind(0), text: Default::default() }.into()]),
+        )
+    }
+
+    fn align() -> usize {
+        let arr: &[GreenElement] = &[];
+        mem::align_of_val(arr)
+    }
+
+    pub(crate) fn dangling() -> ptr::NonNull<GreenNode> {
+        let it: ptr::NonNull<[GreenElement]> = ptr::NonNull::<[GreenElement; 0]>::dangling();
+        unsafe { ptr::NonNull::new_unchecked(it.as_ptr() as *mut GreenNode) }
+    }
+
     /// Creates new Node.
     #[inline]
-    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
+    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> Arc<GreenNode> {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { kind, text_len, children: children.into() }
+
+        let children_layout = Layout::for_value(&*children);
+        let node_layout =
+            Layout::from_size_align(children_layout.size() + 8, children_layout.align()).unwrap();
+        #[allow(clippy::cast_ptr_alignment)]
+        let boxed: Box<GreenNode> = unsafe {
+            // Allocate our box
+            let new = alloc(node_layout);
+            // Write the data
+            ptr::write(new.offset(0) as *mut SyntaxKind, kind);
+            ptr::write(new.offset(4) as *mut TextUnit, text_len);
+            ptr::copy_nonoverlapping(
+                children.as_ptr(),
+                new.offset(8) as *mut GreenElement,
+                children.len(),
+            );
+            // Create fat pointer with correct length tag
+            let new: *mut [u8] = slice::from_raw_parts_mut(new, children.len());
+            // Drop the old box without freeing `GreenElement`s, completing the move
+            mem::transmute::<Box<[GreenElement]>, Box<[mem::ManuallyDrop<GreenElement>]>>(children);
+            // Turn our raw pointer into a box
+            Box::from_raw(new as *mut GreenNode)
+        };
+        boxed.into()
     }
 
     /// Kind of this node.
@@ -68,11 +147,11 @@ impl GreenToken {
     }
 }
 
-pub(crate) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
+pub(crate) type GreenElement = NodeOrToken<Arc<GreenNode>, GreenToken>;
 
-impl From<GreenNode> for GreenElement {
+impl From<Arc<GreenNode>> for GreenElement {
     #[inline]
-    fn from(node: GreenNode) -> GreenElement {
+    fn from(node: Arc<GreenNode>) -> GreenElement {
         NodeOrToken::Node(node)
     }
 }
@@ -110,7 +189,7 @@ pub struct Checkpoint(usize);
 /// A builder for a green tree.
 #[derive(Default, Debug)]
 pub struct GreenNodeBuilder {
-    cache: rustc_hash::FxHashSet<GreenNode>,
+    cache: rustc_hash::FxHashSet<Arc<GreenNode>>,
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
@@ -208,7 +287,7 @@ impl GreenNodeBuilder {
     /// `start_node_at` and `finish_node` calls
     /// are paired!
     #[inline]
-    pub fn finish(mut self) -> GreenNode {
+    pub fn finish(mut self) -> Arc<GreenNode> {
         assert_eq!(self.children.len(), 1);
         match self.children.pop().unwrap() {
             NodeOrToken::Node(node) => node,

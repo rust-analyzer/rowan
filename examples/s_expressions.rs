@@ -5,6 +5,8 @@
 //! (+ (* 15 2) 62)
 //! ```
 
+use std::sync::Arc;
+
 /// Currently, rowan doesn't have a hook to add your own interner,
 /// but `SmolStr` should be a "good enough" type for representing
 /// tokens.
@@ -73,7 +75,7 @@ use rowan::GreenNodeBuilder;
 /// which is controlled by the `R` parameter.
 
 struct Parse {
-    green_node: rowan::GreenNode,
+    green_node: Arc<rowan::GreenNode>,
     #[allow(unused)]
     errors: Vec<String>,
 }
@@ -129,7 +131,7 @@ fn parse(text: &str) -> Parse {
             self.builder.finish_node();
 
             // Turn the builder into a complete node.
-            let green: GreenNode = self.builder.finish();
+            let green: Arc<GreenNode> = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
             Parse { green_node: green, errors: self.errors }
