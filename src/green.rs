@@ -1,8 +1,8 @@
 use std::{
-    alloc::{alloc, Layout, dealloc},
+    alloc::{alloc, dealloc, Layout},
     mem::size_of,
     mem::{self, ManuallyDrop},
-    ptr,
+    ptr, slice,
     sync::Arc,
 };
 
@@ -67,22 +67,17 @@ impl GreenNodeInner {
             ptr::write(new.offset(4) as *mut TextUnit, text_len);
             // REQUIRES that `[GreenElement]` does not have padding!
             // (I.e. `size_of<GreenElement> % align_of<GreenElement> == 0`)
-            ptr::copy_nonoverlapping(children.as_ptr(), new.offset(8) as *mut GreenElement, children.len());
-            // XXX: UNSOUND DO NOT MERGE D:
-            // Guess the fat pointer layout as `(ptr, len)`.
-            let ptr: *mut GreenNodeInner = mem::transmute((new, children.len()));
-            // Carefully check that `ptr` does indeed point where we think it does.
-            if ptr::eq(ptr as *mut u8, new) {
-                // We guessed the fat pointer layout correctly! (Probably.)
-                assert_eq!((*ptr).children.len(), children.len());
-                drop(mem::transmute::<_, Box<[ManuallyDrop<GreenElement>]>>(children));
-                Box::from_raw(ptr)
-            } else {
-                // We guessed the fat pointer layout incorrectly :(
-                // Clean up our mess and panic.
-                dealloc(new, new_layout);
-                panic!("Expected `*mut [u8]` to be `(*mut u8, usize)` but it wasn't.");
-            }
+            ptr::copy_nonoverlapping(
+                children.as_ptr(),
+                new.offset(8) as *mut GreenElement,
+                children.len(),
+            );
+            // Convert to fat pointer with correct length tag
+            let ptr: *mut [u8] = slice::from_raw_parts_mut(new, children.len());
+            // Drop the old box
+            drop(mem::transmute::<_, Box<[ManuallyDrop<GreenElement>]>>(children));
+            // And now get the type right
+            Box::from_raw(ptr as *mut GreenNodeInner)
         }
     }
 }
