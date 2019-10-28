@@ -1,5 +1,5 @@
 use std::{
-    alloc::{alloc, Layout},
+    alloc::{alloc, handle_alloc_error, Layout},
     mem, ptr, slice,
     sync::Arc,
 };
@@ -81,6 +81,9 @@ impl GreenNode {
         let boxed: Box<GreenNode> = unsafe {
             // Allocate our box
             let new = alloc(node_layout);
+            if new.is_null() {
+                handle_alloc_error(node_layout);
+            }
             // Write the data
             ptr::write(new.offset(0) as *mut SyntaxKind, kind);
             ptr::write(new.offset(4) as *mut TextUnit, text_len);
@@ -114,6 +117,41 @@ impl GreenNode {
     #[inline]
     pub fn children(&self) -> &[GreenElement] {
         &self.children
+    }
+}
+
+impl ToOwned for GreenNode {
+    type Owned = Arc<GreenNode>;
+    fn to_owned(&self) -> Self::Owned {
+        let kind = self.kind;
+        let text_len = self.text_len;
+        let children = &self.children;
+        let node_layout = Layout::for_value(self);
+        #[allow(clippy::cast_ptr_alignment)]
+        let boxed: Box<GreenNode> = unsafe {
+            // Allocate our box
+            let new = alloc(node_layout);
+            if new.is_null() {
+                handle_alloc_error(node_layout);
+            }
+            // Write the data
+            ptr::write(new.offset(0) as *mut SyntaxKind, kind);
+            ptr::write(new.offset(4) as *mut TextUnit, text_len);
+            // Clone each child
+            let mut src = children.as_ptr();
+            let mut dst = new.offset(8) as *mut GreenElement;
+            for _ in 0..children.len() {
+                // NB: if `Clone::clone` panics we leak but do not violate safety.
+                ptr::write(dst, Clone::clone(&*src));
+                src = src.offset(1);
+                dst = dst.offset(1);
+            }
+            // Create fat pointer with correct length tag
+            let new: *mut [u8] = slice::from_raw_parts_mut(new, children.len());
+            // Turn our raw pointer into a box
+            Box::from_raw(new as *mut GreenNode)
+        };
+        boxed.into()
     }
 }
 
