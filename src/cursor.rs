@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-    Direction, GreenElement, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
-    TextUnit, TokenAtOffset, WalkEvent,
+    ArcGreenNode, Direction, GreenChildren, GreenElementRef, GreenNode, GreenToken, NodeOrToken,
+    OwnedGreenElement, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -92,7 +92,7 @@ impl fmt::Display for SyntaxElement {
 
 #[derive(Debug)]
 enum Kind {
-    Root(GreenNode),
+    Root(ArcGreenNode),
     Child { parent: SyntaxNode, index: u32, offset: TextUnit },
     Free { next_free: Option<Rc<NodeData>> },
 }
@@ -191,11 +191,11 @@ impl SyntaxNode {
         SyntaxNode(data)
     }
 
-    pub fn new_root(green: GreenNode) -> SyntaxNode {
+    pub fn new_root(green: ArcGreenNode) -> SyntaxNode {
         let data = NodeData::new(Kind::Root(green), ptr::NonNull::dangling());
         let mut ret = SyntaxNode::new(data);
         let green: ptr::NonNull<GreenNode> = match &ret.0.kind {
-            Kind::Root(green) => green.into(),
+            Kind::Root(green) => (&**green).into(),
             _ => unreachable!(),
         };
         Rc::get_mut(&mut ret.0).unwrap().green = green;
@@ -217,22 +217,21 @@ impl SyntaxNode {
     /// Returns a green tree, equal to the green tree this node
     /// belongs two, except with this node substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
+    pub fn replace_with(&self, replacement: ArcGreenNode) -> ArcGreenNode {
         assert_eq!(self.kind(), replacement.kind());
         match self.0.kind.as_child() {
             None => replacement,
             Some((parent, me, _offset)) => {
                 let mut replacement = Some(replacement);
-                let children: Box<[_]> = parent
+                let children: Vec<OwnedGreenElement> = parent
                     .green()
                     .children()
-                    .iter()
                     .enumerate()
-                    .map(|(i, child)| {
+                    .map(|(i, child)| -> OwnedGreenElement {
                         if i as u32 == me {
                             replacement.take().unwrap().into()
                         } else {
-                            child.clone()
+                            child.to_owned()
                         }
                     })
                     .collect();
@@ -527,23 +526,22 @@ impl SyntaxToken {
     /// Returns a green tree, equal to the green tree this token
     /// belongs two, except with this token substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
+    pub fn replace_with(&self, replacement: GreenToken) -> ArcGreenNode {
         assert_eq!(self.kind(), replacement.kind());
         let mut replacement = Some(replacement);
         let parent = self.parent();
         let me = self.index;
 
-        let children: Box<[_]> =
+        let children: Vec<_> =
             parent
                 .green()
                 .children()
-                .iter()
                 .enumerate()
                 .map(|(i, child)| {
                     if i as u32 == me {
                         replacement.take().unwrap().into()
                     } else {
-                        child.clone()
+                        child.to_owned()
                     }
                 })
                 .collect();
@@ -565,7 +563,7 @@ impl SyntaxToken {
     }
 
     pub fn green(&self) -> &GreenToken {
-        self.parent.green().children()[self.index as usize].as_token().unwrap()
+        self.parent.green().children().nth(self.index as usize).unwrap().as_token().unwrap()
     }
 
     pub fn parent(&self) -> SyntaxNode {
@@ -634,7 +632,7 @@ impl SyntaxToken {
 
 impl SyntaxElement {
     fn new(
-        element: &GreenElement,
+        element: GreenElementRef<'_>,
         parent: SyntaxNode,
         index: u32,
         offset: TextUnit,
@@ -717,7 +715,7 @@ impl SyntaxElement {
 #[derive(Clone, Debug)]
 struct Iter {
     parent: SyntaxNode,
-    green: slice::Iter<'static, GreenElement>,
+    green: GreenChildren<'static>,
     offset: TextUnit,
     index: u32,
 }
@@ -725,15 +723,14 @@ struct Iter {
 impl Iter {
     fn new(parent: SyntaxNode) -> Iter {
         let offset = parent.text_range().start();
-        let green: slice::Iter<'_, _> = parent.green().children().iter();
-        // Dirty lifetime laundering: the memory for a slice of nodes is
-        // indirectly owned by parent.
-        let green: slice::Iter<'static, _> =
-            unsafe { mem::transmute::<slice::Iter<'_, _>, slice::Iter<'static, _>>(green) };
+        let green: GreenChildren<'_> = parent.green().children();
+        // Dirty lifetime laundering: the memory for the children is indirectly owned by parent.
+        let green: GreenChildren<'static> =
+            unsafe { mem::transmute::<GreenChildren<'_>, GreenChildren<'static>>(green) };
         Iter { parent, green, offset, index: 0 }
     }
 
-    fn next(&mut self) -> Option<((&GreenElement, u32, TextUnit))> {
+    fn next(&mut self) -> Option<((GreenElementRef<'_>, u32, TextUnit))> {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;
@@ -788,8 +785,8 @@ impl GreenNode {
         &self,
         start_index: usize,
         mut offset: TextUnit,
-    ) -> impl Iterator<Item = (&GreenElement, (usize, TextUnit))> {
-        self.children()[start_index..].iter().enumerate().map(move |(index, element)| {
+    ) -> impl Iterator<Item = (GreenElementRef<'_>, (usize, TextUnit))> {
+        self.children().skip(start_index).enumerate().map(move |(index, element)| {
             let element_offset = offset;
             offset += element.text_len();
             (element, (start_index + index, element_offset))
@@ -800,15 +797,18 @@ impl GreenNode {
         &self,
         end_index: usize,
         mut offset: TextUnit,
-    ) -> impl Iterator<Item = (&GreenElement, (usize, TextUnit))> {
-        self.children()[..end_index].iter().rev().enumerate().map(move |(index, element)| {
-            offset -= element.text_len();
-            (element, (end_index - index - 1, offset))
-        })
+    ) -> impl Iterator<Item = (GreenElementRef<'_>, (usize, TextUnit))> {
+        // FIXME: uhoh: reverse iteration?
+        //        self.children().take(end_index).rev().enumerate().map(move |(index, element)| {
+        //            offset -= element.text_len();
+        //            (element, (end_index - index - 1, offset))
+        //        })
+        unimplemented!();
+        vec![].into_iter()
     }
 }
 
-fn filter_nodes<'a, I: Iterator<Item = (&'a GreenElement, T)>, T>(
+fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
     iter: I,
 ) -> impl Iterator<Item = (&'a GreenNode, T)> {
     iter.filter_map(|(element, data)| match element {

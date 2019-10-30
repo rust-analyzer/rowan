@@ -12,6 +12,8 @@ rustc-hash = "1.0.1"
 text_unit = "0.1.6"
 smol_str = "0.1.10"
 serde = { version = "1.0.89", optional = true, default-features = false }
+static_assertions = "1.0.0"
+memoffset = "0.5.1"
 
 [dev-dependencies]
 m_lexer = "0.0.4"
