@@ -330,6 +330,19 @@ impl GreenNode {
         self.head.child_count as usize
     }
 
+    pub(crate) unsafe fn child_at(&self, idx: usize) -> GreenElementRef<'_> {
+        let ptr = (&self.tail as *const _ as *mut u64).add(idx);
+        let mut children = GreenChildren {
+            next: ptr::NonNull::new(ptr).unwrap(),
+            remaining: 1,
+            marker: PhantomData,
+        };
+        match children.next() {
+            Some(el) => el,
+            None => unreachable!(),
+        }
+    }
+
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> GreenChildren<'_> {

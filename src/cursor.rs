@@ -57,6 +57,7 @@ impl fmt::Display for SyntaxNode {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxToken {
     parent: SyntaxNode,
+    // TODO: Use a direct index into the fam
     index: u32,
     offset: TextUnit,
 }
@@ -563,6 +564,7 @@ impl SyntaxToken {
     }
 
     pub fn green(&self) -> &GreenToken {
+        // TODO: Use a direct index into the fam
         self.parent.green().children().nth(self.index as usize).unwrap().as_token().unwrap()
     }
 
@@ -786,6 +788,7 @@ impl GreenNode {
         start_index: usize,
         mut offset: TextUnit,
     ) -> impl Iterator<Item = (GreenElementRef<'_>, (usize, TextUnit))> {
+        // TODO: Use a direct index into the fam
         self.children().skip(start_index).enumerate().map(move |(index, element)| {
             let element_offset = offset;
             offset += element.text_len();
@@ -798,13 +801,13 @@ impl GreenNode {
         end_index: usize,
         mut offset: TextUnit,
     ) -> impl Iterator<Item = (GreenElementRef<'_>, (usize, TextUnit))> {
-        // FIXME: uhoh: reverse iteration?
-        //        self.children().take(end_index).rev().enumerate().map(move |(index, element)| {
-        //            offset -= element.text_len();
-        //            (element, (end_index - index - 1, offset))
-        //        })
-        unimplemented!();
-        vec![].into_iter()
+        // FIXME: Remove temporary collection which is just for preexisting reverse iterator.
+        // TODO: Use a direct index into the fam?
+        let vec: Vec<_> = self.children().take(end_index).collect();
+        vec.into_iter().rev().enumerate().map(move |(index, element)| {
+            offset -= element.text_len();
+            (element, (end_index - index - 1, offset))
+        })
     }
 }
 
