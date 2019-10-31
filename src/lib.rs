@@ -7,7 +7,6 @@
     // missing_docs,
 )]
 #![deny(unsafe_code)]
-#![allow(unused)]
 
 #[allow(unsafe_code)]
 mod green;

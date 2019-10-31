@@ -8,6 +8,7 @@ use std::{
     marker::PhantomData,
     mem,
     ops::Deref,
+    ops::{Bound, RangeBounds},
     ptr,
     sync::atomic::{self, AtomicUsize, Ordering},
 };
@@ -32,8 +33,8 @@ const TAG_NODE: u32 = 0;
 const TAG_TOKEN: u32 = 1;
 const TAG_END: u32 = -1i32 as u32;
 
-const FAM_NODE_U64_LEN: u16 = 2;
-const FAM_TOKEN_U64_LEN: u16 = 5;
+pub(crate) const FAM_NODE_U64_LEN: u16 = 2;
+pub(crate) const FAM_TOKEN_U64_LEN: u16 = 5;
 const FAM_NODE_BYTE_LEN: usize = FAM_NODE_U64_LEN as usize * mem::size_of::<u64>();
 const FAM_TOKEN_BYTE_LEN: usize = FAM_TOKEN_U64_LEN as usize * mem::size_of::<u64>();
 
@@ -120,8 +121,8 @@ mod layout_tests {
         use memoffset::*;
         // NB: offset_of! macro does not work on ?Sized types.
         //     We will have to find a workaround to use `extern_types`.
-        assert_eq!(offset_of!(GreenNode, head), OFFSET_OF_HEAD.into());
-        assert_eq!(offset_of!(GreenNode, tail), OFFSET_OF_TAIL.into());
+        assert_eq!(offset_of!(GreenNode, head), OFFSET_OF_HEAD as usize);
+        assert_eq!(offset_of!(GreenNode, tail), OFFSET_OF_TAIL as usize);
     }
 }
 
@@ -344,33 +345,79 @@ impl GreenNode {
     }
 
     #[inline]
-    fn fam_len(&self) -> u16 {
-        self.head.fam_len
+    pub(crate) fn fam_end(&self) -> u16 {
+        self.head.fam_len - 1
     }
 
-    /// # Safety
+    /// The index to the tag before this child.
+    pub unsafe fn child_idx<T>(&self, ptr: impl Into<ptr::NonNull<T>>) -> u16 {
+        let ptr = ptr.into().as_ptr().cast::<u64>().offset(-1);
+        let offset = ptr as usize - &self.tail as *const FlexibleU64Array as usize;
+        (offset / mem::size_of::<u64>()).try_into().unwrap()
+    }
+
+    /// The children for the given range in the FAM.
+    /// Indexes are always to the tag before a child.
     ///
-    /// `ptr` must point at `self.tail`.
-    /// Separated to allow `children`/`children_mut`
-    /// to provide pointers with different mutability provenance.
-    unsafe fn children_raw(&self, ptr: *mut u64) -> RawGreenChildren {
-        RawGreenChildren {
-            next: ptr::NonNull::new(ptr.cast::<u32>().offset(1)).unwrap(),
-            last: ptr::NonNull::new(ptr.offset(self.fam_len() as isize).cast::<u32>()).unwrap(),
-        }
+    /// Using a left-exclusive range or right-included range
+    /// requires reading and offsetting the element at the index.
+    pub unsafe fn children_slice(&self, range: impl RangeBounds<u16>) -> GreenChildren<'_> {
+        let ptr = &self.tail as *const FlexibleU64Array as *mut u64;
+        let next = match range.start_bound() {
+            // First `tag_before`.
+            Bound::Unbounded => {
+                let tag_before = ptr.cast::<u32>().offset(1);
+                ptr::NonNull::new_unchecked(tag_before)
+            }
+            // Advance one u32 to point to `tag_before`.
+            Bound::Included(&idx) => {
+                let tag_before = ptr.offset(idx.try_into().unwrap()).cast::<u32>().offset(1);
+                ptr::NonNull::new_unchecked(tag_before)
+            }
+            // Read `tag_before` at `idx` to skip over element.
+            Bound::Excluded(&idx) => {
+                let tag_before = ptr.offset(idx.try_into().unwrap()).cast::<u32>().offset(1);
+                RawGreenChildren::at(ptr::NonNull::new_unchecked(tag_before)).1
+            }
+        };
+        let last = match range.end_bound() {
+            // Last `tag_after`.
+            Bound::Unbounded => {
+                let tag_after = ptr.offset(self.fam_end() as isize).cast::<u32>();
+                ptr::NonNull::new_unchecked(tag_after)
+            }
+            // Read `tag_after` at `idx` to back up one element.
+            Bound::Included(&idx) => {
+                let tag_after = ptr.offset(idx.try_into().unwrap()).cast::<u32>();
+                RawGreenChildren::at_back(ptr::NonNull::new_unchecked(tag_after)).1
+            }
+            // Use pointed at `tag_after`.
+            Bound::Excluded(&idx) => {
+                let tag_after = ptr.offset(idx.try_into().unwrap()).cast::<u32>();
+                ptr::NonNull::new_unchecked(tag_after)
+            }
+        };
+        GreenChildren { raw: RawGreenChildren { next, last }, marker: PhantomData }
     }
 
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> GreenChildren<'_> {
-        let ptr = (&self.tail as *const FlexibleU64Array as *mut u64);
-        unsafe { GreenChildren { raw: self.children_raw(ptr), marker: PhantomData } }
+        unsafe { self.children_slice(..) }
     }
 
     #[inline]
     fn children_mut(&mut self) -> GreenChildrenMut<'_> {
-        let ptr = (&mut self.tail as *mut FlexibleU64Array as *mut u64);
-        unsafe { GreenChildrenMut { raw: self.children_raw(ptr), marker: PhantomData } }
+        let ptr = &mut self.tail as *mut FlexibleU64Array as *mut u64;
+        unsafe {
+            GreenChildrenMut {
+                raw: RawGreenChildren {
+                    next: ptr::NonNull::new_unchecked(ptr.cast::<u32>().offset(1)),
+                    last: ptr::NonNull::new_unchecked(ptr.offset(self.fam_end() as isize).cast()),
+                },
+                marker: PhantomData,
+            }
+        }
     }
 }
 

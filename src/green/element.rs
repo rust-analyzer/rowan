@@ -89,8 +89,26 @@ impl GreenElementRaw {
     #[inline]
     pub(crate) unsafe fn as_mut<'a>(self) -> GreenElementMut<'a> {
         match self {
-            NodeOrToken::Node(mut raw) => (&mut *raw.as_ptr()).into(),
-            NodeOrToken::Token(mut raw) => (&mut *raw.as_ptr()).into(),
+            NodeOrToken::Node(raw) => (&mut *raw.as_ptr()).into(),
+            NodeOrToken::Token(raw) => (&mut *raw.as_ptr()).into(),
+        }
+    }
+}
+
+impl Into<ptr::NonNull<u64>> for GreenElementRef<'_> {
+    fn into(self) -> ptr::NonNull<u64> {
+        match self {
+            NodeOrToken::Node(node) => ptr::NonNull::from(node).cast(),
+            NodeOrToken::Token(token) => ptr::NonNull::from(token).cast(),
+        }
+    }
+}
+
+impl GreenElementRef<'_> {
+    pub(crate) fn fam_len(&self) -> u16 {
+        match self {
+            NodeOrToken::Node(_) => node::FAM_NODE_U64_LEN,
+            NodeOrToken::Token(_) => node::FAM_TOKEN_U64_LEN,
         }
     }
 }
