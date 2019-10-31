@@ -40,6 +40,7 @@ impl GreenNodeBuilder {
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
         let children: Vec<_> = self.children.drain(first_child..).collect();
+        let children_count = children.len();
         let mut node = GreenNode::new(kind, children);
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
@@ -49,7 +50,7 @@ impl GreenNodeBuilder {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.child_count() <= 3 {
+        if children_count <= 3 {
             match self.cache.get(&node) {
                 Some(existing) => node = existing.clone(),
                 None => assert!(self.cache.insert(node.clone())),

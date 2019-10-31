@@ -21,13 +21,21 @@ use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
 //   strong_count: AtomicUsize (u32 or u64)
 //   text_len: TextUnit (u32)
 //   kind: SyntaxKind (u16)
-//   child_count: u16
+//   fam_len: u16
 // }
 // (padding to u64)
-// [0u64 ArcGreenNode OR 1u64 GreenToken]
+// -1u32
+// [0u32 ArcGreenNode 0u32] OR [1u32 GreenToken 1u32]
+// -1u32
 
-const NODE_TAG: u64 = 0;
-const TOKEN_TAG: u64 = 1;
+const TAG_NODE: u32 = 0;
+const TAG_TOKEN: u32 = 1;
+const TAG_END: u32 = -1i32 as u32;
+
+const FAM_NODE_U64_LEN: u16 = 2;
+const FAM_TOKEN_U64_LEN: u16 = 5;
+const FAM_NODE_BYTE_LEN: usize = FAM_NODE_U64_LEN as usize * mem::size_of::<u64>();
+const FAM_TOKEN_BYTE_LEN: usize = FAM_TOKEN_U64_LEN as usize * mem::size_of::<u64>();
 
 const OFFSET_OF_HEAD: isize = 0;
 const OFFSET_OF_TAIL: isize = 16;
@@ -36,7 +44,7 @@ struct GreenNodeHead {
     strong_count: AtomicUsize,
     text_len: TextUnit,
     kind: SyntaxKind,
-    child_count: u16,
+    fam_len: u16,
 }
 
 /// # Safety
@@ -66,16 +74,22 @@ unsafe impl Send for ArcGreenNode {}
 unsafe impl Sync for ArcGreenNode {}
 
 #[derive(Debug, Clone)]
+struct RawGreenChildren {
+    /// Pointer to the start tag of the next child to be iterated.
+    next: ptr::NonNull<u32>,
+    /// Pointer to the end tag of the last child to be iterated.
+    last: ptr::NonNull<u32>,
+}
+
+#[derive(Debug, Clone)]
 pub struct GreenChildren<'a> {
-    next: ptr::NonNull<u64>,
-    remaining: usize,
+    raw: RawGreenChildren,
     marker: PhantomData<&'a GreenNode>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GreenChildrenMut<'a> {
-    next: ptr::NonNull<u64>,
-    remaining: usize,
+    raw: RawGreenChildren,
     marker: PhantomData<&'a mut GreenNode>,
 }
 
@@ -93,11 +107,12 @@ mod layout_tests {
     compile_error!("`rowan::GreenNode` not known to work when `usize` is not `u32`/`u64`");
 
     assert_eq_align!(GreenNodeHead, usize);
-    assert_eq_size!(GreenNodeHead, u128);
+    assert_eq_size!(GreenNodeHead, [u64; 2]);
     assert_eq_align!(GreenNode, u64);
     assert_eq_size!(*const GreenNode, usize);
     assert_eq_align!(ArcGreenNode, usize);
     assert_eq_size!(ArcGreenNode, usize);
+    assert_eq_size!(GreenToken, [u64; 4]);
 
     #[test]
     #[cfg(not(extern_types))]
@@ -105,8 +120,8 @@ mod layout_tests {
         use memoffset::*;
         // NB: offset_of! macro does not work on ?Sized types.
         //     We will have to find a workaround to use `extern_types`.
-        assert!(offset_of!(GreenNode, head).try_into().unwrap(), OFFSET_OF_HEAD);
-        assert!(offset_of!(GreenNode, tail).try_into().unwrap(), OFFSET_OF_TAIL);
+        assert_eq!(offset_of!(GreenNode, head), OFFSET_OF_HEAD.into());
+        assert_eq!(offset_of!(GreenNode, tail), OFFSET_OF_TAIL.into());
     }
 }
 
@@ -137,7 +152,6 @@ impl PartialEq for GreenNode {
     fn eq(&self, other: &Self) -> bool {
         self.kind() == other.kind()
             && self.text_len() == other.text_len()
-            && self.child_count() == other.child_count()
             && self.children().eq(other.children())
     }
 }
@@ -184,9 +198,9 @@ impl Clone for ArcGreenNode {
     fn clone(&self) -> Self {
         let raw = self.raw;
         // Relaxed is what the stdlib uses: <https://github.com/rust-lang/rust/blob/55e00631e5bc5b16d40232914e57deeea197a8e4/src/liballoc/sync.rs#L925-L935>
-        let old_size = unsafe { raw.as_ref() }.head.strong_count.fetch_add(1, Ordering::Relaxed);
+        let old_count = unsafe { raw.as_ref() }.head.strong_count.fetch_add(1, Ordering::Relaxed);
         // But protect against runaway clone/forget: <https://github.com/rust-lang/rust/blob/55e00631e5bc5b16d40232914e57deeea197a8e4/src/liballoc/sync.rs#L938-L946>
-        if old_size > isize::MAX as usize {
+        if old_count > isize::MAX as usize {
             std::process::abort();
         }
         ArcGreenNode { raw }
@@ -245,40 +259,38 @@ impl Borrow<GreenNode> for ArcGreenNode {
 }
 
 impl GreenNode {
-    fn layout_with(node_count: usize, token_count: usize) -> Layout {
-        let size = (OFFSET_OF_TAIL as usize)
-            + (node_count * (mem::size_of::<u64>() + mem::size_of::<u64>()))
-            + (token_count * (mem::size_of::<u64>() + mem::size_of::<GreenToken>()));
+    /// The length of the FAM in `u64`.
+    ///
+    /// Returns `None` if the FAM would not fit in a `u16` length.
+    fn fam_length(node_count: u16, token_count: u16) -> Option<u16> {
+        1u16.checked_add(node_count.checked_mul(FAM_NODE_U64_LEN)?)?
+            .checked_add(token_count.checked_mul(FAM_TOKEN_U64_LEN)?)
+    }
+
+    /// The layout of a `GreenNode` with a FAM of `fam_len` `u64`.
+    fn layout_with(fam_len: u16) -> Layout {
+        let size = (OFFSET_OF_TAIL as usize) + (fam_len as usize * mem::size_of::<u64>());
         let align = mem::align_of::<GreenNode>();
         Layout::from_size_align(size, align).unwrap()
     }
 
+    /// The layout of this `GreenNode`.
     fn layout(&self) -> Layout {
-        let (node_count, token_count) =
-            self.children().fold((0, 0), |(nodes, tokens), el| match el {
-                NodeOrToken::Node(_) => (nodes + 1, tokens),
-                NodeOrToken::Token(_) => (nodes, tokens + 1),
-            });
-        GreenNode::layout_with(node_count, token_count)
+        GreenNode::layout_with(self.head.fam_len)
     }
 
     /// Creates new Node.
-    #[allow(clippy::new_ret_no_self, clippy::boxed_local)]
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(kind: SyntaxKind, children: Vec<GreenElement>) -> ArcGreenNode {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        let head = GreenNodeHead {
-            strong_count: AtomicUsize::new(1),
-            kind,
-            text_len,
-            child_count: children.len().try_into().unwrap(),
-        };
-
         let (node_count, token_count) =
             children.iter().fold((0, 0), |(nodes, tokens), el| match el {
                 NodeOrToken::Node(_) => (nodes + 1, tokens),
                 NodeOrToken::Token(_) => (nodes, tokens + 1),
             });
-        let layout = GreenNode::layout_with(node_count, token_count);
+        let fam_len = GreenNode::fam_length(node_count, token_count).expect("too many children");
+        let layout = GreenNode::layout_with(fam_len);
+        let head = GreenNodeHead { strong_count: AtomicUsize::new(1), kind, text_len, fam_len };
 
         unsafe {
             let node = ptr::NonNull::new(alloc(layout))
@@ -290,23 +302,30 @@ impl GreenNode {
                 head,
             );
 
-            let mut flex_array = node.as_ptr().cast::<u8>().offset(OFFSET_OF_TAIL).cast::<u64>();
+            let mut flex_array = node.as_ptr().cast::<u8>().offset(OFFSET_OF_TAIL).cast::<u32>();
+            ptr::write(flex_array, TAG_END);
+            flex_array = flex_array.offset(1);
             for el in children {
                 match el {
                     NodeOrToken::Node(node) => {
-                        ptr::write(flex_array, NODE_TAG);
+                        ptr::write(flex_array, TAG_NODE);
                         let this_node = flex_array.offset(1).cast::<ArcGreenNode>();
                         ptr::write(this_node, node);
-                        flex_array = this_node.offset(1).cast::<u64>();
+                        let tag_after = this_node.offset(1).cast::<u32>();
+                        ptr::write(tag_after, TAG_NODE);
+                        flex_array = tag_after.offset(1);
                     }
                     NodeOrToken::Token(token) => {
-                        ptr::write(flex_array, TOKEN_TAG);
+                        ptr::write(flex_array, TAG_TOKEN);
                         let this_token = flex_array.offset(1).cast::<GreenToken>();
                         ptr::write(this_token, token);
-                        flex_array = this_token.offset(1).cast::<u64>();
+                        let tag_after = this_token.offset(1).cast::<u32>();
+                        ptr::write(tag_after, TAG_TOKEN);
+                        flex_array = tag_after.offset(1);
                     }
                 }
             }
+            ptr::write(flex_array, TAG_END);
 
             ArcGreenNode { raw: node }
         }
@@ -324,42 +343,105 @@ impl GreenNode {
         self.head.text_len
     }
 
-    /// How many children does this node have?
     #[inline]
-    pub fn child_count(&self) -> usize {
-        self.head.child_count as usize
+    fn fam_len(&self) -> u16 {
+        self.head.fam_len
     }
 
-    pub(crate) unsafe fn child_at(&self, idx: usize) -> GreenElementRef<'_> {
-        let ptr = (&self.tail as *const _ as *mut u64).add(idx);
-        let mut children = GreenChildren {
-            next: ptr::NonNull::new(ptr).unwrap(),
-            remaining: 1,
-            marker: PhantomData,
-        };
-        match children.next() {
-            Some(el) => el,
-            None => unreachable!(),
+    /// # Safety
+    ///
+    /// `ptr` must point at `self.tail`.
+    /// Separated to allow `children`/`children_mut`
+    /// to provide pointers with different mutability provenance.
+    unsafe fn children_raw(&self, ptr: *mut u64) -> RawGreenChildren {
+        RawGreenChildren {
+            next: ptr::NonNull::new(ptr.cast::<u32>().offset(1)).unwrap(),
+            last: ptr::NonNull::new(ptr.offset(self.fam_len() as isize).cast::<u32>()).unwrap(),
         }
     }
 
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> GreenChildren<'_> {
-        GreenChildren {
-            next: ptr::NonNull::new(&self.tail as *const _ as *mut _).unwrap(),
-            remaining: self.child_count(),
-            marker: PhantomData,
-        }
+        let ptr = (&self.tail as *const FlexibleU64Array as *mut u64);
+        unsafe { GreenChildren { raw: self.children_raw(ptr), marker: PhantomData } }
     }
 
     #[inline]
     fn children_mut(&mut self) -> GreenChildrenMut<'_> {
-        GreenChildrenMut {
-            next: ptr::NonNull::new(&mut self.tail as *mut _ as *mut _).unwrap(),
-            remaining: self.child_count(),
-            marker: PhantomData,
+        let ptr = (&mut self.tail as *mut FlexibleU64Array as *mut u64);
+        unsafe { GreenChildrenMut { raw: self.children_raw(ptr), marker: PhantomData } }
+    }
+}
+
+impl RawGreenChildren {
+    unsafe fn at(tag_before: ptr::NonNull<u32>) -> (GreenElementRaw, ptr::NonNull<u32>) {
+        match *tag_before.as_ref() {
+            TAG_NODE => {
+                let node = tag_before.as_ptr().offset(1).cast::<ArcGreenNode>();
+                let tag_after = node.offset(1).cast::<u32>();
+                debug_assert_eq!(*tag_after, TAG_NODE);
+                let next = ptr::NonNull::new_unchecked(tag_after.offset(1));
+                (ptr::NonNull::new_unchecked(node).into(), next)
+            }
+            TAG_TOKEN => {
+                let token = tag_before.as_ptr().offset(1).cast::<GreenToken>();
+                let tag_after = token.offset(1).cast::<u32>();
+                debug_assert_eq!(*tag_after, TAG_TOKEN);
+                let next = ptr::NonNull::new_unchecked(tag_after.offset(1));
+                (ptr::NonNull::new_unchecked(token).into(), next)
+            }
+            TAG_END => unreachable!("unexpected end of children FAM"),
+            _ => unreachable!("unrecognized children FAM tag"),
         }
+    }
+
+    unsafe fn at_back(tag_after: ptr::NonNull<u32>) -> (GreenElementRaw, ptr::NonNull<u32>) {
+        match *tag_after.as_ref() {
+            TAG_NODE => {
+                let next = tag_after.as_ptr().cast::<u8>().sub(FAM_NODE_BYTE_LEN).cast::<u32>();
+                let tag_before = next.offset(1);
+                debug_assert_eq!(*tag_before, TAG_NODE);
+                let node = tag_before.offset(1).cast::<ArcGreenNode>();
+                (ptr::NonNull::new_unchecked(node).into(), ptr::NonNull::new_unchecked(next))
+            }
+            TAG_TOKEN => {
+                let next = tag_after.as_ptr().cast::<u8>().sub(FAM_TOKEN_BYTE_LEN).cast::<u32>();
+                let tag_before = next.offset(1);
+                debug_assert_eq!(*tag_before, TAG_TOKEN);
+                let node = tag_before.offset(1).cast::<GreenToken>();
+                (ptr::NonNull::new_unchecked(node).into(), ptr::NonNull::new_unchecked(next))
+            }
+            TAG_END => unreachable!("unexpected end of children FAM"),
+            _ => unreachable!("unrecognized children FAM tag"),
+        }
+    }
+
+    unsafe fn next(&mut self) -> Option<GreenElementRaw> {
+        if self.next < self.last {
+            let (el, next) = RawGreenChildren::at(self.next);
+            self.next = next;
+            Some(el)
+        } else {
+            None
+        }
+    }
+
+    unsafe fn next_back(&mut self) -> Option<GreenElementRaw> {
+        if self.next < self.last {
+            let (el, last) = RawGreenChildren::at_back(self.last);
+            self.last = last;
+            Some(el)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let ptr_diff =
+            unsafe { self.last.as_ptr().offset(1) as usize - self.next.as_ptr() as usize };
+        let fam_size = ptr_diff / 8;
+        (fam_size / FAM_TOKEN_BYTE_LEN, Some(fam_size / FAM_NODE_BYTE_LEN))
     }
 }
 
@@ -367,30 +449,11 @@ impl<'a> Iterator for GreenChildren<'a> {
     type Item = GreenElementRef<'a>;
 
     fn next(&mut self) -> Option<GreenElementRef<'a>> {
-        if self.remaining > 0 {
-            self.remaining -= 1;
-            unsafe {
-                match *self.next.as_ref() {
-                    NODE_TAG => {
-                        let node = self.next.as_ptr().offset(1).cast::<ArcGreenNode>();
-                        self.next = ptr::NonNull::new_unchecked(node.offset(1)).cast();
-                        Some((&**node).into())
-                    }
-                    TOKEN_TAG => {
-                        let token = self.next.as_ptr().offset(1).cast::<GreenToken>();
-                        self.next = ptr::NonNull::new_unchecked(token.offset(1)).cast();
-                        Some((&*token).into())
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        } else {
-            None
-        }
+        unsafe { self.raw.next().map(|el| el.as_ref()) }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.remaining, Some(self.remaining))
+        self.raw.size_hint()
     }
 }
 
@@ -398,41 +461,22 @@ impl<'a> Iterator for GreenChildrenMut<'a> {
     type Item = GreenElementMut<'a>;
 
     fn next(&mut self) -> Option<GreenElementMut<'a>> {
-        if self.remaining > 0 {
-            self.remaining -= 1;
-            unsafe {
-                match *self.next.as_ref() {
-                    NODE_TAG => {
-                        let node = self.next.as_ptr().offset(1).cast::<ArcGreenNode>();
-                        self.next = ptr::NonNull::new_unchecked(node.offset(1)).cast();
-                        Some((&mut *node).into())
-                    }
-                    TOKEN_TAG => {
-                        let token = self.next.as_ptr().offset(1).cast::<GreenToken>();
-                        self.next = ptr::NonNull::new_unchecked(token.offset(1)).cast();
-                        Some((&mut *token).into())
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        } else {
-            None
-        }
+        unsafe { self.raw.next().map(|el| el.as_mut()) }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.remaining, Some(self.remaining))
+        self.raw.size_hint()
     }
 }
 
-impl ExactSizeIterator for GreenChildren<'_> {
-    fn len(&self) -> usize {
-        self.remaining
+impl<'a> DoubleEndedIterator for GreenChildren<'a> {
+    fn next_back(&mut self) -> Option<GreenElementRef<'a>> {
+        unsafe { self.raw.next_back().map(|el| el.as_ref()) }
     }
 }
 
-impl ExactSizeIterator for GreenChildrenMut<'_> {
-    fn len(&self) -> usize {
-        self.remaining
+impl<'a> DoubleEndedIterator for GreenChildrenMut<'a> {
+    fn next_back(&mut self) -> Option<GreenElementMut<'a>> {
+        unsafe { self.raw.next_back().map(|el| el.as_mut()) }
     }
 }

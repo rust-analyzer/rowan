@@ -1,9 +1,14 @@
+use std::ptr;
+
 use super::*;
 use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
+
+// TODO: reduce repetition with a macro?
 
 pub(crate) type GreenElement = NodeOrToken<ArcGreenNode, GreenToken>;
 pub(crate) type GreenElementRef<'a> = NodeOrToken<&'a GreenNode, &'a GreenToken>;
 pub(crate) type GreenElementMut<'a> = NodeOrToken<&'a mut ArcGreenNode, &'a mut GreenToken>;
+pub(crate) type GreenElementRaw = NodeOrToken<ptr::NonNull<ArcGreenNode>, ptr::NonNull<GreenToken>>;
 
 impl From<ArcGreenNode> for GreenElement {
     #[inline]
@@ -22,6 +27,13 @@ impl<'a> From<&'a GreenNode> for GreenElementRef<'a> {
 impl<'a> From<&'a mut ArcGreenNode> for GreenElementMut<'a> {
     #[inline]
     fn from(node: &'a mut ArcGreenNode) -> GreenElementMut<'a> {
+        NodeOrToken::Node(node)
+    }
+}
+
+impl From<ptr::NonNull<ArcGreenNode>> for GreenElementRaw {
+    #[inline]
+    fn from(node: ptr::NonNull<ArcGreenNode>) -> GreenElementRaw {
         NodeOrToken::Node(node)
     }
 }
@@ -47,12 +59,38 @@ impl<'a> From<&'a mut GreenToken> for GreenElementMut<'a> {
     }
 }
 
+impl From<ptr::NonNull<GreenToken>> for GreenElementRaw {
+    #[inline]
+    fn from(token: ptr::NonNull<GreenToken>) -> GreenElementRaw {
+        NodeOrToken::Token(token)
+    }
+}
+
 impl GreenElementRef<'_> {
     #[inline]
     pub(crate) fn to_owned(self) -> GreenElement {
         match self {
             NodeOrToken::Node(node) => NodeOrToken::Node(node.to_owned()),
             NodeOrToken::Token(token) => NodeOrToken::Token(token.clone()),
+        }
+    }
+}
+
+#[allow(unsafe_code)]
+impl GreenElementRaw {
+    #[inline]
+    pub(crate) unsafe fn as_ref<'a>(self) -> GreenElementRef<'a> {
+        match self {
+            NodeOrToken::Node(raw) => (&**raw.as_ptr()).into(),
+            NodeOrToken::Token(raw) => (&*raw.as_ptr()).into(),
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn as_mut<'a>(self) -> GreenElementMut<'a> {
+        match self {
+            NodeOrToken::Node(mut raw) => (&mut *raw.as_ptr()).into(),
+            NodeOrToken::Token(mut raw) => (&mut *raw.as_ptr()).into(),
         }
     }
 }

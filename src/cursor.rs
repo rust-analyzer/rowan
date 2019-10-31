@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-    ArcGreenNode, Direction, GreenChildren, GreenElementRef, GreenNode, GreenToken, NodeOrToken,
-    GreenElement, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    ArcGreenNode, Direction, GreenChildren, GreenElement, GreenElementRef, GreenNode, GreenToken,
+    NodeOrToken, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -300,7 +300,8 @@ impl SyntaxNode {
     #[inline]
     pub fn last_child(&self) -> Option<SyntaxNode> {
         let (node, (index, offset)) = filter_nodes(
-            self.green().children_to(self.green().children().len(), self.text_range().end()),
+            // FIXME: make `.children().count()` constant time again
+            self.green().children_to(self.green().children().count(), self.text_range().end()),
         )
         .next()?;
 
@@ -310,7 +311,8 @@ impl SyntaxNode {
     pub fn last_child_or_token(&self) -> Option<SyntaxElement> {
         let (element, (index, offset)) = self
             .green()
-            .children_to(self.green().children().len(), self.text_range().end())
+            // FIXME: make `.children().count()` constant time again
+            .children_to(self.green().children().count(), self.text_range().end())
             .next()?;
         Some(NodeOrToken::new(element, self.clone(), index as u32, offset))
     }
@@ -801,7 +803,7 @@ impl GreenNode {
         end_index: usize,
         mut offset: TextUnit,
     ) -> impl Iterator<Item = (GreenElementRef<'_>, (usize, TextUnit))> {
-        // FIXME: Remove temporary collection which is just for preexisting reverse iterator.
+        // FIXME: Remove temporary collection which is just for ExactSizeIterator.
         // TODO: Use a direct index into the fam?
         let vec: Vec<_> = self.children().take(end_index).collect();
         vec.into_iter().rev().enumerate().map(move |(index, element)| {
