@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     ArcGreenNode, Direction, GreenChildren, GreenElementRef, GreenNode, GreenToken, NodeOrToken,
-    OwnedGreenElement, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    GreenElement, SmolStr, SyntaxText, TextRange, TextUnit, TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -223,11 +223,11 @@ impl SyntaxNode {
             None => replacement,
             Some((parent, me, _offset)) => {
                 let mut replacement = Some(replacement);
-                let children: Vec<OwnedGreenElement> = parent
+                let children: Vec<GreenElement> = parent
                     .green()
                     .children()
                     .enumerate()
-                    .map(|(i, child)| -> OwnedGreenElement {
+                    .map(|(i, child)| -> GreenElement {
                         if i as u32 == me {
                             replacement.take().unwrap().into()
                         } else {

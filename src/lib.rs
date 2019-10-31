@@ -19,7 +19,7 @@ mod utility_types;
 #[cfg(feature = "serde1")]
 mod serde_impls;
 
-use green::{GreenElementRef, OwnedGreenElement, GreenChildren};
+use green::{GreenElementRef, GreenElement, GreenChildren};
 
 // Reexport types for working with strings. We might be too opinionated about
 // these, as a custom interner might work better, but `SmolStr` is a pretty good
@@ -50,7 +50,7 @@ mod tests {
 
         eprintln!("ArcGreenNode      {}", size_of::<ArcGreenNode>());
         eprintln!("GreenToken        {}", size_of::<GreenToken>());
-        eprintln!("OwnedGreenElement {}", size_of::<OwnedGreenElement>());
+        eprintln!("OwnedGreenElement {}", size_of::<GreenElement>());
         eprintln!("GreenElementRef   {}", size_of::<GreenElementRef>());
         eprintln!();
         eprintln!("SyntaxNode    {}", size_of::<cursor::SyntaxNode>());
