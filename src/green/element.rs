@@ -68,7 +68,7 @@ impl From<ptr::NonNull<GreenToken>> for GreenElementRaw {
 
 impl GreenElementRef<'_> {
     #[inline]
-    pub(crate) fn to_owned(self) -> GreenElement {
+    pub fn to_owned(self) -> GreenElement {
         match self {
             NodeOrToken::Node(node) => NodeOrToken::Node(node.to_owned()),
             NodeOrToken::Token(token) => NodeOrToken::Token(token.clone()),
