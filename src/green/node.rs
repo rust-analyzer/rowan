@@ -144,3 +144,18 @@ impl GreenNode {
         &self.children
     }
 }
+
+impl ToOwned for GreenNode {
+    type Owned = Arc<GreenNode>;
+
+    fn to_owned(&self) -> Self::Owned {
+        unsafe {
+            // This is safe because all `GreenNode`s live behind an `Arc`.
+            let arc = Arc::from_raw(self);
+            // NB: The real owning `Arc` cannot be dropped here because it is borrowed.
+            // Don't forget to increase the reference count!
+            mem::forget(arc.clone());
+            arc
+        }
+    }
+}
