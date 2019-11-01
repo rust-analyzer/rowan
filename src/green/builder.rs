@@ -1,107 +1,5 @@
-use std::{mem::size_of, sync::Arc};
-
-use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr, TextUnit};
-
-/// Internal node in the immutable tree.
-/// It has other nodes and tokens as children.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct GreenNode {
-    kind: SyntaxKind,
-    text_len: TextUnit,
-    //TODO: implement llvm::trailing_objects trick
-    children: Arc<[GreenElement]>,
-}
-
-impl GreenNode {
-    /// Creates new Node.
-    #[inline]
-    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
-        let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { kind, text_len, children: children.into() }
-    }
-
-    /// Kind of this node.
-    #[inline]
-    pub fn kind(&self) -> SyntaxKind {
-        self.kind
-    }
-
-    /// Length of the text, covered by this node.
-    #[inline]
-    pub fn text_len(&self) -> TextUnit {
-        self.text_len
-    }
-    /// Children of this node.
-    #[inline]
-    pub fn children(&self) -> &[GreenElement] {
-        &self.children
-    }
-}
-
-/// Leaf node in the immutable tree.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct GreenToken {
-    kind: SyntaxKind,
-    text: SmolStr,
-}
-
-impl GreenToken {
-    /// Creates new Token.
-    #[inline]
-    pub fn new(kind: SyntaxKind, text: SmolStr) -> GreenToken {
-        GreenToken { kind, text }
-    }
-    /// Kind of this Token.
-    #[inline]
-    pub fn kind(&self) -> SyntaxKind {
-        self.kind
-    }
-    /// Text of this Token.
-    #[inline]
-    pub fn text(&self) -> &SmolStr {
-        &self.text
-    }
-    /// Text of this Token.
-    #[inline]
-    pub fn text_len(&self) -> TextUnit {
-        TextUnit::from_usize(self.text.len())
-    }
-}
-
-pub(crate) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
-
-impl From<GreenNode> for GreenElement {
-    #[inline]
-    fn from(node: GreenNode) -> GreenElement {
-        NodeOrToken::Node(node)
-    }
-}
-
-impl From<GreenToken> for GreenElement {
-    #[inline]
-    fn from(token: GreenToken) -> GreenElement {
-        NodeOrToken::Token(token)
-    }
-}
-
-impl GreenElement {
-    /// Returns kind of this element.
-    #[inline]
-    pub fn kind(&self) -> SyntaxKind {
-        match self {
-            NodeOrToken::Node(it) => it.kind(),
-            NodeOrToken::Token(it) => it.kind(),
-        }
-    }
-    /// Returns length of the text covered by this element.
-    #[inline]
-    pub fn text_len(&self) -> TextUnit {
-        match self {
-            NodeOrToken::Node(it) => it.text_len(),
-            NodeOrToken::Token(it) => it.text_len(),
-        }
-    }
-}
+use super::*;
+use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
 
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
@@ -124,7 +22,7 @@ impl GreenNodeBuilder {
     /// Adds new token to the current branch.
     #[inline]
     pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
-        let token = GreenToken { kind, text };
+        let token = GreenToken::new(kind, text);
         self.children.push(token.into());
     }
     /// Start new node and make it current.
@@ -148,7 +46,7 @@ impl GreenNodeBuilder {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children.len() <= 3 {
+        if node.children().len() <= 3 {
             match self.cache.get(&node) {
                 Some(existing) => node = existing.clone(),
                 None => assert!(self.cache.insert(node.clone())),
