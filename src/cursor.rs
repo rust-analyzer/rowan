@@ -124,7 +124,7 @@ impl FreeList {
         for _ in 0..FREE_LIST_LEN {
             res.try_push(&mut Rc::new(NodeData {
                 kind: Kind::Free { next_free: None },
-                green: ptr::NonNull::dangling(),
+                green: unsafe { GreenNode::dummy() }.into(),
             }))
         }
         res
@@ -165,7 +165,7 @@ impl NodeData {
         let mut node = FreeList::with(|it| it.pop()).unwrap_or_else(|| {
             Rc::new(NodeData {
                 kind: Kind::Free { next_free: None },
-                green: ptr::NonNull::dangling(),
+                green: unsafe { GreenNode::dummy() }.into(),
             })
         });
 
@@ -191,7 +191,7 @@ impl SyntaxNode {
     }
 
     pub fn new_root(green: Arc<GreenNode>) -> SyntaxNode {
-        let data = NodeData::new(Kind::Root(green), ptr::NonNull::dangling());
+        let data = NodeData::new(Kind::Root(green), unsafe { GreenNode::dummy() }.into());
         let mut ret = SyntaxNode::new(data);
         let green: ptr::NonNull<GreenNode> = match &ret.0.kind {
             Kind::Root(green) => green.as_ref().into(),
@@ -222,7 +222,7 @@ impl SyntaxNode {
             None => replacement,
             Some((parent, me, _offset)) => {
                 let mut replacement = Some(replacement);
-                let children: Box<[_]> = parent
+                let children: Vec<_> = parent
                     .green()
                     .children()
                     .iter()
@@ -532,7 +532,7 @@ impl SyntaxToken {
         let parent = self.parent();
         let me = self.index;
 
-        let children: Box<[_]> =
+        let children: Vec<_> =
             parent
                 .green()
                 .children()

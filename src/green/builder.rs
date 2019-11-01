@@ -79,7 +79,7 @@ impl GreenNodeBuilder {
     #[inline]
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
-        let children: Box<[_]> = self.children.drain(first_child..).collect();
+        let children: Vec<_> = self.children.drain(first_child..).collect();
         let node = self.cache.node(GreenNode::new(kind, children));
         self.children.push(node.into());
     }
