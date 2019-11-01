@@ -1,8 +1,8 @@
-use std::{fmt, ops};
+use std::fmt;
 
 use crate::{
-    cursor::{SyntaxElement, SyntaxNode, SyntaxToken},
-    NodeOrToken, SmolStr, TextRange, TextUnit,
+    cursor::{SyntaxNode, SyntaxToken},
+    TextRange, TextUnit,
 };
 
 #[derive(Clone)]
@@ -43,7 +43,6 @@ impl SyntaxText {
     }
 
     pub fn char_at(&self, offset: TextUnit) -> Option<char> {
-        let offset = offset.into();
         let mut start: TextUnit = 0.into();
         let res = self.try_for_each_chunk(|chunk| {
             let end = start + TextUnit::of_str(chunk);
@@ -59,7 +58,7 @@ impl SyntaxText {
 
     pub fn slice<R: private::SyntaxTextRange>(&self, range: R) -> SyntaxText {
         let start = range.start().unwrap_or_default();
-        let end = range.end().unwrap_or(self.len());
+        let end = range.end().unwrap_or_else(|| self.len());
         assert!(start <= end);
         let len = end - start;
         let start = self.range.start() + start;
@@ -97,6 +96,7 @@ impl SyntaxText {
 
     pub fn for_each_chunk<F: FnMut(&str)>(&self, mut f: F) {
         enum Void {}
+        #[allow(clippy::unit_arg)]
         match self.try_for_each_chunk(|chunk| Ok::<(), Void>(f(chunk))) {
             Ok(()) => (),
             Err(void) => match void {},
@@ -191,7 +191,6 @@ fn zip_texts<I: Iterator<Item = (SyntaxToken, TextRange)>>(xs: &mut I, ys: &mut 
         x.1 = TextRange::from_to(x.1.start(), x.1.len() - advance);
         y.1 = TextRange::from_to(y.1.start(), y.1.len() - advance);
     }
-    None
 }
 
 impl Eq for SyntaxText {}

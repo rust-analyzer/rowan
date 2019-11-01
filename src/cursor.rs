@@ -1,12 +1,11 @@
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     fmt,
     hash::{Hash, Hasher},
-    iter,
-    marker::PhantomData,
-    mem, ptr,
+    iter, mem, ptr,
     rc::Rc,
     slice,
+    sync::Arc,
 };
 
 use crate::{
@@ -92,7 +91,7 @@ impl fmt::Display for SyntaxElement {
 
 #[derive(Debug)]
 enum Kind {
-    Root(GreenNode),
+    Root(Arc<GreenNode>),
     Child { parent: SyntaxNode, index: u32, offset: TextUnit },
     Free { next_free: Option<Rc<NodeData>> },
 }
@@ -191,11 +190,11 @@ impl SyntaxNode {
         SyntaxNode(data)
     }
 
-    pub fn new_root(green: GreenNode) -> SyntaxNode {
+    pub fn new_root(green: Arc<GreenNode>) -> SyntaxNode {
         let data = NodeData::new(Kind::Root(green), ptr::NonNull::dangling());
         let mut ret = SyntaxNode::new(data);
         let green: ptr::NonNull<GreenNode> = match &ret.0.kind {
-            Kind::Root(green) => green.into(),
+            Kind::Root(green) => green.as_ref().into(),
             _ => unreachable!(),
         };
         Rc::get_mut(&mut ret.0).unwrap().green = green;
@@ -217,7 +216,7 @@ impl SyntaxNode {
     /// Returns a green tree, equal to the green tree this node
     /// belongs two, except with this node substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenNode>) -> Arc<GreenNode> {
         assert_eq!(self.kind(), replacement.kind());
         match self.0.kind.as_child() {
             None => replacement,
@@ -426,7 +425,7 @@ impl SyntaxNode {
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, including tokens.
     #[inline]
-    pub fn preorder_with_tokens<'a>(&'a self) -> impl Iterator<Item = WalkEvent<SyntaxElement>> {
+    pub fn preorder_with_tokens(&self) -> impl Iterator<Item = WalkEvent<SyntaxElement>> {
         let start: SyntaxElement = self.clone().into();
         iter::successors(Some(WalkEvent::Enter(start.clone())), move |pos| {
             let next = match pos {
@@ -527,7 +526,7 @@ impl SyntaxToken {
     /// Returns a green tree, equal to the green tree this token
     /// belongs two, except with this token substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenToken>) -> Arc<GreenNode> {
         assert_eq!(self.kind(), replacement.kind());
         let mut replacement = Some(replacement);
         let parent = self.parent();
@@ -587,7 +586,6 @@ impl SyntaxToken {
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let parent = self.parent();
         let (element, (index, offset)) = self
             .parent
             .green()
@@ -812,7 +810,7 @@ fn filter_nodes<'a, I: Iterator<Item = (&'a GreenElement, T)>, T>(
     iter: I,
 ) -> impl Iterator<Item = (&'a GreenNode, T)> {
     iter.filter_map(|(element, data)| match element {
-        NodeOrToken::Node(it) => Some((it, data)),
+        NodeOrToken::Node(it) => Some((it.as_ref(), data)),
         NodeOrToken::Token(_) => None,
     })
 }

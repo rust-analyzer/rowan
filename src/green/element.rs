@@ -1,18 +1,20 @@
+use std::sync::Arc;
+
 use super::*;
 use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
 
-pub type GreenElement = NodeOrToken<GreenNode, GreenToken>;
+pub type GreenElement = NodeOrToken<Arc<GreenNode>, Arc<GreenToken>>;
 
-impl From<GreenNode> for GreenElement {
+impl From<Arc<GreenNode>> for GreenElement {
     #[inline]
-    fn from(node: GreenNode) -> GreenElement {
+    fn from(node: Arc<GreenNode>) -> GreenElement {
         NodeOrToken::Node(node)
     }
 }
 
-impl From<GreenToken> for GreenElement {
+impl From<Arc<GreenToken>> for GreenElement {
     #[inline]
-    fn from(token: GreenToken) -> GreenElement {
+    fn from(token: Arc<GreenToken>) -> GreenElement {
         NodeOrToken::Token(token)
     }
 }
@@ -26,6 +28,7 @@ impl GreenElement {
             NodeOrToken::Token(it) => it.kind(),
         }
     }
+
     /// Returns length of the text covered by this element.
     #[inline]
     pub fn text_len(&self) -> TextUnit {

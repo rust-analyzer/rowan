@@ -7,9 +7,7 @@
     // missing_docs,
 )]
 #![deny(unsafe_code)]
-#![allow(unused)]
 
-#[warn(unused)]
 mod green;
 #[allow(unsafe_code)]
 pub mod cursor;

@@ -16,9 +16,9 @@ pub struct GreenNode {
 impl GreenNode {
     /// Creates new Node.
     #[inline]
-    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
+    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> Arc<GreenNode> {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { kind, text_len, children: children.into() }
+        Arc::new(GreenNode { kind, text_len, children: children.into() })
     }
 
     /// Kind of this node.

@@ -60,6 +60,8 @@ type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 /// but doesn't contain offsets and parent pointers.
 use rowan::GreenNode;
 
+use std::sync::Arc;
+
 /// You can construct GreenNodes by hand, but a builder
 /// is helpful for top-down parsers: it maintains a stack
 /// of currently in-progress nodes
@@ -73,7 +75,7 @@ use rowan::GreenNodeBuilder;
 /// which is controlled by the `R` parameter.
 
 struct Parse {
-    green_node: rowan::GreenNode,
+    green_node: Arc<rowan::GreenNode>,
     #[allow(unused)]
     errors: Vec<String>,
 }
@@ -129,7 +131,7 @@ fn parse(text: &str) -> Parse {
             self.builder.finish_node();
 
             // Turn the builder into a complete node.
-            let green: GreenNode = self.builder.finish();
+            let green: Arc<GreenNode> = self.builder.finish();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
             Parse { green_node: green, errors: self.errors }

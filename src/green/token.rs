@@ -13,16 +13,19 @@ impl GreenToken {
     pub fn new(kind: SyntaxKind, text: SmolStr) -> GreenToken {
         GreenToken { kind, text }
     }
+
     /// Kind of this Token.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
         self.kind
     }
+
     /// Text of this Token.
     #[inline]
     pub fn text(&self) -> &SmolStr {
         &self.text
     }
+
     /// Text of this Token.
     #[inline]
     pub fn text_len(&self) -> TextUnit {
