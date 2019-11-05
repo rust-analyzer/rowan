@@ -1,3 +1,32 @@
+#[macro_export]
+macro_rules! match_element {
+    ($el:expr => {
+        Node($node:pat) => $if_node:expr,
+        Token($token:pat) => $if_token:expr,
+    }) => {{
+        match $el {
+            el => {
+                if let Some($node) = el.as_node() {
+                    $if_node
+                } else {
+                    // NB: the unwrap should optimize out
+                    let $token = el.as_token().unwrap();
+                    $if_token
+                }
+            }
+        }
+    }};
+
+    ($el:expr => {
+        $elem:pat => $if_elem:expr,
+    }) => {{
+        crate::match_element! { $el => {
+            Node($elem) => $if_elem,
+            Token($elem) => $if_elem,
+        }}
+    }};
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeOrToken<N, T> {
     Node(N),

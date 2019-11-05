@@ -106,7 +106,7 @@ impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
         self.parse_add();
         self.builder.finish_node();
 
-        SyntaxNode::new_root(self.builder.finish())
+        SyntaxNode::new_root(self.builder.finish().unwrap_node())
     }
 }
 

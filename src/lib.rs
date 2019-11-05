@@ -7,7 +7,10 @@
     // missing_docs,
 )]
 #![deny(unsafe_code)]
-#![allow(unused)]
+//#![allow(unused)]
+
+#[macro_use]
+mod utility_types;
 
 #[allow(unsafe_code)]
 mod green;
@@ -15,11 +18,8 @@ mod green;
 pub mod cursor;
 pub mod api;
 mod syntax_text;
-mod utility_types;
 #[cfg(feature = "serde1")]
 mod serde_impls;
-
-use green::GreenElement;
 
 // Reexport types for working with strings. We might be too opinionated about
 // these, as a custom interner might work better, but `SmolStr` is a pretty good
@@ -29,7 +29,7 @@ pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
     api::*,
-    green::{Checkpoint, GreenNode, GreenNodeBuilder, GreenToken},
+    green::{ArcGreenNode, Checkpoint, GreenNode, GreenNodeBuilder, GreenToken, GreenElement},
     syntax_text::SyntaxText,
     utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };
@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn assert_send_sync() {
         fn f<T: Send + Sync>() {}
-        f::<Arc<GreenNode>>();
+        f::<ArcGreenNode>();
     }
 
     #[test]
@@ -50,7 +50,7 @@ mod tests {
         use std::mem::size_of;
 
         eprintln!("GreenToken      {}", size_of::<GreenToken>());
-        eprintln!("Arc<GreenNode>  {}", size_of::<Arc<GreenNode>>());
+        eprintln!("ArcGreenNode    {}", size_of::<ArcGreenNode>());
         eprintln!("Arc<GreenToken> {}", size_of::<Arc<GreenToken>>());
         eprintln!("GreenElement    {}", size_of::<GreenElement>());
         eprintln!();

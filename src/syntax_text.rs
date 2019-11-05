@@ -263,7 +263,7 @@ mod tests {
             builder.token(SyntaxKind(92), chunk.into())
         }
         builder.finish_node();
-        SyntaxNode::new_root(builder.finish())
+        SyntaxNode::new_root(builder.finish().unwrap_node())
     }
 
     #[test]

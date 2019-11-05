@@ -58,9 +58,7 @@ type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
 /// GreenNode is an immutable tree, which is cheap to change,
 /// but doesn't contain offsets and parent pointers.
-use rowan::GreenNode;
-
-use std::sync::Arc;
+use rowan::ArcGreenNode;
 
 /// You can construct GreenNodes by hand, but a builder
 /// is helpful for top-down parsers: it maintains a stack
@@ -75,7 +73,7 @@ use rowan::GreenNodeBuilder;
 /// which is controlled by the `R` parameter.
 
 struct Parse {
-    green_node: Arc<rowan::GreenNode>,
+    green_node: ArcGreenNode,
     #[allow(unused)]
     errors: Vec<String>,
 }
@@ -131,7 +129,7 @@ fn parse(text: &str) -> Parse {
             self.builder.finish_node();
 
             // Turn the builder into a complete node.
-            let green: Arc<GreenNode> = self.builder.finish();
+            let green: ArcGreenNode = self.builder.finish().unwrap_node();
             // Construct a `SyntaxNode` from `GreenNode`,
             // using errors as the root data.
             Parse { green_node: green, errors: self.errors }
@@ -315,9 +313,10 @@ impl Atom {
         Some(op)
     }
     fn text(&self) -> &SmolStr {
-        match &self.0.green().children()[0] {
-            rowan::NodeOrToken::Token(token) => token.text(),
-            _ => unreachable!(),
+        if let Some(token) = self.0.green().children()[0].as_token() {
+            token.text()
+        } else {
+            unreachable!()
         }
     }
 }

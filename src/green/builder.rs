@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
+use crate::{cursor::SyntaxKind, SmolStr};
 
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
@@ -17,12 +17,12 @@ pub struct Checkpoint(usize);
 /// Future work: make hashing faster by avoiding rehashing of subtrees.
 #[derive(Default, Debug)]
 struct Cache {
-    node: rustc_hash::FxHashSet<Arc<GreenNode>>,
+    node: rustc_hash::FxHashSet<ArcGreenNode>,
     token: rustc_hash::FxHashSet<Arc<GreenToken>>,
 }
 
 impl Cache {
-    fn node(&mut self, mut node: Arc<GreenNode>) -> Arc<GreenNode> {
+    fn node(&mut self, mut node: ArcGreenNode) -> ArcGreenNode {
         // In lieu of a more sophisticated cache, we only cache "small" nodes.
         if node.children().len() <= 3 {
             match self.node.get(&node) {
@@ -138,11 +138,8 @@ impl GreenNodeBuilder {
     /// `start_node_at` and `finish_node` calls
     /// are paired!
     #[inline]
-    pub fn finish(mut self) -> Arc<GreenNode> {
+    pub fn finish(mut self) -> GreenElement {
         assert_eq!(self.children.len(), 1);
-        match self.children.pop().unwrap() {
-            NodeOrToken::Node(node) => node,
-            NodeOrToken::Token(_) => panic!(),
-        }
+        self.children.pop().unwrap()
     }
 }
