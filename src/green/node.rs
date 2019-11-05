@@ -1,12 +1,12 @@
-use static_assertions::*;
 use std::{
     alloc::{alloc, dealloc, handle_alloc_error, Layout},
     borrow::Borrow,
     convert::TryInto,
-    fmt, hash, isize, mem,
+    fmt, hash, isize,
+    mem::{self, ManuallyDrop},
     ops::Deref,
     ptr, slice,
-    sync::atomic::{self, AtomicUsize, Ordering},
+    sync::atomic::{self, AtomicU64, AtomicUsize, Ordering},
 };
 
 use super::*;
@@ -19,39 +19,19 @@ struct GreenNodeHead {
     child_len: u16,
 }
 
-assert_eq_size!(GreenNodeHead, u64);
-assert_eq_align!(GreenNodeHead, u32);
-
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
-///
-/// # Safety
-///
-/// This struct is _not actually `Sized`_!
-/// It is only safe as `&GreenNode`, `GreenElement`, or `ArcGreenNode`.
 #[repr(C)]
 pub struct GreenNode {
     head: GreenNodeHead,
     strong: AtomicUsize,
-    children: [GreenElement; 0],
-}
-
-assert_eq_align!(GreenNode, usize);
-assert_eq_size!(GreenNode, [u64; 2]);
-
-impl Drop for GreenNode {
-    fn drop(&mut self) {
-        for child in self.children_mut() {
-            unsafe { ptr::drop_in_place(child) }
-        }
-    }
+    children: [GreenElement],
 }
 
 impl fmt::Debug for GreenNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GreenNode")
             .field("head", &self.head)
-            .field("strong", &self.strong)
             .field("children", &self.children())
             .finish()
     }
@@ -72,7 +52,6 @@ impl hash::Hash for GreenNode {
 }
 
 #[test]
-#[cfg(not(miri))]
 fn node_layout() {
     let node = unsafe { GreenNode::dummy() };
     assert_eq!(GreenNode::align(), mem::align_of_val(node));
@@ -94,7 +73,7 @@ fn node_layout() {
 }
 
 pub struct ArcGreenNode {
-    raw: ptr::NonNull<GreenNode>,
+    raw: ptr::NonNull<()>,
 }
 
 unsafe impl Send for ArcGreenNode {}
@@ -105,7 +84,8 @@ impl Drop for ArcGreenNode {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let raw = self.raw.as_mut();
+            let mut raw = self.raw();
+            let raw = raw.as_mut();
 
             // Because `fetch_sub` is already atomic, we do not need to synchronize
             // with other threads unless we are going to delete the object.
@@ -151,7 +131,7 @@ impl Drop for ArcGreenNode {
                 dealloc(raw.as_ptr().cast(), GreenNode::layout_for(child_count))
             }
 
-            drop_slow(self.raw)
+            drop_slow(self.raw())
             // NB: as this is a copy of the stdlib code, we are also subject to rust-lang/rust#55005
         }
     }
@@ -178,10 +158,7 @@ impl hash::Hash for ArcGreenNode {
 
 impl GreenNode {
     #[inline]
-    fn alloc<I>(kind: SyntaxKind, text_len: TextUnit, children: I) -> ArcGreenNode
-    where
-        I: Iterator<Item = GreenElement> + ExactSizeIterator,
-    {
+    fn alloc(kind: SyntaxKind, text_len: TextUnit, children: Vec<GreenElement>) -> ArcGreenNode {
         let child_len: u16 = children.len().try_into().expect("node children array too big");
         let strong = AtomicUsize::new(1);
         let head = GreenNodeHead { kind, text_len, child_len };
@@ -195,14 +172,14 @@ impl GreenNode {
             ptr::write(ptr.offset(GreenNode::offset_of_head()).cast(), head);
             ptr::write(ptr.offset(GreenNode::offset_of_strong()).cast(), strong);
 
-            let mut fam = ptr.offset(GreenNode::offset_of_children()).cast::<GreenElement>();
-            for child in children {
-                ptr::write(fam, child);
-                fam = fam.offset(1);
-            }
+            let fam = ptr.offset(GreenNode::offset_of_children()).cast::<GreenElement>();
+            let children_ptr = children.as_ptr();
+            // Move children elements over in one go.
+            ptr::copy_nonoverlapping(children_ptr, fam, child_len as usize);
+            // Drop the source Vec without the elements we've just moved.
+            drop(mem::transmute::<Vec<GreenElement>, Vec<ManuallyDrop<GreenElement>>>(children));
 
-            #[allow(clippy::cast_ptr_alignment)]
-            ArcGreenNode::from_raw(ptr::NonNull::new_unchecked(ptr as *mut GreenNode))
+            ArcGreenNode::from_erased(ptr::NonNull::new_unchecked(ptr.cast()))
         }
     }
 
@@ -253,15 +230,14 @@ impl GreenNode {
     ///
     /// You _can not_ upgrade this reference to `ArcGreenNode`.
     /// It is a fully valid `GreenNode` otherwise.
-    #[cfg(test)]
     pub(crate) unsafe fn dummy() -> &'static GreenNode {
-        static HEAD: [u64; 8] = [0; 8];
+        static HEAD: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
         // produce a zeroed GreenNodeHead with no children
-        &*(&HEAD as *const u64 as *const GreenNode)
+        &*(slice::from_raw_parts(HEAD.as_ptr(), 0) as *const [AtomicU64] as *const GreenNode)
     }
 
-    pub(crate) const fn dangling() -> ptr::NonNull<GreenNode> {
-        unsafe { ptr::NonNull::new_unchecked(GreenNode::align() as *mut _) }
+    pub(crate) fn dangling() -> ptr::NonNull<GreenNode> {
+        unsafe { GreenNode::dummy().into() }
     }
 
     /// Creates new Node.
@@ -269,7 +245,7 @@ impl GreenNode {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(kind: SyntaxKind, children: Vec<GreenElement>) -> ArcGreenNode {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode::alloc(kind, text_len, children.into_iter())
+        GreenNode::alloc(kind, text_len, children)
     }
 
     /// Kind of this node.
@@ -289,30 +265,42 @@ impl GreenNode {
     pub fn children(&self) -> &[GreenElement] {
         unsafe { slice::from_raw_parts(self.children.as_ptr(), self.head.child_len as usize) }
     }
-
-    fn children_mut(&mut self) -> &mut [GreenElement] {
-        unsafe {
-            slice::from_raw_parts_mut(self.children.as_mut_ptr(), self.head.child_len as usize)
-        }
-    }
 }
 
 impl ArcGreenNode {
+    pub(super) fn raw(&self) -> ptr::NonNull<GreenNode> {
+        unsafe { ArcGreenNode::unerase(self.raw) }
+    }
+
     pub(super) fn into_raw(self) -> ptr::NonNull<GreenNode> {
-        let raw = self.raw;
+        let raw = self.raw();
         mem::forget(self);
         raw
     }
 
     pub(super) unsafe fn from_raw(raw: ptr::NonNull<GreenNode>) -> ArcGreenNode {
-        ArcGreenNode { raw }
+        ArcGreenNode { raw: raw.cast() }
+    }
+
+    pub(super) unsafe fn from_erased(raw: ptr::NonNull<()>) -> ArcGreenNode {
+        ArcGreenNode::from_raw(ArcGreenNode::unerase(raw))
+    }
+
+    pub(super) unsafe fn unerase(raw: ptr::NonNull<()>) -> ptr::NonNull<GreenNode> {
+        assert_eq!(GreenNode::offset_of_head(), 0); // optimized out safety note
+        let head = raw.cast::<GreenNodeHead>();
+        let head = head.as_ref();
+        // FUTURE(slice_from_raw_parts: #36925): use ptr::slice_from_raw_parts
+        let slice: *const [()] = slice::from_raw_parts(raw.as_ptr(), head.child_len as usize);
+        #[allow(clippy::cast_ptr_alignment)]
+        ptr::NonNull::new_unchecked(slice as *const GreenNode as *mut GreenNode)
     }
 }
 
 impl Deref for ArcGreenNode {
     type Target = GreenNode;
     fn deref(&self) -> &GreenNode {
-        unsafe { self.raw.as_ref() }
+        unsafe { &*self.raw().as_ptr() }
     }
 }
 

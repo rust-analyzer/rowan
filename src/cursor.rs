@@ -725,7 +725,7 @@ impl Iter {
         Iter { parent, green, offset, index: 0 }
     }
 
-    fn next(&mut self) -> Option<((&GreenElement, u32, TextUnit))> {
+    fn next(&mut self) -> Option<(&GreenElement, u32, TextUnit)> {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;

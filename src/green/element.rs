@@ -21,7 +21,7 @@ impl Drop for GreenElement {
     fn drop(&mut self) {
         unsafe {
             if self.is_node() {
-                drop(ArcGreenNode::from_raw(self.raw.cast()))
+                drop(ArcGreenNode::from_erased(self.raw.cast()))
             } else {
                 let ptr = (self.raw.as_ptr() as usize & !1) as *const GreenToken;
                 drop(Arc::from_raw(ptr))
@@ -99,8 +99,7 @@ impl GreenElement {
     #[inline]
     pub fn as_node(&self) -> Option<&GreenNode> {
         if self.is_node() {
-            let ptr = self.raw.cast::<GreenNode>().as_ptr();
-            Some(unsafe { &*ptr })
+            Some(unsafe { &*ArcGreenNode::unerase(self.raw).as_ptr() })
         } else {
             None
         }
@@ -109,9 +108,11 @@ impl GreenElement {
     #[inline]
     pub fn unwrap_node(self) -> ArcGreenNode {
         if self.is_node() {
-            let ptr = self.raw.cast::<GreenNode>();
-            mem::forget(self);
-            unsafe { ArcGreenNode::from_raw(ptr) }
+            unsafe {
+                let ptr = ArcGreenNode::from_erased(self.raw);
+                mem::forget(self);
+                ptr
+            }
         } else {
             panic!("called `unwrap_node` on a token")
         }
@@ -128,7 +129,7 @@ impl GreenElement {
     }
 
     #[inline]
-    pub fn as_enum(&self) -> NodeOrToken<&GreenNode, &GreenToken> {
+    pub fn as_ref(&self) -> NodeOrToken<&GreenNode, &GreenToken> {
         match_element! { self => {
             Node(node) => NodeOrToken::Node(node),
             Token(token) => NodeOrToken::Token(token),
