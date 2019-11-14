@@ -15,9 +15,15 @@ pub struct GreenNode {
 impl GreenNode {
     /// Creates new Node.
     #[inline]
-    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
-        let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { kind, text_len, children: children.into() }
+    pub fn new<I>(kind: SyntaxKind, children: I) -> GreenNode
+    where
+        I: Iterator<Item = GreenElement> + ExactSizeIterator,
+    {
+        let mut text_len: TextUnit = 0.into();
+        let children = children.inspect(|it| text_len += it.text_len());
+        let mut res = GreenNode { kind, text_len: 0.into(), children: children.collect() };
+        res.text_len = text_len;
+        res
     }
 
     /// Kind of this node.
@@ -138,8 +144,8 @@ impl GreenNodeBuilder {
     #[inline]
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
-        let children: Vec<_> = self.children.drain(first_child..).collect();
-        let mut node = GreenNode::new(kind, children.into_boxed_slice());
+        let children = self.children.drain(first_child..);
+        let mut node = GreenNode::new(kind, children.into_iter());
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees

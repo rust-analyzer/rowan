@@ -223,21 +223,15 @@ impl SyntaxNode {
             None => replacement,
             Some((parent, me, _offset)) => {
                 let mut replacement = Some(replacement);
-                let children: Box<[_]> = parent
-                    .green()
-                    .children()
-                    .iter()
-                    .enumerate()
-                    .map(|(i, child)| {
-                        if i as u32 == me {
-                            replacement.take().unwrap().into()
-                        } else {
-                            child.clone()
-                        }
-                    })
-                    .collect();
-                assert!(replacement.is_none());
+                let children = parent.green().children().iter().enumerate().map(|(i, child)| {
+                    if i as u32 == me {
+                        replacement.take().unwrap().into()
+                    } else {
+                        child.clone()
+                    }
+                });
                 let new_parent = GreenNode::new(parent.kind(), children);
+                assert!(replacement.is_none());
                 parent.replace_with(new_parent)
             }
         }
@@ -533,22 +527,15 @@ impl SyntaxToken {
         let parent = self.parent();
         let me = self.index;
 
-        let children: Box<[_]> =
-            parent
-                .green()
-                .children()
-                .iter()
-                .enumerate()
-                .map(|(i, child)| {
-                    if i as u32 == me {
-                        replacement.take().unwrap().into()
-                    } else {
-                        child.clone()
-                    }
-                })
-                .collect();
-        assert!(replacement.is_none());
+        let children = parent.green().children().iter().enumerate().map(|(i, child)| {
+            if i as u32 == me {
+                replacement.take().unwrap().into()
+            } else {
+                child.clone()
+            }
+        });
         let new_parent = GreenNode::new(parent.kind(), children);
+        assert!(replacement.is_none());
         parent.replace_with(new_parent)
     }
 
