@@ -29,7 +29,7 @@ pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
     api::*,
-    green::{ArcGreenNode, Checkpoint, GreenNode, GreenNodeBuilder, GreenToken, GreenElement},
+    green::{Checkpoint, GreenElement, GreenNode, GreenNodeBuilder, GreenToken},
     syntax_text::SyntaxText,
     utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };
@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn assert_send_sync() {
         fn f<T: Send + Sync>() {}
-        f::<ArcGreenNode>();
+        f::<Arc<GreenNode>>();
     }
 
     #[test]
@@ -50,7 +50,7 @@ mod tests {
         use std::mem::size_of;
 
         eprintln!("GreenToken      {}", size_of::<GreenToken>());
-        eprintln!("ArcGreenNode    {}", size_of::<ArcGreenNode>());
+        eprintln!("Arc<GreenNode>  {}", size_of::<Arc<GreenNode>>());
         eprintln!("Arc<GreenToken> {}", size_of::<Arc<GreenToken>>());
         eprintln!("GreenElement    {}", size_of::<GreenElement>());
         eprintln!();

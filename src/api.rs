@@ -1,8 +1,8 @@
-use std::{fmt, marker::PhantomData};
+use std::{fmt, marker::PhantomData, sync::Arc};
 
 use crate::{
-    cursor, ArcGreenNode, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText,
-    TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
+    TextUnit, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -146,10 +146,10 @@ impl<L: Language> fmt::Display for SyntaxElement<L> {
 }
 
 impl<L: Language> SyntaxNode<L> {
-    pub fn new_root(green: ArcGreenNode) -> SyntaxNode<L> {
+    pub fn new_root(green: Arc<GreenNode>) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))
     }
-    pub fn replace_with(&self, replacement: ArcGreenNode) -> ArcGreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenNode>) -> Arc<GreenNode> {
         self.raw.replace_with(replacement)
     }
 
@@ -262,7 +262,7 @@ impl<L: Language> SyntaxNode<L> {
 }
 
 impl<L: Language> SyntaxToken<L> {
-    pub fn replace_with(&self, new_token: GreenToken) -> ArcGreenNode {
+    pub fn replace_with(&self, new_token: GreenToken) -> Arc<GreenNode> {
         self.raw.replace_with(new_token)
     }
 
