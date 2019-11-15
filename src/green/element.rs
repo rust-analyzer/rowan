@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
-use super::*;
-use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
-use node::GreenNodeHead;
-use std::{fmt, hash, mem, ptr};
-use thin_dst::{ErasedPtr, ThinArc, ThinData};
+use {
+    super::*,
+    crate::{cursor::SyntaxKind, NodeOrToken, TextUnit},
+    node::GreenNodeHead,
+    std::{fmt, hash, mem::ManuallyDrop, ptr, sync::Arc},
+    thin_dst::{ErasedPtr, ThinArc},
+};
 
 /// An owned element in a green tree.
 ///
@@ -24,12 +24,10 @@ impl Drop for GreenElement {
         unsafe {
             if self.is_node() {
                 let ptr = ThinArc::<GreenNodeHead, GreenElement>::from_erased(self.raw);
-                let this: Arc<ThinData<GreenNodeHead, GreenElement>> = ptr.into();
-                drop(this);
+                drop(ArcGreenNode::from_thin(ptr));
             } else {
                 let ptr = (self.raw.as_ptr() as usize & !1) as *const GreenToken;
-                let this = Arc::from_raw(ptr);
-                drop(this);
+                drop(Arc::from_raw(ptr));
             }
         }
     }
@@ -73,8 +71,8 @@ impl hash::Hash for GreenElement {
 impl From<Arc<GreenToken>> for GreenElement {
     #[inline]
     fn from(token: Arc<GreenToken>) -> GreenElement {
-        let ptr = (Arc::into_raw(token) as usize | 1) as *mut ();
-        unsafe { GreenElement { raw: ptr::NonNull::new_unchecked(ptr.cast()) } }
+        let ptr = (Arc::into_raw(token) as usize | 1) as *mut _;
+        unsafe { GreenElement { raw: ptr::NonNull::new_unchecked(ptr) } }
     }
 }
 
@@ -113,8 +111,7 @@ impl GreenElement {
         if self.is_node() {
             unsafe {
                 let this = ThinArc::<GreenNodeHead, GreenElement>::from_erased(self.raw);
-                let this: Arc<ThinData<GreenNodeHead, GreenElement>> = this.into();
-                let this: Arc<GreenNode> = mem::transmute(this);
+                let this = ArcGreenNode::into_fat(ArcGreenNode::from_thin(this));
                 Some(&*Arc::into_raw(this))
             }
         } else {
@@ -126,10 +123,9 @@ impl GreenElement {
     pub fn unwrap_node(self) -> Arc<GreenNode> {
         if self.is_node() {
             unsafe {
-                let ptr = ThinArc::<GreenNodeHead, GreenElement>::from_erased(self.raw);
-                mem::forget(self);
-                let this: Arc<ThinData<GreenNodeHead, GreenElement>> = ptr.into();
-                mem::transmute(this)
+                let this = ManuallyDrop::new(self);
+                let ptr = ThinArc::<GreenNodeHead, GreenElement>::from_erased(this.raw);
+                ArcGreenNode::into_fat(ArcGreenNode::from_thin(ptr))
             }
         } else {
             panic!("called `unwrap_node` on a token")
@@ -150,8 +146,8 @@ impl GreenElement {
     pub fn unwrap_token(self) -> Arc<GreenToken> {
         if self.is_token() {
             unsafe {
-                let ptr = (self.raw.as_ptr() as usize & !1) as *const GreenToken;
-                mem::forget(self);
+                let this = ManuallyDrop::new(self);
+                let ptr = (this.raw.as_ptr() as usize & !1) as *const GreenToken;
                 Arc::from_raw(ptr)
             }
         } else {

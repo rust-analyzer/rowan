@@ -1,9 +1,8 @@
-use std::{mem, sync::Arc};
-
-use super::*;
-use crate::green::node::GreenNodeHead;
-use crate::{cursor::SyntaxKind, SmolStr};
-use thin_dst::{ThinArc, ThinData};
+use {
+    super::*,
+    crate::{cursor::SyntaxKind, SmolStr},
+    std::sync::Arc,
+};
 
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
@@ -26,9 +25,7 @@ struct Cache {
 impl Cache {
     fn node(&mut self, node: Arc<GreenNode>) -> ArcGreenNode {
         // In lieu of a more sophisticated cache, we only cache "small" nodes.
-        let node: Arc<ThinData<GreenNodeHead, GreenElement>> = unsafe { mem::transmute(node) };
-        let node: ThinArc<GreenNodeHead, GreenElement> = node.into();
-        let mut node: ArcGreenNode = unsafe { mem::transmute(node) };
+        let mut node = ArcGreenNode::from_fat(node);
         if node.children().len() <= 3 {
             match self.node.get(&node) {
                 Some(cached) => node = cached.clone(),

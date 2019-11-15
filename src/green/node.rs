@@ -1,11 +1,15 @@
-use std::{
-    borrow::Borrow, fmt, hash, mem, ops::Deref, ptr, slice, sync::atomic::AtomicU64, sync::Arc,
+use {
+    super::*,
+    crate::{cursor::SyntaxKind, TextUnit},
+    std::{
+        borrow::Borrow,
+        fmt, hash, mem,
+        ops::Deref,
+        ptr, slice,
+        sync::{atomic::AtomicU64, Arc},
+    },
+    thin_dst::{ThinArc, ThinData},
 };
-use thin_dst::{ThinArc, ThinData};
-
-use super::*;
-use crate::{cursor::SyntaxKind, TextUnit};
-use std::hash::Hash;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub(super) struct GreenNodeHead {
@@ -39,13 +43,8 @@ impl PartialEq for GreenNode {
 impl hash::Hash for GreenNode {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.data.head.hash(state);
-        self.children().iter().for_each(|it| it.hash(state));
+        self.children().hash(state);
     }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct ArcGreenNode {
-    pub(super) raw: ThinArc<GreenNodeHead, GreenElement>,
 }
 
 impl GreenNode {
@@ -84,7 +83,7 @@ impl GreenNode {
         let res = ThinArc::new(GreenNodeHead { kind, text_len: 0.into() }, children);
         let mut res: Arc<ThinData<GreenNodeHead, GreenElement>> = res.into();
         Arc::get_mut(&mut res).unwrap().head.text_len = text_len;
-        unsafe { mem::transmute(res) }
+        ArcGreenNode::into_fat(ArcGreenNode::from_raw(res))
     }
 
     /// Kind of this node.
@@ -103,6 +102,30 @@ impl GreenNode {
     #[inline]
     pub fn children(&self) -> &[GreenElement] {
         &self.data.slice
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub(crate) struct ArcGreenNode {
+    pub(super) raw: ThinArc<GreenNodeHead, GreenElement>,
+}
+
+impl ArcGreenNode {
+    pub(super) fn from_thin(this: ThinArc<GreenNodeHead, GreenElement>) -> ArcGreenNode {
+        ArcGreenNode { raw: this }
+    }
+
+    pub(super) fn from_raw(this: Arc<ThinData<GreenNodeHead, GreenElement>>) -> ArcGreenNode {
+        Self::from_thin(this.into())
+    }
+
+    pub(super) fn from_fat(this: Arc<GreenNode>) -> ArcGreenNode {
+        unsafe { ArcGreenNode::from_raw(mem::transmute(this)) }
+    }
+
+    pub(super) fn into_fat(this: ArcGreenNode) -> Arc<GreenNode> {
+        let arc: Arc<ThinData<GreenNodeHead, GreenElement>> = this.raw.into();
+        unsafe { mem::transmute(arc) }
     }
 }
 
