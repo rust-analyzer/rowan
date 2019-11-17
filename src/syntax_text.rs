@@ -165,7 +165,7 @@ impl PartialEq for SyntaxText {
             return false;
         }
         let mut lhs = self.tokens_with_ranges();
-        let mut rhs = self.tokens_with_ranges();
+        let mut rhs = other.tokens_with_ranges();
         zip_texts(&mut lhs, &mut rhs).is_none()
             && lhs.all(|it| it.1.is_empty())
             && rhs.all(|it| it.1.is_empty())
@@ -188,8 +188,8 @@ fn zip_texts<I: Iterator<Item = (SyntaxToken, TextRange)>>(xs: &mut I, ys: &mut 
             return Some(());
         }
         let advance = std::cmp::min(x.1.len(), y.1.len());
-        x.1 = TextRange::from_to(x.1.start(), x.1.len() - advance);
-        y.1 = TextRange::from_to(y.1.start(), y.1.len() - advance);
+        x.1 = TextRange::from_to(x.1.start() + advance, x.1.end());
+        y.1 = TextRange::from_to(y.1.start() + advance, y.1.end());
     }
     None
 }
@@ -284,8 +284,13 @@ mod tests {
         check(&[""], &[""]);
         check(&["a"], &[""]);
         check(&["a"], &["a"]);
+        check(&["abc"], &["def"]);
         check(&["hello", "world"], &["hello", "world"]);
         check(&["hellowo", "rld"], &["hell", "oworld"]);
         check(&["hel", "lowo", "rld"], &["helloworld"]);
+        check(&["{", "abc", "}"], &["{", "123", "}"]);
+        check(&["{", "abc", "}", "{"], &["{", "123", "}"]);
+        check(&["{", "abc", "}"], &["{", "123", "}", "{"]);
+        check(&["{", "abc", "}ab"], &["{", "abc", "}", "ab"]);
     }
 }
