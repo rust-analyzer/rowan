@@ -1,10 +1,8 @@
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     fmt,
     hash::{Hash, Hasher},
-    iter,
-    marker::PhantomData,
-    mem, ptr,
+    iter, mem, ptr,
     rc::Rc,
     slice,
 };
@@ -594,7 +592,7 @@ impl SyntaxToken {
             .children_to(self.index as usize, self.text_range().start())
             .next()?;
 
-        Some(NodeOrToken::new(element, self.parent(), index as u32, offset))
+        Some(NodeOrToken::new(element, parent, index as u32, offset))
     }
 
     pub fn siblings_with_tokens(
@@ -733,7 +731,7 @@ impl Iter {
         Iter { parent, green, offset, index: 0 }
     }
 
-    fn next(&mut self) -> Option<((&GreenElement, u32, TextUnit))> {
+    fn next(&mut self) -> Option<(&GreenElement, u32, TextUnit)> {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;

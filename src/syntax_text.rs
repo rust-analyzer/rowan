@@ -1,8 +1,8 @@
-use std::{fmt, ops};
+use std::fmt;
 
 use crate::{
-    cursor::{SyntaxElement, SyntaxNode, SyntaxToken},
-    NodeOrToken, SmolStr, TextRange, TextUnit,
+    cursor::{SyntaxNode, SyntaxToken},
+    TextRange, TextUnit,
 };
 
 #[derive(Clone)]
@@ -191,7 +191,6 @@ fn zip_texts<I: Iterator<Item = (SyntaxToken, TextRange)>>(xs: &mut I, ys: &mut 
         x.1 = TextRange::from_to(x.1.start() + advance, x.1.end());
         y.1 = TextRange::from_to(y.1.start() + advance, y.1.end());
     }
-    None
 }
 
 impl Eq for SyntaxText {}
