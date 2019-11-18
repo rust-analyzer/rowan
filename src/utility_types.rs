@@ -11,22 +11,41 @@ impl<N, T> NodeOrToken<N, T> {
             NodeOrToken::Token(_) => None,
         }
     }
+
     pub fn into_token(self) -> Option<T> {
         match self {
             NodeOrToken::Node(_) => None,
             NodeOrToken::Token(token) => Some(token),
         }
     }
+
     pub fn as_node(&self) -> Option<&N> {
         match self {
             NodeOrToken::Node(node) => Some(node),
             NodeOrToken::Token(_) => None,
         }
     }
+
     pub fn as_token(&self) -> Option<&T> {
         match self {
             NodeOrToken::Node(_) => None,
             NodeOrToken::Token(token) => Some(token),
+        }
+    }
+
+    pub(crate) fn as_ref(&self) -> NodeOrToken<&N, &T> {
+        match self {
+            NodeOrToken::Node(node) => NodeOrToken::Node(node),
+            NodeOrToken::Token(token) => NodeOrToken::Token(token),
+        }
+    }
+}
+
+impl<N: Clone, T: Clone> NodeOrToken<&N, &T> {
+    pub(crate) fn cloned(&self) -> NodeOrToken<N, T> {
+        match *self {
+            NodeOrToken::Node(node) => NodeOrToken::Node(node.clone()),
+            NodeOrToken::Token(token) => NodeOrToken::Token(token.clone()),
         }
     }
 }
@@ -83,6 +102,7 @@ impl<T> TokenAtOffset<T> {
             TokenAtOffset::Between(_, right) => Some(right),
         }
     }
+
     /// Convert to option, preferring the left leaf in case of a tie.
     pub fn left_biased(self) -> Option<T> {
         match self {

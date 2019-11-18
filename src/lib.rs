@@ -17,7 +17,8 @@ mod utility_types;
 #[cfg(feature = "serde1")]
 mod serde_impls;
 
-use green::GreenElement;
+#[allow(unused)]
+use green::{GreenElement, GreenElementRef};
 
 // Reexport types for working with strings. We might be too opinionated about
 // these, as a custom interner might work better, but `SmolStr` is a pretty good
@@ -27,7 +28,7 @@ pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
     api::*,
-    green::{Checkpoint, GreenNode, GreenNodeBuilder, GreenToken},
+    green::{Checkpoint, GreenNode, GreenNodeBuilder, GreenToken, Children},
     syntax_text::SyntaxText,
     utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };
