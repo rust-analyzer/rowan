@@ -19,7 +19,7 @@ impl Cache {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children.len() <= 3 {
+        if node.children().len() <= 3 {
             match self.nodes.get(&node) {
                 Some(existing) => node = existing.clone(),
                 None => assert!(self.nodes.insert(node.clone())),

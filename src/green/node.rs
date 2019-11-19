@@ -1,17 +1,22 @@
-use std::{slice, sync::Arc, iter::FusedIterator};
+use std::{iter::FusedIterator, slice};
+
+use thin_dst::ThinArc;
 
 use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
 
 use super::*;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct GreenNodeHead {
+    kind: SyntaxKind,
+    text_len: TextUnit,
+}
+
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GreenNode {
-    kind: SyntaxKind,
-    text_len: TextUnit,
-    //TODO: implement llvm::trailing_objects trick
-    pub(super) children: Arc<[GreenElement]>,
+    data: ThinArc<GreenNodeHead, GreenElement>,
 }
 
 impl GreenNode {
@@ -19,25 +24,25 @@ impl GreenNode {
     #[inline]
     pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { kind, text_len, children: children.into() }
+        GreenNode { data: ThinArc::new(GreenNodeHead { kind, text_len }, Vec::from(children)) }
     }
 
     /// Kind of this node.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
-        self.kind
+        self.data.head.kind
     }
 
     /// Length of the text, covered by this node.
     #[inline]
     pub fn text_len(&self) -> TextUnit {
-        self.text_len
+        self.data.head.text_len
     }
 
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> Children<'_> {
-        Children { inner: self.children.iter() }
+        Children { inner: self.data.slice.iter() }
     }
 }
 
