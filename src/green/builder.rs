@@ -2,6 +2,42 @@ use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
 
 use super::*;
 
+#[derive(Default, Debug)]
+struct Cache {
+    nodes: rustc_hash::FxHashSet<GreenNode>,
+    tokens: rustc_hash::FxHashSet<GreenToken>,
+}
+
+impl Cache {
+    fn node(&mut self, kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
+        let mut node = GreenNode::new(kind, children);
+        // Green nodes are fully immutable, so it's ok to deduplicate them.
+        // This is the same optimization that Roslyn does
+        // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
+        //
+        // For example, all `#[inline]` in this file share the same green node!
+        // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
+        // 17% of the memory for green nodes!
+        // Future work: make hashing faster by avoiding rehashing of subtrees.
+        if node.children.len() <= 3 {
+            match self.nodes.get(&node) {
+                Some(existing) => node = existing.clone(),
+                None => assert!(self.nodes.insert(node.clone())),
+            }
+        }
+        node
+    }
+
+    fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> GreenToken {
+        let mut token = GreenToken::new(kind, text);
+        match self.tokens.get(&token) {
+            Some(existing) => token = existing.clone(),
+            None => assert!(self.tokens.insert(token.clone())),
+        }
+        token
+    }
+}
+
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
 pub struct Checkpoint(usize);
@@ -9,7 +45,7 @@ pub struct Checkpoint(usize);
 /// A builder for a green tree.
 #[derive(Default, Debug)]
 pub struct GreenNodeBuilder {
-    cache: rustc_hash::FxHashSet<GreenNode>,
+    cache: Cache,
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
@@ -24,7 +60,7 @@ impl GreenNodeBuilder {
     /// Adds new token to the current branch.
     #[inline]
     pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
-        let token = GreenToken { kind, text };
+        let token = self.cache.token(kind, text);
         self.children.push(token.into());
     }
 
@@ -41,21 +77,7 @@ impl GreenNodeBuilder {
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
         let children: Vec<_> = self.children.drain(first_child..).collect();
-        let mut node = GreenNode::new(kind, children.into_boxed_slice());
-        // Green nodes are fully immutable, so it's ok to deduplicate them.
-        // This is the same optimization that Roslyn does
-        // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
-        //
-        // For example, all `#[inline]` in this file share the same green node!
-        // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
-        // 17% of the memory for green nodes!
-        // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children.len() <= 3 {
-            match self.cache.get(&node) {
-                Some(existing) => node = existing.clone(),
-                None => assert!(self.cache.insert(node.clone())),
-            }
-        }
+        let node = self.cache.node(kind, children.into_boxed_slice());
         self.children.push(node.into());
     }
 
