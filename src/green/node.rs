@@ -2,12 +2,13 @@ use std::{iter::FusedIterator, slice};
 
 use thin_dst::ThinArc;
 
-use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
+use crate::{cursor::SyntaxKind, TextUnit};
 
 use super::*;
 
+#[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct GreenNodeHead {
+pub(super) struct GreenNodeHead {
     kind: SyntaxKind,
     text_len: TextUnit,
 }
@@ -16,7 +17,7 @@ struct GreenNodeHead {
 /// It has other nodes and tokens as children.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GreenNode {
-    data: ThinArc<GreenNodeHead, GreenElement>,
+    pub(super) data: ThinArc<GreenNodeHead, PackedGreenElement>,
 }
 
 impl GreenNode {
@@ -24,7 +25,12 @@ impl GreenNode {
     #[inline]
     pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
         let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode { data: ThinArc::new(GreenNodeHead { kind, text_len }, Vec::from(children)) }
+        GreenNode {
+            data: ThinArc::new(
+                GreenNodeHead { kind, text_len },
+                Vec::from(children).into_iter().map(Into::into),
+            ),
+        }
     }
 
     /// Kind of this node.
@@ -48,7 +54,7 @@ impl GreenNode {
 
 #[derive(Debug, Clone)]
 pub struct Children<'a> {
-    inner: slice::Iter<'a, GreenElement>,
+    inner: slice::Iter<'a, PackedGreenElement>,
 }
 
 // NB: forward everything stable that iter::Slice specializes as of Rust 1.39.0
@@ -64,7 +70,7 @@ impl<'a> Iterator for Children<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<GreenElementRef<'a>> {
-        self.inner.next().map(NodeOrToken::as_ref)
+        self.inner.next().map(PackedGreenElement::as_ref)
     }
 
     #[inline]
@@ -82,7 +88,7 @@ impl<'a> Iterator for Children<'a> {
 
     #[inline]
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        self.inner.nth(n).map(NodeOrToken::as_ref)
+        self.inner.nth(n).map(PackedGreenElement::as_ref)
     }
 
     #[inline]
@@ -109,12 +115,12 @@ impl<'a> Iterator for Children<'a> {
 impl<'a> DoubleEndedIterator for Children<'a> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.inner.next_back().map(NodeOrToken::as_ref)
+        self.inner.next_back().map(PackedGreenElement::as_ref)
     }
 
     #[inline]
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
-        self.inner.nth_back(n).map(NodeOrToken::as_ref)
+        self.inner.nth_back(n).map(PackedGreenElement::as_ref)
     }
 
     #[inline]

@@ -11,7 +11,7 @@ pub(crate) struct GreenTokenData {
 
 /// Leaf node in the immutable tree.
 pub struct GreenToken {
-    ptr: ptr::NonNull<GreenTokenData>,
+    pub(super) ptr: ptr::NonNull<GreenTokenData>,
 }
 
 unsafe impl Send for GreenToken {} // where GreenTokenData: Send + Sync
