@@ -8,6 +8,7 @@
 )]
 #![deny(unsafe_code)]
 
+#[allow(unsafe_code)]
 mod green;
 #[allow(unsafe_code)]
 pub mod cursor;
@@ -41,6 +42,9 @@ mod tests {
     fn assert_send_sync() {
         fn f<T: Send + Sync>() {}
         f::<GreenNode>();
+        f::<GreenToken>();
+        f::<GreenElement>();
+        f::<green::GreenTokenData>();
     }
 
     #[test]
