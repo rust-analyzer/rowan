@@ -1,12 +1,20 @@
-use super::*;
-
 use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
 
+use super::*;
+
 pub(crate) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
+pub(crate) type GreenElementRef<'a> = NodeOrToken<&'a GreenNode, &'a GreenToken>;
 
 impl From<GreenNode> for GreenElement {
     #[inline]
     fn from(node: GreenNode) -> GreenElement {
+        NodeOrToken::Node(node)
+    }
+}
+
+impl<'a> From<&'a GreenNode> for GreenElementRef<'a> {
+    #[inline]
+    fn from(node: &'a GreenNode) -> GreenElementRef<'a> {
         NodeOrToken::Node(node)
     }
 }
@@ -18,7 +26,28 @@ impl From<GreenToken> for GreenElement {
     }
 }
 
+impl<'a> From<&'a GreenToken> for GreenElementRef<'a> {
+    #[inline]
+    fn from(token: &'a GreenToken) -> GreenElementRef<'a> {
+        NodeOrToken::Token(token)
+    }
+}
+
 impl GreenElement {
+    /// Returns kind of this element.
+    #[inline]
+    pub fn kind(&self) -> SyntaxKind {
+        self.as_ref().kind()
+    }
+
+    /// Returns length of the text covered by this element.
+    #[inline]
+    pub fn text_len(&self) -> TextUnit {
+        self.as_ref().text_len()
+    }
+}
+
+impl GreenElementRef<'_> {
     /// Returns kind of this element.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {

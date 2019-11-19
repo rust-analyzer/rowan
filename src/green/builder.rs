@@ -1,6 +1,6 @@
-use super::*;
-
 use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
+
+use super::*;
 
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]

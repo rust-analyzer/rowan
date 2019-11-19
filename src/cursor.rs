@@ -4,12 +4,11 @@ use std::{
     hash::{Hash, Hasher},
     iter, mem, ptr,
     rc::Rc,
-    slice,
 };
 
 use crate::{
-    Direction, GreenElement, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
-    TextUnit, TokenAtOffset, WalkEvent,
+    Children, Direction, GreenElementRef, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText,
+    TextRange, TextUnit, TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.
@@ -224,13 +223,12 @@ impl SyntaxNode {
                 let children: Box<[_]> = parent
                     .green()
                     .children()
-                    .iter()
                     .enumerate()
                     .map(|(i, child)| {
                         if i as u32 == me {
                             replacement.take().unwrap().into()
                         } else {
-                            child.clone()
+                            child.cloned()
                         }
                     })
                     .collect();
@@ -292,7 +290,7 @@ impl SyntaxNode {
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
         let (element, (index, offset)) =
             self.green().children_from(0, self.text_range().start()).next()?;
-        Some(NodeOrToken::new(element, self.clone(), index as u32, offset))
+        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
     }
 
     #[inline]
@@ -310,7 +308,7 @@ impl SyntaxNode {
             .green()
             .children_to(self.green().children().len(), self.text_range().end())
             .next()?;
-        Some(NodeOrToken::new(element, self.clone(), index as u32, offset))
+        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
@@ -330,7 +328,7 @@ impl SyntaxNode {
         let (element, (index, offset)) =
             parent.green().children_from((index + 1) as usize, self.text_range().end()).next()?;
 
-        Some(NodeOrToken::new(element, parent.clone(), index as u32, offset))
+        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
@@ -349,7 +347,7 @@ impl SyntaxNode {
         let (element, (index, offset)) =
             parent.green().children_to(index as usize, self.text_range().start()).next()?;
 
-        Some(NodeOrToken::new(element, parent.clone(), index as u32, offset))
+        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
     }
 
     /// Return the leftmost token in the subtree of this node
@@ -531,20 +529,18 @@ impl SyntaxToken {
         let parent = self.parent();
         let me = self.index;
 
-        let children: Box<[_]> =
-            parent
-                .green()
-                .children()
-                .iter()
-                .enumerate()
-                .map(|(i, child)| {
-                    if i as u32 == me {
-                        replacement.take().unwrap().into()
-                    } else {
-                        child.clone()
-                    }
-                })
-                .collect();
+        let children: Box<[_]> = parent
+            .green()
+            .children()
+            .enumerate()
+            .map(|(i, child)| {
+                if i as u32 == me {
+                    replacement.take().unwrap().into()
+                } else {
+                    child.cloned()
+                }
+            })
+            .collect();
         assert!(replacement.is_none());
         let new_parent = GreenNode::new(parent.kind(), children);
         parent.replace_with(new_parent)
@@ -563,7 +559,7 @@ impl SyntaxToken {
     }
 
     pub fn green(&self) -> &GreenToken {
-        self.parent.green().children()[self.index as usize].as_token().unwrap()
+        self.parent.green().children().nth(self.index as usize).unwrap().as_token().unwrap()
     }
 
     pub fn parent(&self) -> SyntaxNode {
@@ -581,7 +577,7 @@ impl SyntaxToken {
             .children_from((self.index + 1) as usize, self.text_range().end())
             .next()?;
 
-        Some(NodeOrToken::new(element, self.parent(), index as u32, offset))
+        Some(SyntaxElement::new(element, self.parent(), index as u32, offset))
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
@@ -592,7 +588,7 @@ impl SyntaxToken {
             .children_to(self.index as usize, self.text_range().start())
             .next()?;
 
-        Some(NodeOrToken::new(element, parent, index as u32, offset))
+        Some(SyntaxElement::new(element, parent, index as u32, offset))
     }
 
     pub fn siblings_with_tokens(
@@ -632,7 +628,7 @@ impl SyntaxToken {
 
 impl SyntaxElement {
     fn new(
-        element: &GreenElement,
+        element: GreenElementRef<'_>,
         parent: SyntaxNode,
         index: u32,
         offset: TextUnit,
@@ -715,7 +711,7 @@ impl SyntaxElement {
 #[derive(Clone, Debug)]
 struct Iter {
     parent: SyntaxNode,
-    green: slice::Iter<'static, GreenElement>,
+    green: Children<'static>,
     offset: TextUnit,
     index: u32,
 }
@@ -723,15 +719,15 @@ struct Iter {
 impl Iter {
     fn new(parent: SyntaxNode) -> Iter {
         let offset = parent.text_range().start();
-        let green: slice::Iter<'_, _> = parent.green().children().iter();
-        // Dirty lifetime laundering: the memory for a slice of nodes is
+        let green: Children<'_> = parent.green().children();
+        // Dirty lifetime laundering: the memory for the children is
         // indirectly owned by parent.
-        let green: slice::Iter<'static, _> =
-            unsafe { mem::transmute::<slice::Iter<'_, _>, slice::Iter<'static, _>>(green) };
+        let green: Children<'static> =
+            unsafe { mem::transmute::<Children<'_>, Children<'static>>(green) };
         Iter { parent, green, offset, index: 0 }
     }
 
-    fn next(&mut self) -> Option<(&GreenElement, u32, TextUnit)> {
+    fn next(&mut self) -> Option<(GreenElementRef, u32, TextUnit)> {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;
@@ -777,7 +773,7 @@ impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.0.parent.clone();
-        self.0.next().map(|(green, index, offset)| NodeOrToken::new(green, parent, index, offset))
+        self.0.next().map(|(green, index, offset)| SyntaxElement::new(green, parent, index, offset))
     }
 }
 
@@ -786,8 +782,8 @@ impl GreenNode {
         &self,
         start_index: usize,
         mut offset: TextUnit,
-    ) -> impl Iterator<Item = (&GreenElement, (usize, TextUnit))> {
-        self.children()[start_index..].iter().enumerate().map(move |(index, element)| {
+    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextUnit))> {
+        self.children().skip(start_index).enumerate().map(move |(index, element)| {
             let element_offset = offset;
             offset += element.text_len();
             (element, (start_index + index, element_offset))
@@ -798,15 +794,15 @@ impl GreenNode {
         &self,
         end_index: usize,
         mut offset: TextUnit,
-    ) -> impl Iterator<Item = (&GreenElement, (usize, TextUnit))> {
-        self.children()[..end_index].iter().rev().enumerate().map(move |(index, element)| {
+    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextUnit))> {
+        self.children().take(end_index).rev().enumerate().map(move |(index, element)| {
             offset -= element.text_len();
             (element, (end_index - index - 1, offset))
         })
     }
 }
 
-fn filter_nodes<'a, I: Iterator<Item = (&'a GreenElement, T)>, T>(
+fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
     iter: I,
 ) -> impl Iterator<Item = (&'a GreenNode, T)> {
     iter.filter_map(|(element, data)| match element {

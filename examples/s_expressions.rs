@@ -313,8 +313,8 @@ impl Atom {
         Some(op)
     }
     fn text(&self) -> &SmolStr {
-        match &self.0.green().children()[0] {
-            rowan::NodeOrToken::Token(token) => token.text(),
+        match &self.0.green().children().next() {
+            Some(rowan::NodeOrToken::Token(token)) => token.text(),
             _ => unreachable!(),
         }
     }
