@@ -8,6 +8,7 @@
 )]
 #![deny(unsafe_code)]
 
+#[allow(unsafe_code)]
 mod green;
 #[allow(unsafe_code)]
 pub mod cursor;
@@ -18,7 +19,7 @@ mod utility_types;
 mod serde_impls;
 
 #[allow(unused)]
-use green::{GreenElement, GreenElementRef};
+use green::{GreenElement, GreenElementRef, PackedGreenElement};
 
 // Reexport types for working with strings. We might be too opinionated about
 // these, as a custom interner might work better, but `SmolStr` is a pretty good
@@ -28,7 +29,7 @@ pub use text_unit::{TextRange, TextUnit};
 
 pub use crate::{
     api::*,
-    green::{Checkpoint, GreenNode, GreenNodeBuilder, GreenToken, Children},
+    green::{Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenToken},
     syntax_text::SyntaxText,
     utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };
@@ -41,15 +42,20 @@ mod tests {
     fn assert_send_sync() {
         fn f<T: Send + Sync>() {}
         f::<GreenNode>();
+        f::<GreenToken>();
+        f::<GreenElement>();
+        f::<PackedGreenElement>();
+        f::<green::GreenTokenData>();
     }
 
     #[test]
     fn test_size_of() {
         use std::mem::size_of;
 
-        eprintln!("GreenNode    {}", size_of::<GreenNode>());
-        eprintln!("GreenToken   {}", size_of::<GreenToken>());
-        eprintln!("GreenElement {}", size_of::<GreenElement>());
+        eprintln!("GreenNode          {}", size_of::<GreenNode>());
+        eprintln!("GreenToken         {}", size_of::<GreenToken>());
+        eprintln!("GreenElement       {}", size_of::<GreenElement>());
+        eprintln!("PackedGreenElement {}", size_of::<PackedGreenElement>());
         eprintln!();
         eprintln!("SyntaxNode    {}", size_of::<cursor::SyntaxNode>());
         eprintln!("SyntaxToken   {}", size_of::<cursor::SyntaxToken>());
