@@ -1,3 +1,5 @@
+cargo-features = ["public-dependency"]
+
 [package]
 name = "rowan"
 version = "0.7.0"
@@ -8,9 +10,12 @@ description = "Library for generic lossless syntax trees."
 edition = "2018"
 
 [dependencies]
-text_unit = "0.1.6"
+text_unit = { version = "0.1.6", public = true }
+erasable = { version = "1.0.0-dev", git = "https://github.com/CAD97/erasable", public = true }
+rc-box = { version = "1.0.0-dev", git = "https://github.com/CAD97/rc-box", public = true }
+rc-borrow = { version = "1.0.0-dev", git = "https://github.com/CAD97/rc-borrow", public = true }
 # rename to avoid feature name clash
-serde_ = { version = "1.0.89", optional = true, default-features = false, package = "serde" }
+serde_ = { version = "1.0.89", optional = true, default-features = false, package = "serde", public = true }
 
 [dev-dependencies]
 m_lexer = "0.0.4"
