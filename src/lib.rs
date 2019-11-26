@@ -1,4 +1,4 @@
-#![feature(alloc_layout_extra, slice_from_raw_parts, trusted_len)]
+#![feature(alloc_layout_extra, hash_set_entry, slice_from_raw_parts, trusted_len)]
 
 //! A generic library for lossless syntax trees.
 
@@ -12,13 +12,14 @@ extern crate serde_ as serde; // rename back
 mod helpers;
 
 #[allow(unsafe_code)]
-mod green;
+pub mod green;
 
 pub use {
     crate::{
         green::{GreenNode, GreenToken},
         helpers::NodeOrToken,
     },
+    rc_borrow::ArcBorrow,
     text_unit::{TextRange, TextUnit},
 };
 

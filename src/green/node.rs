@@ -51,7 +51,9 @@ impl GreenNode {
     }
 
     /// Create a new `GreenNode` with the given kind and text.
-    pub fn new<I, E>(kind: Kind, children: I) -> ArcBox<Self>
+    ///
+    /// The public entry point is `GreenBuilder::node`.
+    pub(crate) fn new<I, E>(kind: Kind, children: I) -> ArcBox<Self>
     where
         E: Into<NodeOrToken<Arc<GreenNode>, Arc<GreenToken>>>,
         I: IntoIterator<Item = E>,
@@ -101,7 +103,7 @@ unsafe impl Erasable for GreenNode {
 
 #[test]
 fn miri_smoke() {
-    use {crate::green::GreenToken, erasable::Thin, rc_borrow::ArcBorrow};
+    use {crate::GreenToken, erasable::Thin, rc_borrow::ArcBorrow};
     let tok1 = GreenElement::from(GreenToken::new(Kind(0), "test"));
     let tok2 = tok1.clone();
     let tok3 = tok1.clone();

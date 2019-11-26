@@ -40,7 +40,9 @@ impl GreenToken {
     }
 
     /// Create a new `GreenToken` with the given kind and text.
-    pub fn new(kind: Kind, text: &str) -> ArcBox<GreenToken> {
+    ///
+    /// The public entry point is `GreenBuilder::node`.
+    pub(crate) fn new(kind: Kind, text: &str) -> ArcBox<GreenToken> {
         let text_len = TextUnit::of_str(text);
         let (layout, [text_len_offset, kind_offset, text_offset]) = Self::layout(text_len).unwrap();
         let boxed = unsafe {

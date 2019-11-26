@@ -1,6 +1,6 @@
 use {
     crate::{
-        green::{GreenNode, GreenToken},
+        GreenNode, GreenToken,
         NodeOrToken,
     },
     erasable::{ErasablePtr, ErasedPtr},
@@ -15,6 +15,10 @@ use {
     text_unit::TextUnit,
 };
 
+/// An atomically reference counted pointer to either [`GreenNode`] or [`GreenToken`].
+///
+/// This is stored as a single erased pointer with the tag stored in the low
+/// alignment bit: `0` for `GreenNode` and `1` for `GreenToken`.
 pub(crate) struct GreenElement {
     raw: ErasedPtr,
 }
@@ -240,6 +244,6 @@ impl NodeOrToken<&GreenNode, &GreenToken> {
 impl NodeOrToken<Arc<GreenNode>, Arc<GreenToken>> {
     /// The length of the text of this element.
     pub fn text_len(&self) -> TextUnit {
-        self.deref().text_len()
+        self.as_deref().text_len()
     }
 }

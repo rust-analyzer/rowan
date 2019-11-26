@@ -76,7 +76,7 @@ impl<Node, Token> NodeOrToken<Node, Token> {
         }
     }
 
-    pub fn deref(&self) -> NodeOrToken<&Node::Target, &Token::Target>
+    pub fn as_deref(&self) -> NodeOrToken<&Node::Target, &Token::Target>
     where
         Node: Deref,
         Token: Deref,
