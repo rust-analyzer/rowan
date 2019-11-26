@@ -8,7 +8,7 @@ use {
         collections::{HashMap, HashSet},
         hash,
         iter::TrustedLen,
-        ptr,
+        mem, ptr,
         sync::Arc,
     },
 };
@@ -61,12 +61,15 @@ impl hash::Hash for ThinEqNode {
 /// be deduplicated and refer to the same green node in memory,
 /// despite their distribution throughout the source code.
 #[derive(Debug, Default, Clone)]
-pub struct GreenBuilder<'a> {
+pub struct GreenBuilder {
     nodes: HashSet<ThinEqNode>,
-    tokens: HashMap<(Kind, &'a str), Arc<GreenToken>>,
+    /// # Safety
+    ///
+    /// The string in the key _must_ be pointing into the value.
+    tokens: HashMap<(Kind, &'static str), Arc<GreenToken>>,
 }
 
-impl<'a> GreenBuilder<'a> {
+impl GreenBuilder {
     /// Create a new node or clone a new Arc to an existing equivalent one.
     ///
     /// This checks children for identity equivalence, not structural,
@@ -82,11 +85,23 @@ impl<'a> GreenBuilder<'a> {
     }
 
     /// Create a new token or clone a new Arc to an existing equivalent one.
-    pub fn token(&mut self, kind: Kind, text: &'a str) -> Arc<GreenToken> {
-        self.tokens
-            .entry((kind, text))
-            .or_insert_with(|| GreenToken::new(kind, text).into())
-            .clone()
+    pub fn token(&mut self, kind: Kind, text: &str) -> Arc<GreenToken> {
+        // To avoid needing to allocate a green node every time,
+        // we key on the pair of kind and text without wrapping into a token.
+        // To avoid carrying a lifetime on the keyed text,
+        // the text is borrowed from the cached green token.
+        let (_, token) = self
+            .tokens
+            .raw_entry_mut()
+            // This `erase_lt` is safe because the erased reference
+            // is only used for comparison and not stored.
+            .from_key(&(kind, unsafe { erase_lt(text) }))
+            .or_insert_with(|| {
+                let token: Arc<GreenToken> = GreenToken::new(kind, text).into();
+                let text: &'static str = unsafe { erase_lt(&token.text) };
+                ((kind, text), token)
+            });
+        token.clone()
     }
 }
 
@@ -96,25 +111,25 @@ pub struct Checkpoint(usize);
 
 /// A builder for a green tree.
 #[derive(Debug, Default)]
-pub struct GreenTreeBuilder<'a> {
-    cache: GreenBuilder<'a>,
+pub struct GreenTreeBuilder {
+    cache: GreenBuilder,
     stack: Vec<(Kind, usize)>,
     children: Vec<GreenElement>,
 }
 
-impl<'a> GreenTreeBuilder<'a> {
+impl GreenTreeBuilder {
     /// Create a new builder.
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Create a new builder, reusing a `GreenBuilder`.
-    pub fn new_with(cache: GreenBuilder<'a>) -> Self {
+    pub fn new_with(cache: GreenBuilder) -> Self {
         GreenTreeBuilder { cache, ..Self::default() }
     }
 
     /// The `GreenBuilder` used to create and dedupe nodes.
-    pub fn builder(&self) -> &GreenBuilder<'a> {
+    pub fn builder(&self) -> &GreenBuilder {
         &self.cache
     }
 
@@ -128,7 +143,7 @@ impl<'a> GreenTreeBuilder<'a> {
     }
 
     /// Add a new token to the current branch.
-    pub fn token(&mut self, kind: Kind, text: &'a str) -> &mut Self {
+    pub fn token(&mut self, kind: Kind, text: &str) -> &mut Self {
         let token = self.cache.token(kind, text);
         self.add(token)
     }
@@ -206,7 +221,11 @@ impl<'a> GreenTreeBuilder<'a> {
     }
 
     /// Destroy this tree builder and recycle its build cache.
-    pub fn recycle(self) -> GreenBuilder<'a> {
+    pub fn recycle(self) -> GreenBuilder {
         self.cache
     }
+}
+
+unsafe fn erase_lt<'a, T: ?Sized>(x: &T) -> &'a T {
+    mem::transmute(x)
 }

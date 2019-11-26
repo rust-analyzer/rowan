@@ -1,4 +1,4 @@
-#![feature(alloc_layout_extra, hash_set_entry, slice_from_raw_parts, trusted_len)]
+#![feature(alloc_layout_extra, hash_raw_entry, hash_set_entry, slice_from_raw_parts, trusted_len)]
 
 //! A generic library for lossless syntax trees.
 
