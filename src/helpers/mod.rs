@@ -25,6 +25,7 @@ pub(crate) fn repr_c_4(fields: [Layout; 4]) -> Result<(Layout, [usize; 4]), Layo
     Ok((layout.pad_to_align()?, offsets))
 }
 
+/// Convenience enum wrapping either a node or a token.
 #[allow(missing_docs)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum NodeOrToken<Node, Token> {
@@ -57,7 +58,10 @@ impl<Node, Token> NodeOrToken<Node, Token> {
     pub fn is_token(&self) -> bool {
         self.as_token().is_some()
     }
+}
 
+#[allow(missing_docs)]
+impl<Node, Token> NodeOrToken<Node, Token> {
     pub fn as_ref(&self) -> NodeOrToken<&Node, &Token> {
         match *self {
             NodeOrToken::Node(ref node) => NodeOrToken::Node(node),

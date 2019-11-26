@@ -9,11 +9,22 @@ use {
 };
 
 /// Leaf node in the immutable tree.
+///
+/// Tokens are created using [`GreenBuilder::token`][super::GreenBuilder::token].
+///
+/// Note that while this struct is `#[repr(C)]`,
+/// neither its layout nor field offsets are publicly stable.
 #[repr(C)]
 #[repr(align(2))] // NB: align >= 2
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct GreenToken {
     // NB: This is optimal layout, as the order is (u32, u16, [u8]).
+    /// The length of the trailing text.
+    ///
+    /// # Safety
+    ///
+    /// This field must be first (to be accessed by erased pointers),
+    /// and must accurately represent the length of the trailing text.
     text_len: TextUnit,
     /// The kind of this token.
     pub kind: Kind,
@@ -45,6 +56,7 @@ impl GreenToken {
     pub(crate) fn new(kind: Kind, text: &str) -> ArcBox<GreenToken> {
         let text_len = TextUnit::of_str(text);
         let (layout, [text_len_offset, kind_offset, text_offset]) = Self::layout(text_len).unwrap();
+        // FUTURE: allocate Arc directly rather than Box first?
         let boxed = unsafe {
             let ptr = Self::alloc_box(text_len, layout);
             ptr::write(ptr.cast::<u8>().as_ptr().add(text_len_offset).cast(), text_len);

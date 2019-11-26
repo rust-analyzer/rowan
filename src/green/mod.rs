@@ -6,9 +6,10 @@
 //! to minimize space taken up by the immutable tree and to maximize sharing.
 
 mod token;
-mod element;
 mod node;
+mod element;
+
 mod builder;
 
-pub(crate) use element::GreenElement;
-pub use {node::GreenNode, token::GreenToken, builder::*};
+pub(crate) use element::*;
+pub use {builder::*, node::*, token::*};

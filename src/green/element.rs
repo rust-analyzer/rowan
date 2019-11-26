@@ -1,8 +1,5 @@
 use {
-    crate::{
-        GreenNode, GreenToken,
-        NodeOrToken,
-    },
+    crate::{GreenNode, GreenToken, Kind, NodeOrToken},
     erasable::{ErasablePtr, ErasedPtr},
     rc_borrow::ArcBorrow,
     rc_box::ArcBox,
@@ -14,6 +11,7 @@ use {
     },
     text_unit::TextUnit,
 };
+use std::ops::Deref;
 
 /// An atomically reference counted pointer to either [`GreenNode`] or [`GreenToken`].
 ///
@@ -234,16 +232,18 @@ impl<'a> From<&'a GreenToken> for NodeOrToken<&'a GreenNode, &'a GreenToken> {
     }
 }
 
-impl NodeOrToken<&GreenNode, &GreenToken> {
-    /// The length of the text of this element.
-    pub fn text_len(self) -> TextUnit {
-        self.map(|node| node.text_len, |token| TextUnit::of_str(&token.text)).flatten()
-    }
-}
-
-impl NodeOrToken<Arc<GreenNode>, Arc<GreenToken>> {
+impl<Node, Token> NodeOrToken<Node, Token>
+where
+    Node: Deref<Target=GreenNode>,
+    Token: Deref<Target=GreenToken>,
+{
     /// The length of the text of this element.
     pub fn text_len(&self) -> TextUnit {
-        self.as_deref().text_len()
+        self.as_deref().map(|node| node.text_len, |token| TextUnit::of_str(&token.text)).flatten()
+    }
+
+    /// The kind of this element.
+    pub fn kind(&self) -> Kind {
+        self.as_deref().map(|node| node.kind, |token| token.kind).flatten()
     }
 }

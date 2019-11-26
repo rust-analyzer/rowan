@@ -10,19 +10,30 @@ use {
     std::{
         alloc::{alloc, handle_alloc_error, Layout, LayoutErr},
         convert::TryInto,
-        iter::TrustedLen,
-        ptr,
+        iter::{FusedIterator, TrustedLen},
+        ptr, slice,
         sync::Arc,
     },
 };
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
+///
+/// Nodes are created using [`GreenBuilder::node`][super::GreenBuilder::node].
+///
+/// Note that while this struct is `#[repr(C)]`,
+/// neither its layout nor field offsets are publicly stable.
 #[repr(C)]
 #[repr(align(2))] // NB: align >= 2
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct GreenNode {
-    // NB: This is optimal layout, as the order is (u16, u16, u32, [ErasedPtr]).
+    // NB: This is optimal layout, as the order is (u16, u16, u32, [GreenElement]).
+    /// The length of the trailing element array.
+    ///
+    /// # Safety
+    ///
+    /// This field must be first (to be accessed by erased pointers),
+    /// and must accurately represent the length of the trailing array.
     children_len: u16,
     /// The kind of this node.
     pub kind: Kind,
@@ -84,11 +95,8 @@ impl GreenNode {
     }
 
     /// Children of this node.
-    pub fn children(
-        &self,
-    ) -> impl Iterator<Item = NodeOrToken<ArcBorrow<'_, GreenNode>, ArcBorrow<'_, GreenToken>>>
-    {
-        self.children.iter().map(Into::into)
+    pub fn children(&self) -> Children<'_> {
+        Children { inner: self.children.iter() }
     }
 }
 
@@ -100,6 +108,62 @@ unsafe impl Erasable for GreenNode {
         ptr::NonNull::new_unchecked(ptr as *mut Self)
     }
 }
+
+/// Children of a node in the immutable green tree.
+#[derive(Debug, Clone)]
+pub struct Children<'a> {
+    inner: slice::Iter<'a, GreenElement>,
+}
+
+impl<'a> Iterator for Children<'a> {
+    type Item = NodeOrToken<ArcBorrow<'a, GreenNode>, ArcBorrow<'a, GreenToken>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(Into::into)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        self.inner.count()
+    }
+
+    fn last(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.inner.last().map(Into::into)
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner.nth(n).map(Into::into)
+    }
+}
+
+impl ExactSizeIterator for Children<'_> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<'a> DoubleEndedIterator for Children<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back().map(Into::into)
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner.nth_back(n).map(Into::into)
+    }
+}
+
+impl FusedIterator for Children<'_> {}
+unsafe impl TrustedLen for Children<'_> {}
 
 #[test]
 fn miri_smoke() {
