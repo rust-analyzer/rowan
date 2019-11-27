@@ -1,17 +1,27 @@
 use {
-    crate::{GreenNode, GreenToken, Kind, NodeOrToken},
+    crate::{
+        green::{Children, GreenNode, GreenToken},
+        Kind, NodeOrToken,
+    },
     erasable::{ErasablePtr, ErasedPtr},
     rc_borrow::ArcBorrow,
     rc_box::ArcBox,
     std::{
         fmt, hash,
+        marker::PhantomData,
         mem::{self, ManuallyDrop},
+        ops::Deref,
         ptr,
         sync::Arc,
     },
     text_unit::TextUnit,
 };
-use std::ops::Deref;
+
+#[derive(Copy, Clone)]
+pub(crate) struct GreenElementBorrow<'a> {
+    raw: ErasedPtr,
+    marker: PhantomData<&'a ()>,
+}
 
 /// An atomically reference counted pointer to either [`GreenNode`] or [`GreenToken`].
 ///
@@ -26,20 +36,16 @@ unsafe fn erase_lt<T: ?Sized>(this: ArcBorrow<'_, T>) -> ArcBorrow<'static, T> {
 }
 
 impl GreenElement {
+    pub(crate) fn borrow(&self) -> GreenElementBorrow<'_> {
+        GreenElementBorrow { raw: self.raw, marker: PhantomData }
+    }
+
     pub(crate) fn is_node(&self) -> bool {
-        self.raw.as_ptr() as usize & 1 == 0
+        self.borrow().is_node()
     }
 
     pub(crate) fn as_node(&self) -> Option<ArcBorrow<'_, GreenNode>> {
-        if self.is_node() {
-            unsafe {
-                let arc: ManuallyDrop<Arc<GreenNode>> =
-                    ManuallyDrop::new(ErasablePtr::unerase(self.raw));
-                Some(erase_lt(ArcBorrow::from(&*arc)))
-            }
-        } else {
-            None
-        }
+        self.borrow().as_node()
     }
 
     pub(crate) fn into_node(self) -> Option<Arc<GreenNode>> {
@@ -54,20 +60,11 @@ impl GreenElement {
     }
 
     pub(crate) fn is_token(&self) -> bool {
-        self.raw.as_ptr() as usize & 1 == 1
+        self.borrow().is_token()
     }
 
     pub(crate) fn as_token(&self) -> Option<ArcBorrow<'_, GreenToken>> {
-        if self.is_token() {
-            unsafe {
-                let raw = self.raw.as_ptr() as usize & !1;
-                let raw = ptr::NonNull::new_unchecked(raw as *mut _);
-                let arc: &Arc<GreenToken> = &ManuallyDrop::new(ErasablePtr::unerase(raw));
-                Some(erase_lt(ArcBorrow::from(arc)))
-            }
-        } else {
-            None
-        }
+        self.borrow().as_token()
     }
 
     pub(crate) fn into_token(self) -> Option<Arc<GreenToken>> {
@@ -80,6 +77,48 @@ impl GreenElement {
         } else {
             None
         }
+    }
+}
+
+impl<'a> GreenElementBorrow<'a> {
+    pub(crate) fn is_node(self) -> bool {
+        self.raw.as_ptr() as usize & 1 == 0
+    }
+
+    pub(crate) fn as_node(self) -> Option<ArcBorrow<'a, GreenNode>> {
+        if self.is_node() {
+            unsafe {
+                let arc: ManuallyDrop<Arc<GreenNode>> =
+                    ManuallyDrop::new(ErasablePtr::unerase(self.raw));
+                Some(erase_lt(ArcBorrow::from(&*arc)))
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn is_token(self) -> bool {
+        self.raw.as_ptr() as usize & 1 == 1
+    }
+
+    pub(crate) fn as_token(self) -> Option<ArcBorrow<'a, GreenToken>> {
+        if self.is_token() {
+            unsafe {
+                let raw = self.raw.as_ptr() as usize & !1;
+                let raw = ptr::NonNull::new_unchecked(raw as *mut _);
+                let arc: &Arc<GreenToken> = &ManuallyDrop::new(ErasablePtr::unerase(raw));
+                Some(erase_lt(ArcBorrow::from(arc)))
+            }
+        } else {
+            None
+        }
+    }
+
+    /// # Safety
+    ///
+    /// This value must only be used as an unused placeholder.
+    pub(crate) unsafe fn dangling() -> Self {
+        GreenElementBorrow { raw: ptr::NonNull::dangling(), marker: PhantomData }
     }
 }
 
@@ -99,6 +138,12 @@ impl fmt::Debug for GreenElement {
     }
 }
 
+impl fmt::Debug for GreenElementBorrow<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        NodeOrToken::<&_, &_>::from(*self).fmt(f)
+    }
+}
+
 impl Clone for GreenElement {
     fn clone(&self) -> Self {
         if self.is_node() {
@@ -112,11 +157,27 @@ impl Clone for GreenElement {
 impl Eq for GreenElement {}
 impl PartialEq for GreenElement {
     fn eq(&self, other: &Self) -> bool {
+        self.borrow() == other.borrow()
+    }
+}
+
+impl Eq for GreenElementBorrow<'_> {}
+impl PartialEq for GreenElementBorrow<'_> {
+    fn eq(&self, other: &Self) -> bool {
         self.as_node() == other.as_node() && self.as_token() == other.as_token()
     }
 }
 
 impl hash::Hash for GreenElement {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
+        self.borrow().hash(state)
+    }
+}
+
+impl hash::Hash for GreenElementBorrow<'_> {
     fn hash<H>(&self, state: &mut H)
     where
         H: hash::Hasher,
@@ -160,6 +221,24 @@ impl From<NodeOrToken<Arc<GreenNode>, Arc<GreenToken>>> for GreenElement {
     }
 }
 
+impl<'a> From<&'a GreenNode> for GreenElementBorrow<'a> {
+    fn from(node: &'a GreenNode) -> Self {
+        GreenElementBorrow { raw: ErasablePtr::erase(node), marker: PhantomData }
+    }
+}
+
+impl<'a> From<&'a GreenToken> for GreenElementBorrow<'a> {
+    fn from(node: &'a GreenToken) -> Self {
+        let ptr = ErasablePtr::erase(node).as_ptr() as usize | 1;
+        unsafe {
+            GreenElementBorrow {
+                raw: ptr::NonNull::new_unchecked(ptr as *mut _),
+                marker: PhantomData,
+            }
+        }
+    }
+}
+
 impl From<GreenElement> for NodeOrToken<Arc<GreenNode>, Arc<GreenToken>> {
     fn from(el: GreenElement) -> Self {
         if el.is_node() {
@@ -174,6 +253,14 @@ impl<'a> From<&'a GreenElement>
     for NodeOrToken<ArcBorrow<'a, GreenNode>, ArcBorrow<'a, GreenToken>>
 {
     fn from(el: &'a GreenElement) -> Self {
+        el.borrow().into()
+    }
+}
+
+impl<'a> From<GreenElementBorrow<'a>>
+    for NodeOrToken<ArcBorrow<'a, GreenNode>, ArcBorrow<'a, GreenToken>>
+{
+    fn from(el: GreenElementBorrow<'a>) -> Self {
         if el.is_node() {
             NodeOrToken::Node(el.as_node().unwrap())
         } else {
@@ -184,6 +271,12 @@ impl<'a> From<&'a GreenElement>
 
 impl<'a> From<&'a GreenElement> for NodeOrToken<&'a GreenNode, &'a GreenToken> {
     fn from(el: &'a GreenElement) -> Self {
+        el.borrow().into()
+    }
+}
+
+impl<'a> From<GreenElementBorrow<'a>> for NodeOrToken<&'a GreenNode, &'a GreenToken> {
+    fn from(el: GreenElementBorrow<'a>) -> Self {
         if el.is_node() {
             NodeOrToken::Node(ArcBorrow::downgrade(el.as_node().unwrap()))
         } else {
@@ -232,10 +325,16 @@ impl<'a> From<&'a GreenToken> for NodeOrToken<&'a GreenNode, &'a GreenToken> {
     }
 }
 
+impl<'a> From<NodeOrToken<&'a GreenNode, &'a GreenToken>> for GreenElementBorrow<'a> {
+    fn from(v: NodeOrToken<&'a GreenNode, &'a GreenToken>) -> Self {
+        v.map(Into::into, Into::into).flatten()
+    }
+}
+
 impl<Node, Token> NodeOrToken<Node, Token>
 where
-    Node: Deref<Target=GreenNode>,
-    Token: Deref<Target=GreenToken>,
+    Node: Deref<Target = GreenNode>,
+    Token: Deref<Target = GreenToken>,
 {
     /// The length of the text of this element.
     pub fn text_len(&self) -> TextUnit {
@@ -245,5 +344,10 @@ where
     /// The kind of this element.
     pub fn kind(&self) -> Kind {
         self.as_deref().map(|node| node.kind, |token| token.kind).flatten()
+    }
+
+    /// Children of this element.
+    pub fn children(&self) -> Children<'_> {
+        self.as_deref().map(|node| node.children(), |_token| Children::none()).flatten()
     }
 }

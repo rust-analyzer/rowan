@@ -115,6 +115,12 @@ pub struct Children<'a> {
     inner: slice::Iter<'a, GreenElement>,
 }
 
+impl Children<'_> {
+    pub(crate) fn none() -> Self {
+        Children { inner: [].iter() }
+    }
+}
+
 impl<'a> Iterator for Children<'a> {
     type Item = NodeOrToken<ArcBorrow<'a, GreenNode>, ArcBorrow<'a, GreenToken>>;
 
@@ -126,17 +132,11 @@ impl<'a> Iterator for Children<'a> {
         self.inner.size_hint()
     }
 
-    fn count(self) -> usize
-    where
-        Self: Sized,
-    {
+    fn count(self) -> usize {
         self.inner.count()
     }
 
-    fn last(self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
+    fn last(self) -> Option<Self::Item> {
         self.inner.last().map(Into::into)
     }
 

@@ -97,3 +97,46 @@ impl<T> NodeOrToken<T, T> {
         }
     }
 }
+
+/// Direction of an iterator.
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Direction {
+    Next,
+    Prev,
+}
+
+/// Steps in the tree walking process.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum WalkEvent<T> {
+    /// Fired when entering the node.
+    /// Listen for this event for preorder traversal.
+    Enter(T),
+    /// Fired when leaving the node.
+    /// Listen for this event for postorder traversal.
+    Leave(T),
+}
+
+#[allow(missing_docs)]
+impl<T> WalkEvent<T> {
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> WalkEvent<U> {
+        match self {
+            WalkEvent::Enter(t) => WalkEvent::Enter(f(t)),
+            WalkEvent::Leave(t) => WalkEvent::Leave(f(t)),
+        }
+    }
+
+    pub fn enter(self) -> Option<T> {
+        match self {
+            WalkEvent::Enter(t) => Some(t),
+            WalkEvent::Leave(_) => None,
+        }
+    }
+
+    pub fn leave(self) -> Option<T> {
+        match self {
+            WalkEvent::Enter(_) => None,
+            WalkEvent::Leave(t) => Some(t),
+        }
+    }
+}

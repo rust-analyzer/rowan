@@ -1,4 +1,11 @@
-#![feature(alloc_layout_extra, hash_raw_entry, hash_set_entry, slice_from_raw_parts, trusted_len)]
+#![feature(
+    alloc_layout_extra,
+    hash_raw_entry,
+    hash_set_entry,
+    manually_drop_take,
+    slice_from_raw_parts,
+    trusted_len
+)]
 
 //! A generic library for lossless syntax trees.
 
@@ -13,11 +20,13 @@ mod helpers;
 
 #[allow(unsafe_code)]
 pub mod green;
+#[allow(unsafe_code)]
+pub mod syntax;
 
 pub use {
     crate::{
         green::{GreenNode, GreenToken},
-        helpers::NodeOrToken,
+        helpers::{Direction, NodeOrToken, WalkEvent},
     },
     rc_borrow::ArcBorrow,
     text_unit::{TextRange, TextUnit},
