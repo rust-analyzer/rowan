@@ -5,14 +5,14 @@ use {
     },
     rc_borrow::ArcBorrow,
     std::mem,
-    text_unit::{TextRange, TextUnit},
+    str_index::{StrIndex, StrRange},
 };
 
 /// Text of a node in the syntax tree.
 #[derive(Debug, Clone)]
 pub struct Text {
     pub(super) node: Node,
-    pub(super) range: TextRange,
+    pub(super) range: StrRange,
 }
 
 impl Text {
@@ -21,7 +21,7 @@ impl Text {
             NodeKind::Child { offset, .. } => offset,
             _ => 0.into(),
         };
-        let range = TextRange::offset_len(offset, node.green().text_len());
+        let range = offset.range_for(node.green().text_len());
         Text { node, range }
     }
 
@@ -31,12 +31,12 @@ impl Text {
     }
 
     /// Range of this text.
-    pub fn range(&self) -> TextRange {
+    pub fn range(&self) -> StrRange {
         self.range
     }
 
     /// Length of this text.
-    pub fn len(&self) -> TextUnit {
+    pub fn len(&self) -> StrIndex {
         self.range.len()
     }
 
@@ -48,15 +48,17 @@ impl Text {
 
 #[allow(missing_docs)]
 impl Text {
-    pub fn chunks(&self) -> impl Iterator<Item = (ArcBorrow<'_, GreenToken>, TextRange)> {
+    pub fn chunks(&self) -> impl Iterator<Item = (ArcBorrow<'_, GreenToken>, StrRange)> {
         let range = self.range();
         self.node.clone().preorder().filter(|el| el.green().is_token()).filter_map(move |token| {
             let token_range = token.text().range();
-            let range = range.intersection(&token_range)?;
+            let range = range.intersection(token_range)?;
             unsafe {
                 Some((
                     erase_ab_lt(token.green().into_token().unwrap()),
-                    range - token_range.start(),
+                    StrRange::from(
+                        range.start() - token_range.start()..range.end() - token_range.start(),
+                    ),
                 ))
             }
         })

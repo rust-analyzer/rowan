@@ -2,7 +2,7 @@ use {
     crate::{
         green::{GreenElement, GreenToken},
         helpers::repr_c_4,
-        Kind, NodeOrToken, TextUnit,
+        Kind, NodeOrToken,
     },
     erasable::{erase, Erasable, ErasedPtr},
     rc_borrow::ArcBorrow,
@@ -14,6 +14,7 @@ use {
         ptr, slice,
         sync::Arc,
     },
+    str_index::StrIndex,
 };
 
 /// Internal node in the immutable tree.
@@ -38,7 +39,7 @@ pub struct GreenNode {
     /// The kind of this node.
     pub kind: Kind,
     /// The length of the text covered by this node.
-    pub text_len: TextUnit,
+    pub text_len: StrIndex,
     children: [GreenElement],
 }
 
@@ -47,7 +48,7 @@ impl GreenNode {
     fn layout(children_len: u16) -> Result<(Layout, [usize; 4]), LayoutErr> {
         let children_len_layout = Layout::new::<u16>();
         let kind_layout = Layout::new::<Kind>();
-        let text_len_layout = Layout::new::<TextUnit>();
+        let text_len_layout = Layout::new::<StrIndex>();
         let children_layout = Layout::array::<ErasedPtr>(children_len.into())?;
         repr_c_4([children_len_layout, kind_layout, text_len_layout, children_layout])
     }
@@ -70,7 +71,7 @@ impl GreenNode {
         I: IntoIterator<Item = E>,
         I::IntoIter: ExactSizeIterator + TrustedLen,
     {
-        let mut text_len: TextUnit = 0.into();
+        let mut text_len: StrIndex = 0.into();
         let children =
             children.into_iter().map(Into::into).inspect(|child| text_len += child.text_len());
         let children_len: u16 = children.len().try_into().unwrap();

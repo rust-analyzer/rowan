@@ -1,11 +1,12 @@
 use {
-    crate::{helpers::repr_c_3, Kind, TextUnit},
+    crate::{helpers::repr_c_3, Kind},
     erasable::{erase, Erasable, ErasedPtr},
     rc_box::ArcBox,
     std::{
         alloc::{alloc, handle_alloc_error, Layout, LayoutErr},
         ptr,
     },
+    str_index::StrIndex,
 };
 
 /// Leaf node in the immutable tree.
@@ -25,7 +26,7 @@ pub struct GreenToken {
     ///
     /// This field must be first (to be accessed by erased pointers),
     /// and must accurately represent the length of the trailing text.
-    text_len: TextUnit,
+    text_len: StrIndex,
     /// The kind of this token.
     pub kind: Kind,
     /// The text of this token.
@@ -34,8 +35,8 @@ pub struct GreenToken {
 
 impl GreenToken {
     /// Heap layout for a `Box<GreenToken>` with the given text length.
-    fn layout(text_len: TextUnit) -> Result<(Layout, [usize; 3]), LayoutErr> {
-        let text_len_layout = Layout::new::<TextUnit>();
+    fn layout(text_len: StrIndex) -> Result<(Layout, [usize; 3]), LayoutErr> {
+        let text_len_layout = Layout::new::<StrIndex>();
         let kind_layout = Layout::new::<Kind>();
         let text_layout = Layout::array::<u8>(text_len.to_usize())?;
         repr_c_3([text_len_layout, kind_layout, text_layout])
@@ -44,7 +45,7 @@ impl GreenToken {
     /// Allocate a `Box<GreenToken>` with the given text length and layout.
     ///
     /// For the returned pointer to be usable, the layout and text length must agree.
-    unsafe fn alloc_box(text_len: TextUnit, layout: Layout) -> ptr::NonNull<GreenToken> {
+    unsafe fn alloc_box(text_len: StrIndex, layout: Layout) -> ptr::NonNull<GreenToken> {
         let ptr = ptr::NonNull::new(alloc(layout)).unwrap_or_else(|| handle_alloc_error(layout));
         ptr::write(ptr.as_ptr().cast(), text_len);
         GreenToken::unerase(erase(ptr))
@@ -54,7 +55,7 @@ impl GreenToken {
     ///
     /// The public entry point is `GreenBuilder::node`.
     pub(crate) fn new(kind: Kind, text: &str) -> ArcBox<GreenToken> {
-        let text_len = TextUnit::of_str(text);
+        let text_len = StrIndex::from_str_len(text);
         let (layout, [text_len_offset, kind_offset, text_offset]) = Self::layout(text_len).unwrap();
         // FUTURE: allocate Arc directly rather than Box first?
         let boxed = unsafe {
@@ -74,7 +75,7 @@ impl GreenToken {
 
 unsafe impl Erasable for GreenToken {
     unsafe fn unerase(this: ErasedPtr) -> ptr::NonNull<Self> {
-        let text_len: TextUnit = *this.cast().as_ref();
+        let text_len: StrIndex = *this.cast().as_ref();
         let ptr = ptr::slice_from_raw_parts_mut::<()>(this.as_ptr().cast(), text_len.to_usize());
         #[allow(clippy::cast_ptr_alignment)]
         ptr::NonNull::new_unchecked(ptr as *mut GreenToken)

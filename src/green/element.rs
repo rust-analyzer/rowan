@@ -14,7 +14,7 @@ use {
         ptr,
         sync::Arc,
     },
-    text_unit::TextUnit,
+    str_index::StrIndex,
 };
 
 #[derive(Copy, Clone)]
@@ -337,8 +337,10 @@ where
     Token: Deref<Target = GreenToken>,
 {
     /// The length of the text of this element.
-    pub fn text_len(&self) -> TextUnit {
-        self.as_deref().map(|node| node.text_len, |token| TextUnit::of_str(&token.text)).flatten()
+    pub fn text_len(&self) -> StrIndex {
+        self.as_deref()
+            .map(|node| node.text_len, |token| StrIndex::from_str_len(&token.text))
+            .flatten()
     }
 
     /// The kind of this element.

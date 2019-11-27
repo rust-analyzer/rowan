@@ -29,7 +29,7 @@ pub use {
         helpers::{Direction, NodeOrToken, WalkEvent},
     },
     rc_borrow::ArcBorrow,
-    text_unit::{TextRange, TextUnit},
+    str_index::{StrIndex, StrRange},
 };
 
 /// A kind tag for each token or node in the tree.

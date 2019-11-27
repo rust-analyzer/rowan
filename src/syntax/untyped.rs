@@ -15,7 +15,7 @@ use {
         rc::Rc,
         sync::Arc,
     },
-    text_unit::TextUnit,
+    str_index::StrIndex,
 };
 
 /// Node (or token) in the syntax tree.
@@ -33,7 +33,7 @@ pub(super) struct Inner {
 #[derive(Debug)]
 pub(super) enum NodeKind {
     Root(GreenElement),
-    Child { parent: Node, index: u16, offset: TextUnit },
+    Child { parent: Node, index: u16, offset: StrIndex },
     Free(Option<RcBox<Inner>>),
 }
 
@@ -103,7 +103,7 @@ impl Node {
         green: NodeOrToken<impl Deref<Target = GreenNode>, impl Deref<Target = GreenToken>>,
         parent: Node,
         index: u16,
-        offset: TextUnit,
+        offset: StrIndex,
     ) -> Node {
         let inner = Inner::new(
             NodeKind::Child { parent, index, offset },
@@ -242,7 +242,7 @@ impl Node {
 pub struct Children {
     parent: Node,
     green: green::Children<'static>,
-    offset: TextUnit,
+    offset: StrIndex,
     index: u16,
 }
 

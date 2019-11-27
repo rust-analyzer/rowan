@@ -15,7 +15,7 @@ erasable = { version = "1.0.0-dev", git = "https://github.com/CAD97/erasable", p
 rc-borrow = { version = "1.0.0-dev", git = "https://github.com/CAD97/rc-borrow", public = true }
 # rename to avoid feature name clash
 serde_ = { version = "1.0.89", optional = true, default-features = false, package = "serde", public = true }
-text_unit = { version = "0.1.6", public = true }
+str-index = { version = "1.0.0-dev", git = "https://github.com/CAD97/str-index", public = true }
 
 ## private
 rc-box = { version = "1.0.0-dev", git = "https://github.com/CAD97/rc-box", public = false }
@@ -24,4 +24,4 @@ rc-box = { version = "1.0.0-dev", git = "https://github.com/CAD97/rc-box", publi
 m_lexer = "0.0.4"
 
 [features]
-serde = [ "serde_", "text_unit/serde" ]
+serde = [ "serde_", "str-index/serde" ]
