@@ -150,6 +150,7 @@ impl PartialEq<str> for SyntaxText {
             Ok(())
         })
         .is_ok()
+            && rhs.is_empty()
     }
 }
 
@@ -273,7 +274,9 @@ mod tests {
             let t2 = build_tree(t2).text();
             let expected = t1.to_string() == t2.to_string();
             let actual = t1 == t2;
-            assert_eq!(expected, actual, "`{}` `{}`", t1, t2)
+            assert_eq!(expected, actual, "`{}` (SyntaxText) `{}` (SyntaxText)", t1, t2);
+            let actual = t1 == &*t2.to_string();
+            assert_eq!(expected, actual, "`{}` (SyntaxText) `{}` (&str)", t1, t2);
         }
         fn check(t1: &[&str], t2: &[&str]) {
             do_check(t1, t2);
