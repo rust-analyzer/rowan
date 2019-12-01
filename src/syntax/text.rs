@@ -1,9 +1,5 @@
 use {
-    crate::{
-        syntax::untyped::{Node, NodeKind},
-        GreenToken,
-    },
-    rc_borrow::ArcBorrow,
+    crate::syntax::untyped::{Node, NodeKind},
     std::mem,
     str_index::{StrIndex, StrRange},
 };
@@ -40,31 +36,46 @@ impl Text {
         self.range.len()
     }
 
-    #[allow(missing_docs)]
+    /// Is this text empty?
     pub fn is_empty(&self) -> bool {
         self.range.is_empty()
     }
 }
 
-#[allow(missing_docs)]
 impl Text {
-    pub fn chunks(&self) -> impl Iterator<Item = (ArcBorrow<'_, GreenToken>, StrRange)> {
+    /// Iterate all string fragments that make up this text.
+    pub fn chunks(&self) -> impl Iterator<Item = (Node, &str)> {
         let range = self.range();
         self.node.clone().preorder().filter(|el| el.green().is_token()).filter_map(move |token| {
-            let token_range = token.text().range();
-            let range = range.intersection(token_range)?;
-            unsafe {
-                Some((
-                    erase_ab_lt(token.green().into_token().unwrap()),
-                    StrRange::from(
-                        range.start() - token_range.start()..range.end() - token_range.start(),
-                    ),
-                ))
+            if range.contains(token.text().range()) {
+                let text = unsafe { erase_ref_lt(&token.green().into_token().unwrap().text) };
+                Some((token, text))
+            } else {
+                None
             }
         })
     }
+
+    /// Slice a subset of this text.
+    pub fn slice(&self, range: impl Into<StrRange>) -> Text {
+        let range = range.into();
+        assert!(self.range().contains(range), "invalid slice `{:?}[{:?}]`", self.range(), range);
+        Text { node: self.node.clone(), range }
+    }
 }
 
-unsafe fn erase_ab_lt<'a, T: ?Sized>(ab: ArcBorrow<'_, T>) -> ArcBorrow<'a, T> {
-    mem::transmute(ab)
+impl PartialEq<str> for Text {
+    fn eq(&self, mut rhs: &str) -> bool {
+        for (_, chunk) in self.chunks() {
+            if !rhs.starts_with(chunk) {
+                return false;
+            }
+            rhs = &rhs[chunk.len()..];
+        }
+        rhs.is_empty()
+    }
+}
+
+unsafe fn erase_ref_lt<'a, T: ?Sized>(this: &T) -> &'a T {
+    mem::transmute(this)
 }
