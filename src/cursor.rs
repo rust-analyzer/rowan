@@ -529,18 +529,19 @@ impl SyntaxToken {
         let parent = self.parent();
         let me = self.index;
 
-        let children: Box<[_]> = parent
-            .green()
-            .children()
-            .enumerate()
-            .map(|(i, child)| {
-                if i as u32 == me {
-                    replacement.take().unwrap().into()
-                } else {
-                    child.cloned()
-                }
-            })
-            .collect();
+        let children: Box<[_]> =
+            parent
+                .green()
+                .children()
+                .enumerate()
+                .map(|(i, child)| {
+                    if i as u32 == me {
+                        replacement.take().unwrap().into()
+                    } else {
+                        child.cloned()
+                    }
+                })
+                .collect();
         assert!(replacement.is_none());
         let new_parent = GreenNode::new(parent.kind(), children);
         parent.replace_with(new_parent)

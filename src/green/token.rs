@@ -90,7 +90,10 @@ impl PartialEq for GreenToken {
 }
 
 impl hash::Hash for GreenToken {
-    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
         self.data().hash(state)
     }
 }
