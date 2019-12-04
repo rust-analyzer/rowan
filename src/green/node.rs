@@ -1,6 +1,6 @@
-use std::{iter::FusedIterator, slice};
+use std::{iter::FusedIterator, slice, sync::Arc};
 
-use thin_dst::ThinArc;
+use thin_dst::{ThinArc, ThinData};
 
 use crate::{cursor::SyntaxKind, TextUnit};
 
@@ -32,12 +32,15 @@ impl GreenNode {
         let children = children
             .into_iter()
             .inspect(|it| text_len += it.text_len())
-            .map(PackedGreenElement::from)
-            // FIXME: get rid of extra collect here
-            // https://github.com/CAD97/thin-dst/issues/3
-            .collect::<Vec<_>>();
+            .map(PackedGreenElement::from);
+        let data = ThinArc::new(GreenNodeHead { kind, text_len: 0.into() }, children);
 
-        GreenNode { data: ThinArc::new(GreenNodeHead { kind, text_len }, children) }
+        // XXX: fixup `text_len` after construction, because we can't iterate
+        // `children` twice.
+        let mut data: Arc<ThinData<GreenNodeHead, PackedGreenElement>> = data.into();
+        Arc::get_mut(&mut data).unwrap().head.text_len = text_len;
+
+        GreenNode { data: data.into() }
     }
 
     /// Kind of this node.
