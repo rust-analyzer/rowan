@@ -23,14 +23,21 @@ pub struct GreenNode {
 impl GreenNode {
     /// Creates new Node.
     #[inline]
-    pub fn new(kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
-        let text_len = children.iter().map(|x| x.text_len()).sum::<TextUnit>();
-        GreenNode {
-            data: ThinArc::new(
-                GreenNodeHead { kind, text_len },
-                Vec::from(children).into_iter().map(Into::into),
-            ),
-        }
+    pub fn new<I>(kind: SyntaxKind, children: I) -> GreenNode
+    where
+        I: IntoIterator<Item = GreenElement>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut text_len: TextUnit = 0.into();
+        let children = children
+            .into_iter()
+            .inspect(|it| text_len += it.text_len())
+            .map(PackedGreenElement::from)
+            // FIXME: get rid of extra collect here
+            // https://github.com/CAD97/thin-dst/issues/3
+            .collect::<Vec<_>>();
+
+        GreenNode { data: ThinArc::new(GreenNodeHead { kind, text_len }, children) }
     }
 
     /// Kind of this node.

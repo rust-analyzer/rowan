@@ -3,13 +3,17 @@ use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
 use super::*;
 
 #[derive(Default, Debug)]
-struct Cache {
+pub struct NodeCache {
     nodes: rustc_hash::FxHashSet<GreenNode>,
     tokens: rustc_hash::FxHashSet<GreenToken>,
 }
 
-impl Cache {
-    fn node(&mut self, kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
+impl NodeCache {
+    fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
+    where
+        I: IntoIterator<Item = GreenElement>,
+        I::IntoIter: ExactSizeIterator,
+    {
         let mut node = GreenNode::new(kind, children);
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
@@ -38,23 +42,63 @@ impl Cache {
     }
 }
 
+#[derive(Debug)]
+enum MaybeOwned<'a, T> {
+    Owned(T),
+    Borrowed(&'a mut T),
+}
+
+impl<T> std::ops::Deref for MaybeOwned<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self {
+            MaybeOwned::Owned(it) => it,
+            MaybeOwned::Borrowed(it) => *it,
+        }
+    }
+}
+
+impl<T> std::ops::DerefMut for MaybeOwned<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        match self {
+            MaybeOwned::Owned(it) => it,
+            MaybeOwned::Borrowed(it) => *it,
+        }
+    }
+}
+
+impl<T: Default> Default for MaybeOwned<'_, T> {
+    fn default() -> Self {
+        MaybeOwned::Owned(T::default())
+    }
+}
+
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
 pub struct Checkpoint(usize);
 
 /// A builder for a green tree.
 #[derive(Default, Debug)]
-pub struct GreenNodeBuilder {
-    cache: Cache,
+pub struct GreenNodeBuilder<'cache> {
+    cache: MaybeOwned<'cache, NodeCache>,
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
 
-impl GreenNodeBuilder {
+impl GreenNodeBuilder<'_> {
     /// Creates new builder.
-    #[inline]
-    pub fn new() -> GreenNodeBuilder {
+    pub fn new() -> GreenNodeBuilder<'static> {
         GreenNodeBuilder::default()
+    }
+
+    /// Reusing `NodeCache` between different `GreenNodeBuilder`s saves memory.
+    /// It allows to structurally share underlying trees.
+    pub fn with_cache(cache: &mut NodeCache) -> GreenNodeBuilder<'_> {
+        GreenNodeBuilder {
+            cache: MaybeOwned::Borrowed(cache),
+            parents: Vec::new(),
+            children: Vec::new(),
+        }
     }
 
     /// Adds new token to the current branch.
@@ -76,8 +120,8 @@ impl GreenNodeBuilder {
     #[inline]
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
-        let children: Vec<_> = self.children.drain(first_child..).collect();
-        let node = self.cache.node(kind, children.into_boxed_slice());
+        let children = self.children.drain(first_child..);
+        let node = self.cache.node(kind, children);
         self.children.push(node.into());
     }
 
