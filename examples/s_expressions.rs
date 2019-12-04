@@ -94,7 +94,7 @@ fn parse(text: &str) -> Parse {
         /// in *reverse* order.
         tokens: Vec<(SyntaxKind, SmolStr)>,
         /// the in-progress tree.
-        builder: GreenNodeBuilder,
+        builder: GreenNodeBuilder<'static>,
         /// the list of syntax errors we've accumulated
         /// so far.
         errors: Vec<String>,
