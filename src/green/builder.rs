@@ -9,7 +9,11 @@ pub struct NodeCache {
 }
 
 impl NodeCache {
-    fn node(&mut self, kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
+    fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
+    where
+        I: IntoIterator<Item = GreenElement>,
+        I::IntoIter: ExactSizeIterator,
+    {
         let mut node = GreenNode::new(kind, children);
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
@@ -76,8 +80,8 @@ impl GreenNodeBuilder {
     #[inline]
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
-        let children: Vec<_> = self.children.drain(first_child..).collect();
-        let node = self.cache.node(kind, children.into_boxed_slice());
+        let children = self.children.drain(first_child..);
+        let node = self.cache.node(kind, children);
         self.children.push(node.into());
     }
 
