@@ -3,12 +3,12 @@ use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
 use super::*;
 
 #[derive(Default, Debug)]
-struct Cache {
+pub struct NodeCache {
     nodes: rustc_hash::FxHashSet<GreenNode>,
     tokens: rustc_hash::FxHashSet<GreenToken>,
 }
 
-impl Cache {
+impl NodeCache {
     fn node(&mut self, kind: SyntaxKind, children: Box<[GreenElement]>) -> GreenNode {
         let mut node = GreenNode::new(kind, children);
         // Green nodes are fully immutable, so it's ok to deduplicate them.
@@ -45,7 +45,7 @@ pub struct Checkpoint(usize);
 /// A builder for a green tree.
 #[derive(Default, Debug)]
 pub struct GreenNodeBuilder {
-    cache: Cache,
+    cache: NodeCache,
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
