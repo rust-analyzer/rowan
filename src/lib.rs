@@ -27,6 +27,7 @@ pub use {
     crate::{
         green::{GreenNode, GreenToken},
         helpers::{Direction, NodeOrToken, WalkEvent},
+        syntax::{Language, Node, Text},
     },
     rc_borrow::ArcBorrow,
     str_index::{StrIndex, StrRange},

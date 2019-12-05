@@ -1,21 +1,21 @@
 use {
     crate::{
         green::GreenElementBorrow,
-        syntax::untyped::{Inner, NodeKind},
+        syntax::node::{NodeInner, NodeKind},
     },
     rc_box::RcBox,
     std::{cell::RefCell, convert::TryInto, rc::Rc},
 };
 
 pub(super) struct FreeList {
-    first: Option<RcBox<Inner>>,
+    first: Option<RcBox<NodeInner>>,
     len: usize,
 }
 
 const FREE_LIST_LEN: usize = 128;
 
 impl FreeList {
-    pub(super) fn push(&mut self, node: Rc<Inner>) {
+    pub(super) fn push(&mut self, node: Rc<NodeInner>) {
         if self.len >= FREE_LIST_LEN {
             return;
         }
@@ -24,13 +24,13 @@ impl FreeList {
         };
     }
 
-    fn push_(&mut self, mut node: RcBox<Inner>) {
+    fn push_(&mut self, mut node: RcBox<NodeInner>) {
         node.kind = NodeKind::Free(self.first.take());
         self.first = Some(node);
         self.len += 1;
     }
 
-    pub(super) fn pop(&mut self) -> Option<RcBox<Inner>> {
+    pub(super) fn pop(&mut self) -> Option<RcBox<NodeInner>> {
         let mut node = self.first.take()?;
         self.len -= 1;
         self.first = match &mut node.kind {
@@ -44,7 +44,7 @@ impl FreeList {
         let mut list = FreeList { first: None, len: 0 };
         for _ in 0..FREE_LIST_LEN {
             unsafe {
-                list.push_(RcBox::new(Inner {
+                list.push_(RcBox::new(NodeInner {
                     kind: NodeKind::Free(None),
                     green: GreenElementBorrow::dangling(),
                 }));

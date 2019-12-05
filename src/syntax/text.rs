@@ -1,5 +1,5 @@
 use {
-    crate::syntax::untyped::{Node, NodeKind},
+    crate::syntax::{Generic, Language, Node},
     std::mem,
     str_index::{StrIndex, StrRange},
 };
@@ -7,22 +7,18 @@ use {
 /// Text of a node in the syntax tree.
 #[derive(Debug, Clone)]
 pub struct Text {
-    pub(super) node: Node,
+    pub(super) node: Node<Generic>,
     pub(super) range: StrRange,
 }
 
 impl Text {
-    pub(crate) fn new(node: Node) -> Text {
-        let offset = match node.inner.kind {
-            NodeKind::Child { offset, .. } => offset,
-            _ => 0.into(),
-        };
-        let range = offset.range_for(node.green().text_len());
+    pub(crate) fn new(node: Node<Generic>) -> Text {
+        let range = node.text_range();
         Text { node, range }
     }
 
     /// This node.
-    pub fn node(&self) -> &Node {
+    pub fn node(&self) -> &Node<Generic> {
         &self.node
     }
 
@@ -43,17 +39,24 @@ impl Text {
 }
 
 impl Text {
-    /// Iterate all string fragments that make up this text.
-    pub fn chunks(&self) -> impl Iterator<Item = (Node, &str)> {
+    /// The leaf nodes that make up this text.
+    pub fn leaves<Lang: Language>(&self, lang: Lang) -> impl Iterator<Item = (Node<Lang>, &str)> {
         let range = self.range();
-        self.node.clone().preorder().filter(|el| el.green().is_token()).filter_map(move |token| {
-            if range.contains(token.text().range()) {
-                let text = unsafe { erase_ref_lt(&token.green().into_token().unwrap().text) };
-                Some((token, text))
-            } else {
-                None
-            }
-        })
+        self.clone().node.with_lang(lang).preorder().filter(|el| el.is_leaf()).filter_map(
+            move |token| {
+                if range.contains(token.clone().text().range()) {
+                    let text = unsafe { erase_ref_lt(&token.green().into_token().unwrap().text) };
+                    Some((token, text))
+                } else {
+                    None
+                }
+            },
+        )
+    }
+
+    /// The text fragments that make up this text.
+    pub fn chunks(&self) -> impl Iterator<Item = &str> {
+        self.leaves(Generic).map(|it| it.1)
     }
 
     /// Slice a subset of this text.
@@ -66,13 +69,19 @@ impl Text {
 
 impl PartialEq<str> for Text {
     fn eq(&self, mut rhs: &str) -> bool {
-        for (_, chunk) in self.chunks() {
+        for chunk in self.chunks() {
             if !rhs.starts_with(chunk) {
                 return false;
             }
             rhs = &rhs[chunk.len()..];
         }
         rhs.is_empty()
+    }
+}
+
+impl ToString for Text {
+    fn to_string(&self) -> String {
+        self.chunks().collect()
     }
 }
 
