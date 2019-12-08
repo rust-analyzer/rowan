@@ -42,7 +42,7 @@ impl Text {
     /// The leaf nodes that make up this text.
     pub fn leaves<Lang: Language>(&self, lang: Lang) -> impl Iterator<Item = (Node<Lang>, &str)> {
         let range = self.range();
-        self.clone().node.with_lang(lang).preorder().filter(|el| el.is_leaf()).filter_map(
+        self.clone().node.with_lang(lang).preorder().filter(|el| el.green().is_token()).filter_map(
             move |token| {
                 if range.contains(token.clone().text().range()) {
                     let text = unsafe { erase_ref_lt(&token.green().into_token().unwrap().text) };

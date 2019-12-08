@@ -11,29 +11,28 @@
 
 #![forbid(unconditional_recursion, future_incompatible)]
 #![warn(missing_debug_implementations, missing_docs)]
-#![deny(unsafe_code)]
 
 #[cfg(feature = "serde")]
 extern crate serde_ as serde; // rename back
 
 mod helpers;
 
-#[allow(unsafe_code)]
 pub mod green;
-#[allow(unsafe_code)]
 pub mod syntax;
 
+#[doc(inline)]
+pub use crate::helpers::{Direction, NodeOrToken, WalkEvent};
+#[doc(no_inline)] // Explicitly ask for a "Re-exports" header.
 pub use {
     crate::{
         green::{GreenNode, GreenToken},
-        helpers::{Direction, NodeOrToken, WalkEvent},
-        syntax::{Language, Node, Text},
+        syntax::{Language, Node, Text, Token},
     },
     rc_borrow::ArcBorrow,
     str_index::{StrIndex, StrRange},
 };
 
-/// A kind tag for each token or node in the tree.
+/// Raw kind tag for each token or node in the tree.
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Kind(pub u16);

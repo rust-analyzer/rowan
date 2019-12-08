@@ -11,7 +11,7 @@ pub(crate) fn repr_c_3(fields: [Layout; 3]) -> Result<(Layout, [usize; 3]), Layo
         layout = new_layout;
         offsets[i] = this_offset;
     }
-    Ok((layout.pad_to_align()?, offsets))
+    Ok((layout.pad_to_align(), offsets))
 }
 
 pub(crate) fn repr_c_4(fields: [Layout; 4]) -> Result<(Layout, [usize; 4]), LayoutErr> {
@@ -22,7 +22,7 @@ pub(crate) fn repr_c_4(fields: [Layout; 4]) -> Result<(Layout, [usize; 4]), Layo
         layout = new_layout;
         offsets[i] = this_offset;
     }
-    Ok((layout.pad_to_align()?, offsets))
+    Ok((layout.pad_to_align(), offsets))
 }
 
 /// Convenience enum wrapping either a node or a token.

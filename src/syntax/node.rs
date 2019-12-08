@@ -1,7 +1,7 @@
 use {
     crate::{
         green::{self, GreenElement, GreenElementBorrow, GreenNode, GreenToken},
-        syntax::{FreeList, Generic, Language, Text},
+        syntax::{FreeList, Generic, Language, Text, Token},
         Direction, Kind, NodeOrToken, WalkEvent,
     },
     rc_borrow::ArcBorrow,
@@ -39,7 +39,7 @@ pub(super) enum NodeKind {
 }
 
 impl NodeInner {
-    fn new(kind: NodeKind, green: GreenElementBorrow<'static>) -> RcBox<Self> {
+    pub(super) fn new(kind: NodeKind, green: GreenElementBorrow<'static>) -> RcBox<Self> {
         let mut node = FreeList::with(|list| list.pop()).unwrap_or_else(|| unsafe {
             RcBox::new(NodeInner {
                 kind: NodeKind::Free(None),
@@ -83,18 +83,9 @@ impl<Lang: Language> Hash for Node<Lang> {
     }
 }
 
-impl<Lang: Language> Node<Lang> {
-    /// A generic version of this node without language-specific behavior.
-    pub fn generic(self) -> Node<Generic> {
-        self.splat().1
-    }
-
-    /// This node with language-specific behavior.
-    pub fn with_lang<L>(self, lang: L) -> Node<L> {
-        let (_, inner) = self.split();
-        Node { inner: ManuallyDrop::new(inner), lang }
-    }
-
+/// Internal helpers.
+impl<Lang> Node<Lang> {
+    /// Hack to move members out even though a `Drop` impl is provided.
     fn split(self) -> (Lang, Rc<NodeInner>) {
         unsafe {
             let mut this = ManuallyDrop::new(self);
@@ -104,12 +95,16 @@ impl<Lang: Language> Node<Lang> {
         }
     }
 
+    /// Separate the language from this node.
     fn splat(self) -> (Lang, Node<Generic>) {
         let (lang, inner) = self.split();
         (lang, Node { inner: ManuallyDrop::new(inner), lang: Generic })
     }
+}
 
-    fn new(inner: Rc<NodeInner>, lang: Lang) -> Self {
+/// Constructors and transformations between `Node`s and [`Token`]s.
+impl<Lang: Language> Node<Lang> {
+    pub(super) fn new_raw(inner: Rc<NodeInner>, lang: Lang) -> Self {
         Node { inner: ManuallyDrop::new(inner), lang }
     }
 
@@ -125,13 +120,13 @@ impl<Lang: Language> Node<Lang> {
             NodeKind::Root(root) => unsafe { erase_geb_lt(root.borrow()) },
             _ => unreachable!(),
         };
-        Node::new(inner.into(), lang)
+        Node::new_raw(inner.into(), lang)
     }
 
     /// # Safety
     ///
     /// `green` must be a descendent of `parent`.
-    unsafe fn new_child(
+    pub(super) unsafe fn new_child(
         green: NodeOrToken<impl Deref<Target = GreenNode>, impl Deref<Target = GreenToken>>,
         parent: Node<Lang>,
         index: u16,
@@ -142,130 +137,74 @@ impl<Lang: Language> Node<Lang> {
             NodeKind::Child { parent, index, offset },
             erase_geb_lt(green.as_deref().into()),
         );
-        Node::new(inner.into(), lang)
+        Node::new_raw(inner.into(), lang)
     }
 
-    /// The green element backing this syntax node.
-    pub fn green(&self) -> NodeOrToken<ArcBorrow<'_, GreenNode>, ArcBorrow<'_, GreenToken>> {
-        self.inner.green.into()
+    /// A generic version of this node without language-specific behavior.
+    pub fn generic(self) -> Node<Generic> {
+        self.splat().1
     }
 
-    /// The kind of this node.
-    pub fn kind(&self) -> Kind {
-        self.green().kind()
-    }
-
-    /// The text of this node.
-    pub fn text(self) -> Text {
-        Text::new(self.generic())
-    }
-
-    /// The range of text this node covers.
-    pub fn text_range(&self) -> StrRange {
-        let offset = match self.inner.kind {
-            NodeKind::Child { offset, .. } => offset,
-            _ => 0.into(),
-        };
-        offset.range_for(self.green().text_len())
+    /// This node with language-specific behavior.
+    pub fn with_lang<L>(self, lang: L) -> Node<L> {
+        let (_, inner) = self.split();
+        Node { inner: ManuallyDrop::new(inner), lang }
     }
 
     /// Is this node a token?
     ///
-    /// Note: it is possible for a node to be a leaf without being a token,
-    /// if the node represents an unparsed subtree.
+    /// Note: it is possible for a node to be backed by a green token without
+    /// being a token, if the green token represents an unparsed subtree.
+    /// For more info, see [`Language::is_token`].
     pub fn is_token(&self) -> bool {
-        self.lang.is_token(self)
+        let is_token = self.lang.is_token(self);
+        if is_token {
+            debug_assert!(self.green().is_token(), "Token nodes must be green tokens");
+        }
+        is_token
     }
 
-    /// Is this node a leaf node (have no children)?
+    /// Convert this node into a token.
     ///
-    /// Note: it is possible for a node to be a leaf without being a token,
-    /// if the node represents an unparsed subtree.
-    pub fn is_leaf(&self) -> bool {
-        self.green().children().len() == 0
-    }
-
-    /// Create a new green tree with this node replaced.
-    /// The complexity is proportional to the depth of the tree.
-    pub fn replace_with(&self, replacement: Arc<GreenNode>) -> Arc<GreenNode> {
-        match self.inner.kind {
-            NodeKind::Root(_) => replacement,
-            NodeKind::Child { ref parent, index, .. } => {
-                let mut replacement = Some(replacement);
-                let new_parent = GreenNode::new(
-                    parent.kind(),
-                    parent.green().children().enumerate().map(|(i, child)| {
-                        if i as u16 == index {
-                            replacement.take().unwrap().into()
-                        } else {
-                            child.map(ArcBorrow::upgrade, ArcBorrow::upgrade)
-                        }
-                    }),
-                );
-                assert!(replacement.is_none());
-                parent.replace_with(new_parent.into())
+    /// # Panics
+    ///
+    /// Panics if the node is not backed by a green token.
+    ///
+    /// For a non-panicking version, use `Token::new_ref`.
+    pub fn as_token(&self) -> Option<&Token<Lang>> {
+        if self.is_token() {
+            if let Some(node) = Token::new_ref(self) {
+                Some(node)
+            } else {
+                panic!("Token nodes must be green tokens")
             }
-            NodeKind::Free(_) => unreachable!(),
-        }
-    }
-
-    /// The parent of this node.
-    pub fn parent(self) -> Option<Node<Lang>> {
-        let (lang, this) = self.splat();
-        match &this.inner.kind {
-            NodeKind::Root(_) => None,
-            NodeKind::Child { parent, .. } => Some(parent.clone().with_lang(lang)),
-            NodeKind::Free(_) => unreachable!(),
-        }
-    }
-
-    /// The parent chain from this node, starting with this node.
-    pub fn ancestors(self) -> impl Iterator<Item = Node<Lang>> {
-        iter::successors(Some(self), |node| node.clone().parent())
-    }
-
-    /// The next subtree of this node's parent.
-    pub fn next_sibling(self) -> Option<Node<Lang>> {
-        let text_range = self.text_range();
-        let (lang, this) = self.splat();
-        if let NodeKind::Child { ref parent, index, offset } = this.inner.kind {
-            let index = index.checked_add(1)?;
-            let parent_green = parent.green();
-            let green = parent_green.children().nth(index as usize)?;
-            let offset = offset + text_range.len();
-            unsafe { Some(Node::new_child(green, parent.clone().with_lang(lang), index, offset)) }
         } else {
             None
         }
     }
 
-    /// The previous subtree of this node's parent.
-    pub fn prev_sibling(self) -> Option<Node<Lang>> {
-        let (lang, this) = self.splat();
-        if let NodeKind::Child { ref parent, index, offset } = this.inner.kind {
-            let index = index.checked_sub(1)?;
-            let parent_green = parent.green();
-            let green = parent_green.children().nth(index as usize)?;
-            let offset = offset - green.text_len();
-            unsafe { Some(Node::new_child(green, parent.clone().with_lang(lang), index, offset)) }
+    /// Convert this node into a token.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the node is not a token or is not backed by a green token.
+    ///
+    /// For a non-panicking version, use `Token::new`.
+    pub fn into_token(self) -> Token<Lang> {
+        if self.is_token() {
+            if let Some(node) = Token::new(self) {
+                node
+            } else {
+                panic!("Token nodes must be green tokens")
+            }
         } else {
-            None
+            panic!("Called `into_token` on non-token node")
         }
     }
+}
 
-    /// Subtrees of this node.
-    pub fn children(self) -> Children<Lang> {
-        Children::new(self)
-    }
-
-    /// Sibling trees starting at and including this node.
-    pub fn siblings(self, direction: Direction) -> impl Iterator<Item = Node<Lang>> {
-        iter::successors(Some(self), move |node| match direction {
-            Direction::Next => node.clone().next_sibling(),
-            Direction::Prev => node.clone().prev_sibling(),
-        })
-    }
-
+/// Tree traversal iterators.
+impl<Lang: Language> Node<Lang> {
     /// Walk this subtree, including this node.
     pub fn walk(self) -> impl Iterator<Item = WalkEvent<Node<Lang>>> {
         let this = self.clone();
@@ -297,6 +236,159 @@ impl<Lang: Language> Node<Lang> {
     pub fn postorder(self) -> impl Iterator<Item = Node<Lang>> {
         self.walk().filter_map(WalkEvent::leave)
     }
+    /// Child nodes (or tokens) of this node.
+    pub fn children(self) -> Children<Lang> {
+        Children::new(self)
+    }
+
+    /// Children non-token subtrees of this node.
+    pub fn subtrees(self) -> impl Iterator<Item = Node<Lang>> {
+        self.children().filter(|node| !node.is_token())
+    }
+
+    /// Sibling trees (and tokens) starting at and including this node.
+    pub fn siblings(self, direction: Direction) -> impl Iterator<Item = Node<Lang>> {
+        iter::successors(Some(self), move |node| match direction {
+            Direction::Next => node.clone().next_sibling(),
+            Direction::Prev => node.clone().prev_sibling(),
+        })
+    }
+
+    /// The parent chain from this node, starting with this node.
+    pub fn ancestors(self) -> impl Iterator<Item=Node<Lang>> {
+        iter::successors(Some(self), |node| node.clone().parent())
+    }
+}
+
+/// Accessors.
+impl<Lang: Language> Node<Lang> {
+    /// The green element backing this syntax node.
+    pub fn green(&self) -> NodeOrToken<ArcBorrow<'_, GreenNode>, ArcBorrow<'_, GreenToken>> {
+        self.inner.green.into()
+    }
+
+    /// The kind of this node.
+    pub fn kind(&self) -> Kind {
+        self.green().kind()
+    }
+
+    /// The text of this node.
+    pub fn text(self) -> Text {
+        Text::new(self.generic())
+    }
+
+    /// The range of text this node covers.
+    pub fn text_range(&self) -> StrRange {
+        let offset = match self.inner.kind {
+            NodeKind::Child { offset, .. } => offset,
+            _ => 0.into(),
+        };
+        offset.range_for(self.green().text_len())
+    }
+
+    /// Create a new green tree with this node replaced.
+    /// The complexity is proportional to the depth of the tree.
+    pub fn replace_with(
+        &self,
+        replacement: impl Into<NodeOrToken<Arc<GreenNode>, Arc<GreenToken>>>,
+    ) -> NodeOrToken<Arc<GreenNode>, Arc<GreenToken>> {
+        let replacement = replacement.into();
+        match self.inner.kind {
+            NodeKind::Root(_) => replacement,
+            NodeKind::Child { ref parent, index, .. } => {
+                let mut replacement = Some(replacement);
+                let new_parent: Arc<GreenNode> = GreenNode::new(
+                    parent.kind(),
+                    parent.green().children().enumerate().map(|(i, child)| {
+                        if i as u16 == index {
+                            replacement.take().unwrap()
+                        } else {
+                            child.map(ArcBorrow::upgrade, ArcBorrow::upgrade)
+                        }
+                    }),
+                )
+                    .into();
+                assert!(replacement.is_none());
+                parent.replace_with(new_parent)
+            }
+            NodeKind::Free(_) => unreachable!(),
+        }
+    }
+
+    /// The parent of this node.
+    pub fn parent(self) -> Option<Node<Lang>> {
+        let (lang, this) = self.splat();
+        match &this.inner.kind {
+            NodeKind::Root(_) => None,
+            NodeKind::Child { parent, .. } => Some(parent.clone().with_lang(lang)),
+            NodeKind::Free(_) => unreachable!(),
+        }
+    }
+
+    /// The next token or node of this node's parent.
+    pub fn next_sibling(self) -> Option<Node<Lang>> {
+        let text_range = self.text_range();
+        let (lang, this) = self.splat();
+        if let NodeKind::Child { ref parent, index, offset } = this.inner.kind {
+            let index = index.checked_add(1)?;
+            let parent_green = parent.green();
+            let green = parent_green.children().nth(index as usize)?;
+            let offset = offset + text_range.len();
+            unsafe { Some(Node::new_child(green, parent.clone().with_lang(lang), index, offset)) }
+        } else {
+            None
+        }
+    }
+
+    /// The next non-token node of this node's parent.
+    pub fn next_subtree(self) -> Option<Node<Lang>> {
+        self.siblings(Direction::Next)
+            .skip(1) // this
+            .find(|node| !node.is_token())
+    }
+
+    /// The previous token or node of this node's parent.
+    pub fn prev_sibling(self) -> Option<Node<Lang>> {
+        let (lang, this) = self.splat();
+        if let NodeKind::Child { ref parent, index, offset } = this.inner.kind {
+            let index = index.checked_sub(1)?;
+            let parent_green = parent.green();
+            let green = parent_green.children().nth(index as usize)?;
+            let offset = offset - green.text_len();
+            unsafe { Some(Node::new_child(green, parent.clone().with_lang(lang), index, offset)) }
+        } else {
+            None
+        }
+    }
+
+    /// The previous non-token node of this node's parent.
+    pub fn prev_subtree(self) -> Option<Node<Lang>> {
+        self.siblings(Direction::Prev)
+            .skip(1) // this
+            .find(|node| !node.is_token())
+    }
+
+    /// The first child node or token of this node.
+    pub fn first_child(self) -> Option<Node<Lang>> {
+        self.children().next()
+    }
+
+    /// The first child non-token subtree of this node.
+    pub fn first_subtree(self) -> Option<Node<Lang>> {
+        self.children().find(|node| !node.is_token())
+    }
+
+    /// The last child node or token of this node.
+    pub fn last_child(self) -> Option<Node<Lang>> {
+        self.children().next_back()
+    }
+
+    /// The last child non-token subtree of this node.
+    pub fn last_subtree(self) -> Option<Node<Lang>> {
+        self.children().rfind(|node| !node.is_token())
+    }
+
+    // TODO: first_token / last_token / tokens: how do we handle green token but not lang token?
 }
 
 /// Children nodes in the syntax tree.

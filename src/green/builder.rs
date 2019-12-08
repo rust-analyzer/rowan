@@ -54,7 +54,7 @@ impl hash::Hash for ThinEqNode {
     }
 }
 
-/// A construction cache for green tree elements.
+/// Construction cache for green tree elements.
 ///
 /// As the green tree is immutable, identical nodes can be deduplicated.
 /// For example, all nodes representing the `#[inline]` attribute can
@@ -93,23 +93,23 @@ impl GreenBuilder {
         let (_, token) = self
             .tokens
             .raw_entry_mut()
-            // This `erase_lt` is safe because the erased reference
+            // This `erase_ref_lt` is safe because the erased reference
             // is only used for comparison and not stored.
-            .from_key(&(kind, unsafe { erase_lt(text) }))
+            .from_key(&(kind, unsafe { erase_ref_lt(text) }))
             .or_insert_with(|| {
                 let token: Arc<GreenToken> = GreenToken::new(kind, text).into();
-                let text: &'static str = unsafe { erase_lt(&token.text) };
+                let text: &'static str = unsafe { erase_ref_lt(&token.text) };
                 ((kind, text), token)
             });
         token.clone()
     }
 }
 
-/// A checkpoint for maybe wrapping a node. See [`GreenTreeBuilder::checkpoint`].
+/// Checkpoint for maybe wrapping a node. See [`GreenTreeBuilder::checkpoint`].
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Checkpoint(usize);
 
-/// A builder for a green tree.
+/// Builder for a green tree.
 #[derive(Debug, Default)]
 pub struct GreenTreeBuilder {
     cache: GreenBuilder,
@@ -226,6 +226,6 @@ impl GreenTreeBuilder {
     }
 }
 
-unsafe fn erase_lt<'a, T: ?Sized>(x: &T) -> &'a T {
+unsafe fn erase_ref_lt<'a, T: ?Sized>(x: &T) -> &'a T {
     mem::transmute(x)
 }

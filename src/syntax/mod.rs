@@ -2,11 +2,17 @@
 //! with parent pointers and text offsets.
 
 pub(self) use self::free_list::FreeList;
-pub use self::{node::Node, text::Text, traits::Language};
+pub use self::{
+    node::{Children, Node},
+    text::Text,
+    token::Token,
+    traits::Language,
+};
 use {crate::Kind, std::fmt};
 
 mod text;
 mod node;
+mod token;
 mod free_list;
 
 // NB: this module is just here to make rustdoc treat all re-exported types uniformly.
@@ -14,6 +20,15 @@ mod free_list;
 mod traits {
     use super::*;
     /// Specialization information for a particular language grammar.
+    ///
+    /// Rather than be a purely typesystem-level trait where all functions are
+    /// associated functions, this trait's methods take `self` by reference.
+    /// This allows dynamic interpretation of language rules for interpreters.
+    /// For the common, statically known case, you should use a ZST impl.
+    ///
+    /// The language resolver must be cloneable, as all node handles have one.
+    /// (As such, it should also be small and quickly cloneable – `Rc` level.)
+    /// If at all possible, it should be a `Copy` handle and only `usize` big.
     pub trait Language: Clone {
         /// A typed kind to identify the kind of a node in the tree.
         ///
@@ -40,6 +55,17 @@ mod traits {
         ///
         /// If doing this, the root node should be stored in a cell
         /// or similar structure to allow updating it when needed.
+        /// [arc-swap] explains the pattern here, though it uses
+        /// atomic reference counting instead of nonatomic.
+        ///
+        //  NB: arc-swap actually supports `ArcSwapAny<Rc<_>>`,
+        //  but this is stronger than anyone realistically needs,
+        //  as it makes swapping the Rc atomic (when it's already
+        //  confined to one thread, so the atomic swap is unneeded).
+        //  Someone should put together an rc-swap that exposes a similar
+        //  API but uses the fact that it doesn't need to be thread-safe.
+        //  Until then `RefCell<Rc<_>>` is close enough.
+        ///   [arc-swap]: <https://docs.rs/arc-swap/>
         fn is_token(&self, node: &Node<Self>) -> bool {
             node.green().is_token()
         }

@@ -31,7 +31,7 @@ pub(crate) struct GreenElement {
     raw: ErasedPtr,
 }
 
-unsafe fn erase_lt<T: ?Sized>(this: ArcBorrow<'_, T>) -> ArcBorrow<'static, T> {
+unsafe fn erase_ab_lt<T: ?Sized>(this: ArcBorrow<'_, T>) -> ArcBorrow<'static, T> {
     mem::transmute(this)
 }
 
@@ -90,7 +90,7 @@ impl<'a> GreenElementBorrow<'a> {
             unsafe {
                 let arc: ManuallyDrop<Arc<GreenNode>> =
                     ManuallyDrop::new(ErasablePtr::unerase(self.raw));
-                Some(erase_lt(ArcBorrow::from(&*arc)))
+                Some(erase_ab_lt(ArcBorrow::from(&*arc)))
             }
         } else {
             None
@@ -107,7 +107,7 @@ impl<'a> GreenElementBorrow<'a> {
                 let raw = self.raw.as_ptr() as usize & !1;
                 let raw = ptr::NonNull::new_unchecked(raw as *mut _);
                 let arc: &Arc<GreenToken> = &ManuallyDrop::new(ErasablePtr::unerase(raw));
-                Some(erase_lt(ArcBorrow::from(arc)))
+                Some(erase_ab_lt(ArcBorrow::from(arc)))
             }
         } else {
             None
