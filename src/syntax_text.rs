@@ -154,9 +154,21 @@ impl PartialEq<str> for SyntaxText {
     }
 }
 
+impl PartialEq<SyntaxText> for str {
+    fn eq(&self, rhs: &SyntaxText) -> bool {
+        rhs == self
+    }
+}
+
 impl PartialEq<&'_ str> for SyntaxText {
     fn eq(&self, rhs: &&str) -> bool {
         self == *rhs
+    }
+}
+
+impl PartialEq<SyntaxText> for &'_ str {
+    fn eq(&self, rhs: &SyntaxText) -> bool {
+        rhs == self
     }
 }
 
