@@ -104,7 +104,7 @@ impl<L: Language> fmt::Display for SyntaxToken<L> {
     }
 }
 
-pub(crate) type SyntaxElement<L> = NodeOrToken<SyntaxNode<L>, SyntaxToken<L>>;
+pub type SyntaxElement<L> = NodeOrToken<SyntaxNode<L>, SyntaxToken<L>>;
 
 impl<L: Language> From<cursor::SyntaxElement> for SyntaxElement<L> {
     fn from(raw: cursor::SyntaxElement) -> SyntaxElement<L> {

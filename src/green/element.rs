@@ -2,14 +2,17 @@ use std::{fmt, hash, mem};
 
 use thin_dst::ErasedPtr;
 
-use crate::{cursor::SyntaxKind, NodeOrToken, TextUnit};
+use crate::{
+    cursor::SyntaxKind,
+    green::{GreenNode, GreenToken},
+    NodeOrToken, TextUnit,
+};
 
-use super::*;
-
-pub(crate) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
+pub(super) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
 pub(crate) type GreenElementRef<'a> = NodeOrToken<&'a GreenNode, &'a GreenToken>;
+
 #[repr(transparent)]
-pub(crate) struct PackedGreenElement {
+pub(super) struct PackedGreenElement {
     ptr: ErasedPtr,
 }
 

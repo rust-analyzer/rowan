@@ -7,8 +7,8 @@ use std::{
 };
 
 use crate::{
-    Children, Direction, GreenElementRef, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText,
-    TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    green::GreenElementRef, Children, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr,
+    SyntaxText, TextRange, TextUnit, TokenAtOffset, WalkEvent,
 };
 
 /// SyntaxKind is a type tag for each token or node.

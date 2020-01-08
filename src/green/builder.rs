@@ -1,11 +1,15 @@
-use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
+use rustc_hash::FxHashSet;
 
-use super::*;
+use crate::{
+    cursor::SyntaxKind,
+    green::{GreenElement, GreenNode, GreenToken},
+    NodeOrToken, SmolStr,
+};
 
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: rustc_hash::FxHashSet<GreenNode>,
-    tokens: rustc_hash::FxHashSet<GreenToken>,
+    nodes: FxHashSet<GreenNode>,
+    tokens: FxHashSet<GreenToken>,
 }
 
 impl NodeCache {

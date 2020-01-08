@@ -4,14 +4,14 @@ use crate::{cursor::SyntaxKind, SmolStr, TextUnit};
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) struct GreenTokenData {
+struct GreenTokenData {
     kind: SyntaxKind,
     text: SmolStr,
 }
 
 /// Leaf node in the immutable tree.
 pub struct GreenToken {
-    pub(super) ptr: ptr::NonNull<GreenTokenData>,
+    ptr: ptr::NonNull<GreenTokenData>,
 }
 
 unsafe impl Send for GreenToken {} // where GreenTokenData: Send + Sync
