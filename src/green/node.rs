@@ -2,9 +2,10 @@ use std::{iter::FusedIterator, slice, sync::Arc};
 
 use thin_dst::{ThinArc, ThinData};
 
-use crate::{cursor::SyntaxKind, TextUnit};
-
-use super::*;
+use crate::{
+    green::{GreenElement, GreenElementRef, PackedGreenElement, SyntaxKind},
+    TextUnit,
+};
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

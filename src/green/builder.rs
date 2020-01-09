@@ -1,11 +1,14 @@
-use crate::{cursor::SyntaxKind, NodeOrToken, SmolStr};
+use rustc_hash::FxHashSet;
 
-use super::*;
+use crate::{
+    green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
+    NodeOrToken, SmolStr,
+};
 
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: rustc_hash::FxHashSet<GreenNode>,
-    tokens: rustc_hash::FxHashSet<GreenToken>,
+    nodes: FxHashSet<GreenNode>,
+    tokens: FxHashSet<GreenToken>,
 }
 
 impl NodeCache {
@@ -131,7 +134,7 @@ impl GreenNodeBuilder<'_> {
     /// `start_node_at`.
     /// Example:
     /// ```rust
-    /// # use rowan::{GreenNodeBuilder, cursor::SyntaxKind};
+    /// # use rowan::{GreenNodeBuilder, SyntaxKind};
     /// # const PLUS: SyntaxKind = SyntaxKind(0);
     /// # const OPERATION: SyntaxKind = SyntaxKind(1);
     /// # struct Parser;

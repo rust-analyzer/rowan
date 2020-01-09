@@ -7,13 +7,10 @@ use std::{
 };
 
 use crate::{
-    Children, Direction, GreenElementRef, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText,
-    TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    green::{GreenElementRef, SyntaxKind},
+    Children, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
+    TextUnit, TokenAtOffset, WalkEvent,
 };
-
-/// SyntaxKind is a type tag for each token or node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SyntaxKind(pub u16);
 
 #[derive(Debug, Clone)]
 pub struct SyntaxNode(Rc<NodeData>);
@@ -24,6 +21,7 @@ impl Drop for SyntaxNode {
     }
 }
 
+// Identity semantics for hash & eq
 impl PartialEq for SyntaxNode {
     fn eq(&self, other: &SyntaxNode) -> bool {
         ptr::eq(self.green(), other.green())
@@ -64,7 +62,7 @@ impl fmt::Display for SyntaxToken {
     }
 }
 
-pub(crate) type SyntaxElement = NodeOrToken<SyntaxNode, SyntaxToken>;
+pub type SyntaxElement = NodeOrToken<SyntaxNode, SyntaxToken>;
 
 impl From<SyntaxNode> for SyntaxElement {
     fn from(node: SyntaxNode) -> SyntaxElement {

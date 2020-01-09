@@ -31,7 +31,7 @@ enum SyntaxKind {
 }
 use SyntaxKind::*;
 
-impl From<SyntaxKind> for rowan::cursor::SyntaxKind {
+impl From<SyntaxKind> for rowan::SyntaxKind {
     fn from(kind: SyntaxKind) -> Self {
         Self(kind as u16)
     }
@@ -41,11 +41,11 @@ impl From<SyntaxKind> for rowan::cursor::SyntaxKind {
 enum Lang {}
 impl rowan::Language for Lang {
     type Kind = SyntaxKind;
-    fn kind_from_raw(raw: rowan::cursor::SyntaxKind) -> Self::Kind {
+    fn kind_from_raw(raw: rowan::SyntaxKind) -> Self::Kind {
         assert!(raw.0 <= ROOT as u16);
         unsafe { std::mem::transmute::<u16, SyntaxKind>(raw.0) }
     }
-    fn kind_to_raw(kind: Self::Kind) -> rowan::cursor::SyntaxKind {
+    fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {
         kind.into()
     }
 }
@@ -368,7 +368,7 @@ nan
 
 fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
     fn tok(t: SyntaxKind) -> m_lexer::TokenKind {
-        m_lexer::TokenKind(rowan::cursor::SyntaxKind::from(t).0)
+        m_lexer::TokenKind(rowan::SyntaxKind::from(t).0)
     }
     fn kind(t: m_lexer::TokenKind) -> SyntaxKind {
         match t.0 {
