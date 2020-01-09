@@ -3,8 +3,7 @@ use std::{iter::FusedIterator, slice, sync::Arc};
 use thin_dst::{ThinArc, ThinData};
 
 use crate::{
-    cursor::SyntaxKind,
-    green::{GreenElement, GreenElementRef, PackedGreenElement},
+    green::{GreenElement, GreenElementRef, PackedGreenElement, SyntaxKind},
     TextUnit,
 };
 

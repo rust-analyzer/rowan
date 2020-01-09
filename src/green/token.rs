@@ -1,6 +1,6 @@
 use std::{fmt, hash, mem::ManuallyDrop, ptr, sync::Arc};
 
-use crate::{cursor::SyntaxKind, SmolStr, TextUnit};
+use crate::{green::SyntaxKind, SmolStr, TextUnit};
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, PartialEq, Eq, Hash)]

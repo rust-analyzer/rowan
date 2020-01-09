@@ -1,15 +1,15 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
-    TextUnit, TokenAtOffset, WalkEvent,
+    cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxKind, SyntaxText,
+    TextRange, TextUnit, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
     type Kind: fmt::Debug;
 
-    fn kind_from_raw(raw: cursor::SyntaxKind) -> Self::Kind;
-    fn kind_to_raw(kind: Self::Kind) -> cursor::SyntaxKind;
+    fn kind_from_raw(raw: SyntaxKind) -> Self::Kind;
+    fn kind_to_raw(kind: Self::Kind) -> SyntaxKind;
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

@@ -1,8 +1,7 @@
 use rustc_hash::FxHashSet;
 
 use crate::{
-    cursor::SyntaxKind,
-    green::{GreenElement, GreenNode, GreenToken},
+    green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, SmolStr,
 };
 
@@ -135,7 +134,7 @@ impl GreenNodeBuilder<'_> {
     /// `start_node_at`.
     /// Example:
     /// ```rust
-    /// # use rowan::{GreenNodeBuilder, cursor::SyntaxKind};
+    /// # use rowan::{GreenNodeBuilder, SyntaxKind};
     /// # const PLUS: SyntaxKind = SyntaxKind(0);
     /// # const OPERATION: SyntaxKind = SyntaxKind(1);
     /// # struct Parser;

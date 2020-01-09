@@ -3,8 +3,7 @@ use std::{fmt, hash, mem};
 use thin_dst::ErasedPtr;
 
 use crate::{
-    cursor::SyntaxKind,
-    green::{GreenNode, GreenToken},
+    green::{GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, TextUnit,
 };
 
