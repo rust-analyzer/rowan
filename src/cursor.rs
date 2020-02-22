@@ -447,7 +447,7 @@ impl SyntaxNode {
         // recursion with a loop.
         let range = self.text_range();
         assert!(
-            range.start() <= offset && offset <= range.end(),
+            range.start() <= offset && offset < range.end(),
             "Bad offset: range {:?} offset {:?}",
             range,
             offset
