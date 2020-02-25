@@ -61,6 +61,11 @@ impl GreenNode {
     pub fn children(&self) -> Children<'_> {
         Children { inner: self.data.slice.iter() }
     }
+
+    pub(crate) fn ptr(&self) -> *const u8 {
+        let r: &ThinData<_, _> = &self.data;
+        r as *const _ as _
+    }
 }
 
 #[derive(Debug, Clone)]

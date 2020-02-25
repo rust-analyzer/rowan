@@ -24,7 +24,7 @@ impl Drop for SyntaxNode {
 // Identity semantics for hash & eq
 impl PartialEq for SyntaxNode {
     fn eq(&self, other: &SyntaxNode) -> bool {
-        ptr::eq(self.green(), other.green())
+        self.green().ptr() == other.green().ptr()
             && self.text_range().start() == other.text_range().start()
     }
 }
@@ -33,7 +33,7 @@ impl Eq for SyntaxNode {}
 
 impl Hash for SyntaxNode {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ptr::hash(self.green(), state);
+        ptr::hash(self.green().ptr(), state);
         self.text_range().start().hash(state);
     }
 }
