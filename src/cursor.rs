@@ -442,9 +442,6 @@ impl SyntaxNode {
     /// Find a token in the subtree corresponding to this node, which covers the offset.
     /// Precondition: offset must be withing node's range.
     pub fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken> {
-        // TODO: this could be faster if we first drill-down to node, and only
-        // then switch to token search. We should also replace explicit
-        // recursion with a loop.
         let range = self.text_range();
         assert!(
             range.start() <= offset && offset <= range.end(),
@@ -456,25 +453,38 @@ impl SyntaxNode {
             return TokenAtOffset::None;
         }
 
-        let mut children = self.children_with_tokens().filter(|child| {
-            let child_range = child.text_range();
-            !child_range.is_empty()
-                && (child_range.start() <= offset && offset <= child_range.end())
-        });
-
-        let left = children.next().unwrap();
-        let right = children.next();
-        assert!(children.next().is_none());
-
-        if let Some(right) = right {
-            match (left.token_at_offset(offset), right.token_at_offset(offset)) {
-                (TokenAtOffset::Single(left), TokenAtOffset::Single(right)) => {
-                    TokenAtOffset::Between(left, right)
+        let mut container_element = self.clone();
+        'outer: loop {
+            for child in container_element.children_with_tokens() {
+                match child {
+                    SyntaxElement::Token(token) => {
+                        let range: TextRange = token.text_range();
+                        if range.contains_inclusive(offset) {
+                            return if offset == range.start() {
+                                match token.prev_token() {
+                                    Some(prev_token) => TokenAtOffset::Between(prev_token, token),
+                                    None => TokenAtOffset::Single(token),
+                                }
+                            } else if offset == range.end() {
+                                match token.next_token() {
+                                    Some(next_token) => TokenAtOffset::Between(token, next_token),
+                                    None => TokenAtOffset::Single(token),
+                                }
+                            } else {
+                                TokenAtOffset::Single(token)
+                            };
+                        }
+                    }
+                    SyntaxElement::Node(node) => {
+                        let range = node.text_range();
+                        if !range.is_empty() && range.contains_inclusive(offset) {
+                            container_element = node;
+                            continue 'outer;
+                        }
+                    }
                 }
-                _ => unreachable!(),
             }
-        } else {
-            left.token_at_offset(offset)
+            unreachable!();
         }
     }
 
@@ -795,4 +805,86 @@ fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
         NodeOrToken::Node(it) => Some((it, data)),
         NodeOrToken::Token(_) => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::green::GreenNodeBuilder;
+
+    use super::*;
+
+    fn node(
+        builder: &mut GreenNodeBuilder,
+        create_children: impl FnOnce(&mut GreenNodeBuilder) -> (),
+    ) {
+        builder.start_node(SyntaxKind(4));
+        create_children(builder);
+        builder.finish_node();
+    }
+
+    fn token(builder: &mut GreenNodeBuilder, text: &str) {
+        builder.token(SyntaxKind(7), SmolStr::from(text))
+    }
+
+    fn check(actual: TokenAtOffset<SyntaxToken>, expected: TokenAtOffset<&str>) {
+        match (actual, expected) {
+            (
+                TokenAtOffset::Between(actual_left, actual_right),
+                TokenAtOffset::Between(expected_left, expected_right),
+            ) => {
+                assert_eq!(actual_left.text(), expected_left);
+                assert_eq!(actual_right.text(), expected_right);
+            }
+            (TokenAtOffset::Single(actual), TokenAtOffset::Single(expected)) => {
+                assert_eq!(actual.text(), expected);
+            }
+            (TokenAtOffset::None, TokenAtOffset::None) => {}
+            (actual, _) => {
+                assert!(false, "unexpected {:#?}", actual);
+            }
+        }
+    }
+
+    #[test]
+    fn token_at_offset_with_empty_token() {
+        let mut builder = GreenNodeBuilder::new();
+        node(&mut builder, |b| {
+            node(b, |b| token(b, "A"));
+            token(b, "+");
+            node(b, |b| {
+                node(b, |b| token(b, ""));
+                token(b, "*");
+                node(b, |b| token(b, "C"));
+            });
+        });
+        let root = SyntaxNode::new_root(builder.finish());
+
+        check(root.token_at_offset(0.into()), TokenAtOffset::Single("A"));
+        check(root.token_at_offset(1.into()), TokenAtOffset::Between("A", "+"));
+        check(root.token_at_offset(2.into()), TokenAtOffset::Between("+", ""));
+        check(root.token_at_offset(3.into()), TokenAtOffset::Between("*", "C"));
+        check(root.token_at_offset(4.into()), TokenAtOffset::Single("C"));
+    }
+
+    #[test]
+    fn token_at_offset_with_empty_node() {
+        let mut builder = GreenNodeBuilder::new();
+        node(&mut builder, |_b| {});
+        let root = SyntaxNode::new_root(builder.finish());
+
+        check(root.token_at_offset(0.into()), TokenAtOffset::None);
+    }
+
+    #[test]
+    fn token_at_offset_with_inner_empty_node() {
+        let mut builder = GreenNodeBuilder::new();
+        node(&mut builder, |b| {
+            node(b, |_b| {});
+            token(b, "+");
+        });
+        let root = SyntaxNode::new_root(builder.finish());
+
+        check(root.token_at_offset(0.into()), TokenAtOffset::Single("+"));
+        check(root.token_at_offset(1.into()), TokenAtOffset::Single("+"));
+    }
 }
