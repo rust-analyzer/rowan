@@ -4,14 +4,14 @@ use thin_dst::{ThinArc, ThinData};
 
 use crate::{
     green::{GreenElement, GreenElementRef, PackedGreenElement, SyntaxKind},
-    TextUnit,
+    TextSize,
 };
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct GreenNodeHead {
     kind: SyntaxKind,
-    text_len: TextUnit,
+    text_len: TextSize,
 }
 
 /// Internal node in the immutable tree.
@@ -29,7 +29,7 @@ impl GreenNode {
         I: IntoIterator<Item = GreenElement>,
         I::IntoIter: ExactSizeIterator,
     {
-        let mut text_len: TextUnit = 0.into();
+        let mut text_len: TextSize = 0.into();
         let children = children
             .into_iter()
             .inspect(|it| text_len += it.text_len())
@@ -52,7 +52,7 @@ impl GreenNode {
 
     /// Length of the text, covered by this node.
     #[inline]
-    pub fn text_len(&self) -> TextUnit {
+    pub fn text_len(&self) -> TextSize {
         self.data.head.text_len
     }
 

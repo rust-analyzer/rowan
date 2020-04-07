@@ -4,7 +4,7 @@ use thin_dst::ErasedPtr;
 
 use crate::{
     green::{GreenNode, GreenToken, SyntaxKind},
-    NodeOrToken, TextUnit,
+    NodeOrToken, TextSize,
 };
 
 pub(super) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
@@ -66,7 +66,7 @@ impl GreenElement {
 
     /// Returns length of the text covered by this element.
     #[inline]
-    pub fn text_len(&self) -> TextUnit {
+    pub fn text_len(&self) -> TextSize {
         self.as_ref().text_len()
     }
 }
@@ -83,7 +83,7 @@ impl GreenElementRef<'_> {
 
     /// Returns length of the text covered by this element.
     #[inline]
-    pub fn text_len(&self) -> TextUnit {
+    pub fn text_len(&self) -> TextSize {
         match self {
             NodeOrToken::Node(it) => it.text_len(),
             NodeOrToken::Token(it) => it.text_len(),

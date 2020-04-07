@@ -2,7 +2,7 @@ use std::{fmt, marker::PhantomData};
 
 use crate::{
     cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxKind, SyntaxText,
-    TextRange, TextUnit, TokenAtOffset, WalkEvent,
+    TextRange, TextSize, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -252,7 +252,7 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.preorder_with_tokens().map(|event| event.map(NodeOrToken::from))
     }
 
-    pub fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken<L>> {
+    pub fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken<L>> {
         self.raw.token_at_offset(offset).map(SyntaxToken::from)
     }
 
