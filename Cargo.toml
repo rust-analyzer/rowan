@@ -9,7 +9,7 @@ edition = "2018"
 
 [dependencies]
 rustc-hash = "1.0.1"
-text-size = { version = "0.99.0-dev.3", git = "https://github.com/rust-analyzer/text-size.git" }
+text-size = { version = "0.99.0" }
 smol_str = "0.1.10"
 serde = { version = "1.0.89", optional = true, default-features = false }
 thin-dst = "1.0.0"

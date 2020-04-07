@@ -6,6 +6,7 @@ use crate::{
     green::{GreenElement, GreenElementRef, PackedGreenElement, SyntaxKind},
     TextSize,
 };
+use text_size::TextLen;
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -32,7 +33,7 @@ impl GreenNode {
         let mut text_len: TextSize = 0.into();
         let children = children
             .into_iter()
-            .inspect(|it| text_len += it.text_len())
+            .inspect(|it| text_len += TextSize::of(it))
             .map(PackedGreenElement::from);
         let data = ThinArc::new(GreenNodeHead { kind, text_len: 0.into() }, children);
 
@@ -50,12 +51,6 @@ impl GreenNode {
         self.data.head.kind
     }
 
-    /// Length of the text, covered by this node.
-    #[inline]
-    pub fn text_len(&self) -> TextSize {
-        self.data.head.text_len
-    }
-
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> Children<'_> {
@@ -65,6 +60,13 @@ impl GreenNode {
     pub(crate) fn ptr(&self) -> *const u8 {
         let r: &ThinData<_, _> = &self.data;
         r as *const _ as _
+    }
+}
+
+impl TextLen for &'_ GreenNode {
+    #[inline]
+    fn text_len(self) -> TextSize {
+        self.data.head.text_len
     }
 }
 

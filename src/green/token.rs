@@ -1,6 +1,6 @@
 use std::{convert::TryFrom, fmt, hash, mem::ManuallyDrop, ptr, sync::Arc};
 
-use crate::{green::SyntaxKind, SmolStr, TextSize};
+use crate::{green::SyntaxKind, SmolStr, TextLen, TextSize};
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -55,10 +55,11 @@ impl GreenToken {
     pub fn text(&self) -> &SmolStr {
         &self.data().text
     }
+}
 
-    /// Text of this Token.
+impl TextLen for &'_ GreenToken {
     #[inline]
-    pub fn text_len(&self) -> TextSize {
+    fn text_len(self) -> TextSize {
         TextSize::try_from(self.text().len()).unwrap()
     }
 }
