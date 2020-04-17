@@ -240,7 +240,7 @@ impl SyntaxNode {
             Some((_, _, it)) => it,
             _ => 0.into(),
         };
-        TextRange::at(offset, TextSize::of(self.green()))
+        TextRange::at(offset, self.green().text_len())
     }
 
     pub fn text(&self) -> SyntaxText {
@@ -537,7 +537,7 @@ impl SyntaxToken {
     }
 
     pub fn text_range(&self) -> TextRange {
-        TextRange::at(self.offset, TextSize::of(self.green()))
+        TextRange::at(self.offset, self.green().text_len())
     }
 
     pub fn text(&self) -> &SmolStr {
@@ -717,7 +717,7 @@ impl Iter {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;
-            self.offset += TextSize::of(element);
+            self.offset += element.text_len();
             self.index += 1;
             (element, index, offset)
         })
@@ -771,7 +771,7 @@ impl GreenNode {
     ) -> impl Iterator<Item = (GreenElementRef, (usize, TextSize))> {
         self.children().skip(start_index).enumerate().map(move |(index, element)| {
             let element_offset = offset;
-            offset += TextSize::of(element);
+            offset += element.text_len();
             (element, (start_index + index, element_offset))
         })
     }
@@ -782,7 +782,7 @@ impl GreenNode {
         mut offset: TextSize,
     ) -> impl Iterator<Item = (GreenElementRef, (usize, TextSize))> {
         self.children().take(end_index).rev().enumerate().map(move |(index, element)| {
-            offset -= TextSize::of(element);
+            offset -= element.text_len();
             (element, (end_index - index - 1, offset))
         })
     }
