@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{
     cursor::{SyntaxNode, SyntaxToken},
-    TextRange, TextUnit,
+    TextRange, TextSize,
 };
 
 #[derive(Clone)]
@@ -17,7 +17,7 @@ impl SyntaxText {
         SyntaxText { node, range }
     }
 
-    pub fn len(&self) -> TextUnit {
+    pub fn len(&self) -> TextSize {
         self.range.len()
     }
 
@@ -29,24 +29,24 @@ impl SyntaxText {
         self.try_for_each_chunk(|chunk| if chunk.contains(c) { Err(()) } else { Ok(()) }).is_err()
     }
 
-    pub fn find_char(&self, c: char) -> Option<TextUnit> {
-        let mut acc: TextUnit = 0.into();
+    pub fn find_char(&self, c: char) -> Option<TextSize> {
+        let mut acc: TextSize = 0.into();
         let res = self.try_for_each_chunk(|chunk| {
             if let Some(pos) = chunk.find(c) {
-                let pos: TextUnit = (pos as u32).into();
+                let pos: TextSize = (pos as u32).into();
                 return Err(acc + pos);
             }
-            acc += TextUnit::of_str(chunk);
+            acc += TextSize::of(chunk);
             Ok(())
         });
         found(res)
     }
 
-    pub fn char_at(&self, offset: TextUnit) -> Option<char> {
+    pub fn char_at(&self, offset: TextSize) -> Option<char> {
         let offset = offset.into();
-        let mut start: TextUnit = 0.into();
+        let mut start: TextSize = 0.into();
         let res = self.try_for_each_chunk(|chunk| {
-            let end = start + TextUnit::of_str(chunk);
+            let end = start + TextSize::of(chunk);
             if start <= offset && offset < end {
                 let off: usize = u32::from(offset - start) as usize;
                 return Err(chunk[off..].chars().next().unwrap());
@@ -70,9 +70,9 @@ impl SyntaxText {
             self.range,
             (range.start(), range.end()),
         );
-        let range = TextRange::from_to(start, end);
+        let range = TextRange::new(start, end);
         assert!(
-            range.is_subrange(&self.range),
+            self.range.contains_range(range),
             "invalid slice, range: {:?}, slice: {:?}",
             self.range,
             range,
@@ -108,7 +108,7 @@ impl SyntaxText {
         self.node.descendants_with_tokens().filter_map(|element| element.into_token()).filter_map(
             move |token| {
                 let token_range = token.text_range();
-                let range = text_range.intersection(&token_range)?;
+                let range = text_range.intersect(token_range)?;
                 Some((token, range - token_range.start()))
             },
         )
@@ -201,8 +201,8 @@ fn zip_texts<I: Iterator<Item = (SyntaxToken, TextRange)>>(xs: &mut I, ys: &mut 
             return Some(());
         }
         let advance = std::cmp::min(x.1.len(), y.1.len());
-        x.1 = TextRange::from_to(x.1.start() + advance, x.1.end());
-        y.1 = TextRange::from_to(y.1.start() + advance, y.1.end());
+        x.1 = TextRange::new(x.1.start() + advance, x.1.end());
+        y.1 = TextRange::new(y.1.start() + advance, y.1.end());
     }
 }
 
@@ -211,54 +211,54 @@ impl Eq for SyntaxText {}
 mod private {
     use std::ops;
 
-    use crate::{TextRange, TextUnit};
+    use crate::{TextRange, TextSize};
 
     pub trait SyntaxTextRange {
-        fn start(&self) -> Option<TextUnit>;
-        fn end(&self) -> Option<TextUnit>;
+        fn start(&self) -> Option<TextSize>;
+        fn end(&self) -> Option<TextSize>;
     }
 
     impl SyntaxTextRange for TextRange {
-        fn start(&self) -> Option<TextUnit> {
-            Some(self.start())
+        fn start(&self) -> Option<TextSize> {
+            Some(TextRange::start(*self))
         }
-        fn end(&self) -> Option<TextUnit> {
-            Some(self.end())
+        fn end(&self) -> Option<TextSize> {
+            Some(TextRange::end(*self))
         }
     }
 
-    impl SyntaxTextRange for ops::Range<TextUnit> {
-        fn start(&self) -> Option<TextUnit> {
+    impl SyntaxTextRange for ops::Range<TextSize> {
+        fn start(&self) -> Option<TextSize> {
             Some(self.start)
         }
-        fn end(&self) -> Option<TextUnit> {
+        fn end(&self) -> Option<TextSize> {
             Some(self.end)
         }
     }
 
-    impl SyntaxTextRange for ops::RangeFrom<TextUnit> {
-        fn start(&self) -> Option<TextUnit> {
+    impl SyntaxTextRange for ops::RangeFrom<TextSize> {
+        fn start(&self) -> Option<TextSize> {
             Some(self.start)
         }
-        fn end(&self) -> Option<TextUnit> {
+        fn end(&self) -> Option<TextSize> {
             None
         }
     }
 
-    impl SyntaxTextRange for ops::RangeTo<TextUnit> {
-        fn start(&self) -> Option<TextUnit> {
+    impl SyntaxTextRange for ops::RangeTo<TextSize> {
+        fn start(&self) -> Option<TextSize> {
             None
         }
-        fn end(&self) -> Option<TextUnit> {
+        fn end(&self) -> Option<TextSize> {
             Some(self.end)
         }
     }
 
     impl SyntaxTextRange for ops::RangeFull {
-        fn start(&self) -> Option<TextUnit> {
+        fn start(&self) -> Option<TextSize> {
             None
         }
-        fn end(&self) -> Option<TextUnit> {
+        fn end(&self) -> Option<TextSize> {
             None
         }
     }

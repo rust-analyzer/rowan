@@ -8,7 +8,7 @@
 /// Currently, rowan doesn't have a hook to add your own interner,
 /// but `SmolStr` should be a "good enough" type for representing
 /// tokens.
-/// Additionally, rowan uses `TextUnit` and `TextRange` types to
+/// Additionally, rowan uses `TextSize` and `TextRange` types to
 /// represent utf8 offsets and ranges.
 use rowan::SmolStr;
 

@@ -1,6 +1,6 @@
-use std::{fmt, hash, mem::ManuallyDrop, ptr, sync::Arc};
+use std::{convert::TryFrom, fmt, hash, mem::ManuallyDrop, ptr, sync::Arc};
 
-use crate::{green::SyntaxKind, SmolStr, TextUnit};
+use crate::{green::SyntaxKind, SmolStr, TextSize};
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -56,10 +56,10 @@ impl GreenToken {
         &self.data().text
     }
 
-    /// Text of this Token.
+    /// Returns the length of the text covered by this token.
     #[inline]
-    pub fn text_len(&self) -> TextUnit {
-        TextUnit::from_usize(self.text().len())
+    pub fn text_len(&self) -> TextSize {
+        TextSize::try_from(self.text().len()).unwrap()
     }
 }
 

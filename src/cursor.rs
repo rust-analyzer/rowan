@@ -9,7 +9,7 @@ use std::{
 use crate::{
     green::{GreenElementRef, SyntaxKind},
     Children, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
-    TextUnit, TokenAtOffset, WalkEvent,
+    TextSize, TokenAtOffset, WalkEvent,
 };
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ impl fmt::Display for SyntaxNode {
 pub struct SyntaxToken {
     parent: SyntaxNode,
     index: u32,
-    offset: TextUnit,
+    offset: TextSize,
 }
 
 impl fmt::Display for SyntaxToken {
@@ -88,12 +88,12 @@ impl fmt::Display for SyntaxElement {
 #[derive(Debug)]
 enum Kind {
     Root(GreenNode),
-    Child { parent: SyntaxNode, index: u32, offset: TextUnit },
+    Child { parent: SyntaxNode, index: u32, offset: TextSize },
     Free { next_free: Option<Rc<NodeData>> },
 }
 
 impl Kind {
-    fn as_child(&self) -> Option<(&SyntaxNode, u32, TextUnit)> {
+    fn as_child(&self) -> Option<(&SyntaxNode, u32, TextSize)> {
         match self {
             Kind::Child { parent, index, offset } => Some((parent, *index, *offset)),
             _ => None,
@@ -203,7 +203,7 @@ impl SyntaxNode {
         green: &GreenNode,
         parent: SyntaxNode,
         index: u32,
-        offset: TextUnit,
+        offset: TextSize,
     ) -> SyntaxNode {
         let data = NodeData::new(Kind::Child { parent, index, offset }, green.into());
         SyntaxNode::new(data)
@@ -240,7 +240,7 @@ impl SyntaxNode {
             Some((_, _, it)) => it,
             _ => 0.into(),
         };
-        TextRange::offset_len(offset, self.green().text_len())
+        TextRange::at(offset, self.green().text_len())
     }
 
     pub fn text(&self) -> SyntaxText {
@@ -441,7 +441,7 @@ impl SyntaxNode {
 
     /// Find a token in the subtree corresponding to this node, which covers the offset.
     /// Precondition: offset must be withing node's range.
-    pub fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken> {
+    pub fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
         // TODO: this could be faster if we first drill-down to node, and only
         // then switch to token search. We should also replace explicit
         // recursion with a loop.
@@ -486,7 +486,7 @@ impl SyntaxNode {
         let mut res: SyntaxElement = self.clone().into();
         loop {
             assert!(
-                range.is_subrange(&res.text_range()),
+                res.text_range().contains_range(range),
                 "Bad range: node range {:?}, range {:?}",
                 res.text_range(),
                 range,
@@ -496,7 +496,7 @@ impl SyntaxNode {
                 NodeOrToken::Node(node) => {
                     match node
                         .children_with_tokens()
-                        .find(|child| range.is_subrange(&child.text_range()))
+                        .find(|child| child.text_range().contains_range(range))
                     {
                         Some(child) => child,
                         None => return res,
@@ -508,7 +508,7 @@ impl SyntaxNode {
 }
 
 impl SyntaxToken {
-    fn new(parent: SyntaxNode, index: u32, offset: TextUnit) -> SyntaxToken {
+    fn new(parent: SyntaxNode, index: u32, offset: TextSize) -> SyntaxToken {
         SyntaxToken { parent, index, offset }
     }
 
@@ -537,7 +537,7 @@ impl SyntaxToken {
     }
 
     pub fn text_range(&self) -> TextRange {
-        TextRange::offset_len(self.offset, self.green().text_len())
+        TextRange::at(self.offset, self.green().text_len())
     }
 
     pub fn text(&self) -> &SmolStr {
@@ -617,7 +617,7 @@ impl SyntaxElement {
         element: GreenElementRef<'_>,
         parent: SyntaxNode,
         index: u32,
-        offset: TextUnit,
+        offset: TextSize,
     ) -> SyntaxElement {
         match element {
             NodeOrToken::Node(node) => {
@@ -685,7 +685,7 @@ impl SyntaxElement {
         }
     }
 
-    fn token_at_offset(&self, offset: TextUnit) -> TokenAtOffset<SyntaxToken> {
+    fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
         assert!(self.text_range().start() <= offset && offset <= self.text_range().end());
         match self {
             NodeOrToken::Token(token) => TokenAtOffset::Single(token.clone()),
@@ -698,7 +698,7 @@ impl SyntaxElement {
 struct Iter {
     parent: SyntaxNode,
     green: Children<'static>,
-    offset: TextUnit,
+    offset: TextSize,
     index: u32,
 }
 
@@ -713,7 +713,7 @@ impl Iter {
         Iter { parent, green, offset, index: 0 }
     }
 
-    fn next(&mut self) -> Option<(GreenElementRef, u32, TextUnit)> {
+    fn next(&mut self) -> Option<(GreenElementRef, u32, TextSize)> {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;
@@ -767,8 +767,8 @@ impl GreenNode {
     fn children_from(
         &self,
         start_index: usize,
-        mut offset: TextUnit,
-    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextUnit))> {
+        mut offset: TextSize,
+    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextSize))> {
         self.children().skip(start_index).enumerate().map(move |(index, element)| {
             let element_offset = offset;
             offset += element.text_len();
@@ -779,8 +779,8 @@ impl GreenNode {
     fn children_to(
         &self,
         end_index: usize,
-        mut offset: TextUnit,
-    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextUnit))> {
+        mut offset: TextSize,
+    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextSize))> {
         self.children().take(end_index).rev().enumerate().map(move |(index, element)| {
             offset -= element.text_len();
             (element, (end_index - index - 1, offset))
