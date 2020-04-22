@@ -11,5 +11,5 @@ rust:
   - beta
 
 script:
-  - cargo test --all-features
+  - cargo test --all-features --all-targets
   - cargo test --release

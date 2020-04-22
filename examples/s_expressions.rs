@@ -199,25 +199,28 @@ fn parse(text: &str) -> Parse {
 #[test]
 fn test_parser() {
     let text = "(+ (* 15 2) 62)";
-    let node = parse(text);
+    let node = SyntaxNode::new_root(parse(text).green_node);
     assert_eq!(
         format!("{:?}", node),
-        "ROOT@[0; 15)", // root node, spanning 15 bytes
+        "ROOT@0..15", // root node, spanning 15 bytes
     );
     assert_eq!(node.children().count(), 1);
     let list = node.children().next().unwrap();
-    let children = list.children().map(|child| format!("{:?}", child)).collect::<Vec<_>>();
+    let children = list
+        .children_with_tokens()
+        .map(|child| format!("{:?}@{:?}", child.kind(), child.text_range()))
+        .collect::<Vec<_>>();
 
     assert_eq!(
         children,
         vec![
-            "L_PAREN@[0; 1)".to_string(),
-            "ATOM@[1; 2)".to_string(),
-            "WHITESPACE@[2; 3)".to_string(), // note, explicit whitespace!
-            "LIST@[3; 11)".to_string(),
-            "WHITESPACE@[11; 12)".to_string(),
-            "ATOM@[12; 14)".to_string(),
-            "R_PAREN@[14; 15)".to_string(),
+            "L_PAREN@0..1".to_string(),
+            "ATOM@1..2".to_string(),
+            "WHITESPACE@2..3".to_string(), // note, explicit whitespace!
+            "LIST@3..11".to_string(),
+            "WHITESPACE@11..12".to_string(),
+            "ATOM@12..14".to_string(),
+            "R_PAREN@14..15".to_string(),
         ]
     );
 }
