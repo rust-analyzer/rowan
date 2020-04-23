@@ -207,11 +207,17 @@ type SyntaxToken = rowan::SyntaxToken<Lang>;
 #[allow(unused)]
 type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
+impl Parse {
+    fn syntax(&self) -> SyntaxNode {
+        SyntaxNode::new_root(self.green_node.clone())
+    }
+}
+
 /// Let's check that the parser works as expected
 #[test]
 fn test_parser() {
     let text = "(+ (* 15 2) 62)";
-    let node = SyntaxNode::new_root(parse(text).green_node);
+    let node = parse(text).syntax();
     assert_eq!(
         format!("{:?}", node),
         "ROOT@0..15", // root node, spanning 15 bytes
@@ -367,8 +373,8 @@ impl Sexp {
 }
 
 impl Parse {
-    fn syntax(&self) -> Root {
-        Root::cast(SyntaxNode::new_root(self.green_node.clone())).unwrap()
+    fn root(&self) -> Root {
+        Root::cast(self.syntax()).unwrap()
     }
 }
 
@@ -381,8 +387,8 @@ fn main() {
 nan
 (+ (* 15 2) 62)
 ";
-    let root = parse(sexps);
-    let res = root.syntax().sexps().map(|it| it.eval()).collect::<Vec<_>>();
+    let root = parse(sexps).root();
+    let res = root.sexps().map(|it| it.eval()).collect::<Vec<_>>();
     eprintln!("{:?}", res);
     assert_eq!(res, vec![Some(92), Some(92), None, None, Some(92),])
 }
