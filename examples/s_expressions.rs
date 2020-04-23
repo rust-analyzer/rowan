@@ -4,6 +4,11 @@
 //! ```
 //! (+ (* 15 2) 62)
 //! ```
+//!
+//! It's suggested to read the conceptual overview of the design
+//! alongside this tutorial:
+//! https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/syntax.md
+
 
 /// Currently, rowan doesn't have a hook to add your own interner,
 /// but `SmolStr` should be a "good enough" type for representing
@@ -31,12 +36,20 @@ enum SyntaxKind {
 }
 use SyntaxKind::*;
 
+/// Some boilerplate is needed, as rowan settled on using its own
+/// `struct SyntaxKind(u16)` internally, instead of accepting the
+/// user's `enum SyntaxKind` as a type parameter.
+///
+/// First, to easily pass the enum variants into rowan via `.into()`:
 impl From<SyntaxKind> for rowan::SyntaxKind {
     fn from(kind: SyntaxKind) -> Self {
         Self(kind as u16)
     }
 }
 
+/// Second, implementing the `Language` trait teaches rowan to convert between
+/// these two SyntaxKind types, allowing for a nicer SyntaxNode API where
+/// "kinds" are values from our `enum SyntaxKind`, instead of plain u16 values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Lang {}
 impl rowan::Language for Lang {
@@ -50,12 +63,6 @@ impl rowan::Language for Lang {
     }
 }
 
-type SyntaxNode = rowan::SyntaxNode<Lang>;
-#[allow(unused)]
-type SyntaxToken = rowan::SyntaxToken<Lang>;
-#[allow(unused)]
-type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
-
 /// GreenNode is an immutable tree, which is cheap to change,
 /// but doesn't contain offsets and parent pointers.
 use rowan::GreenNode;
@@ -65,28 +72,17 @@ use rowan::GreenNode;
 /// of currently in-progress nodes
 use rowan::GreenNodeBuilder;
 
-/// This is the main type this crate exports.
-/// It is also immutable, like a GreenNode,
-/// but it contains parent pointers, offsets, and
-/// has identity semantics.
-/// SyntaxNode exist in borrowed and owned flavors,
-/// which is controlled by the `R` parameter.
-
+/// The parse results are stored as a "green tree".
+/// We'll discuss working with the results later
 struct Parse {
-    green_node: rowan::GreenNode,
+    green_node: GreenNode,
     #[allow(unused)]
     errors: Vec<String>,
 }
 
-impl Parse {
-    fn syntax(&self) -> Root {
-        Root::cast(SyntaxNode::new_root(self.green_node.clone())).unwrap()
-    }
-}
-
 /// Now, let's write a parser.
 /// Note that `parse` does not return a `Result`:
-/// by design, syntax tree can be build even for
+/// by design, syntax tree can be built even for
 /// completely invalid source code.
 fn parse(text: &str) -> Parse {
     struct Parser {
@@ -100,17 +96,21 @@ fn parse(text: &str) -> Parse {
         errors: Vec<String>,
     }
 
+    /// The outcome of parsing a single S-expression
     enum SexpRes {
-        Eof,
-        RParen,
+        /// An S-expression (i.e. an atom, or a list) was successfully parsed
         Ok,
+        /// Nothing was parsed, as no significant tokens remained
+        Eof,
+        /// An unexpected ')' was found
+        RParen,
     }
 
     impl Parser {
         fn parse(mut self) -> Parse {
             // Make sure that the root node covers all source
             self.builder.start_node(ROOT.into());
-            // Parse a list of S-expressions
+            // Parse zero or more S-expressions
             loop {
                 match self.sexp() {
                     SexpRes::Eof => break,
@@ -128,13 +128,11 @@ fn parse(text: &str) -> Parse {
             // Close the root node.
             self.builder.finish_node();
 
-            // Turn the builder into a complete node.
-            let green: GreenNode = self.builder.finish();
-            // Construct a `SyntaxNode` from `GreenNode`,
-            // using errors as the root data.
-            Parse { green_node: green, errors: self.errors }
+            // Turn the builder into a GreenNode
+            Parse { green_node: self.builder.finish(), errors: self.errors }
         }
         fn list(&mut self) {
+            assert_eq!(self.current(), Some(L_PAREN));
             // Start the list node
             self.builder.start_node(LIST.into());
             self.bump(); // '('
@@ -157,7 +155,7 @@ fn parse(text: &str) -> Parse {
         fn sexp(&mut self) -> SexpRes {
             // Eat leading whitespace
             self.skip_ws();
-            // Either a list, and atom, a closing paren
+            // Either a list, an atom, a closing paren,
             // or an eof.
             let t = match self.current() {
                 None => return SexpRes::Eof,
@@ -176,10 +174,12 @@ fn parse(text: &str) -> Parse {
             }
             SexpRes::Ok
         }
+        /// Advance one token, adding it to the current branch of the tree builder.
         fn bump(&mut self) {
             let (kind, text) = self.tokens.pop().unwrap();
             self.builder.token(kind.into(), text);
         }
+        /// Peek at the first unprocessed token
         fn current(&self) -> Option<SyntaxKind> {
             self.tokens.last().map(|(kind, _)| *kind)
         }
@@ -195,29 +195,50 @@ fn parse(text: &str) -> Parse {
     Parser { tokens, builder: GreenNodeBuilder::new(), errors: Vec::new() }.parse()
 }
 
+/// To work with the parse results we need a view into the
+/// green tree - the Syntax tree.
+/// It is also immutable, like a GreenNode,
+/// but it contains parent pointers, offsets, and
+/// has identity semantics.
+
+type SyntaxNode = rowan::SyntaxNode<Lang>;
+#[allow(unused)]
+type SyntaxToken = rowan::SyntaxToken<Lang>;
+#[allow(unused)]
+type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
+
+impl Parse {
+    fn syntax(&self) -> SyntaxNode {
+        SyntaxNode::new_root(self.green_node.clone())
+    }
+}
+
 /// Let's check that the parser works as expected
 #[test]
 fn test_parser() {
     let text = "(+ (* 15 2) 62)";
-    let node = parse(text);
+    let node = parse(text).syntax();
     assert_eq!(
         format!("{:?}", node),
-        "ROOT@[0; 15)", // root node, spanning 15 bytes
+        "ROOT@0..15", // root node, spanning 15 bytes
     );
     assert_eq!(node.children().count(), 1);
     let list = node.children().next().unwrap();
-    let children = list.children().map(|child| format!("{:?}", child)).collect::<Vec<_>>();
+    let children = list
+        .children_with_tokens()
+        .map(|child| format!("{:?}@{:?}", child.kind(), child.text_range()))
+        .collect::<Vec<_>>();
 
     assert_eq!(
         children,
         vec![
-            "L_PAREN@[0; 1)".to_string(),
-            "ATOM@[1; 2)".to_string(),
-            "WHITESPACE@[2; 3)".to_string(), // note, explicit whitespace!
-            "LIST@[3; 11)".to_string(),
-            "WHITESPACE@[11; 12)".to_string(),
-            "ATOM@[12; 14)".to_string(),
-            "R_PAREN@[14; 15)".to_string(),
+            "L_PAREN@0..1".to_string(),
+            "ATOM@1..2".to_string(),
+            "WHITESPACE@2..3".to_string(), // note, explicit whitespace!
+            "LIST@3..11".to_string(),
+            "WHITESPACE@11..12".to_string(),
+            "ATOM@12..14".to_string(),
+            "R_PAREN@14..15".to_string(),
         ]
     );
 }
@@ -351,6 +372,12 @@ impl Sexp {
     }
 }
 
+impl Parse {
+    fn root(&self) -> Root {
+        Root::cast(self.syntax()).unwrap()
+    }
+}
+
 /// Let's test the eval!
 fn main() {
     let sexps = "
@@ -360,12 +387,14 @@ fn main() {
 nan
 (+ (* 15 2) 62)
 ";
-    let root = parse(sexps);
-    let res = root.syntax().sexps().map(|it| it.eval()).collect::<Vec<_>>();
+    let root = parse(sexps).root();
+    let res = root.sexps().map(|it| it.eval()).collect::<Vec<_>>();
     eprintln!("{:?}", res);
     assert_eq!(res, vec![Some(92), Some(92), None, None, Some(92),])
 }
 
+/// Split the input string into a flat list of tokens
+/// (such as L_PAREN, WORD, and WHITESPACE)
 fn lex(text: &str) -> Vec<(SyntaxKind, SmolStr)> {
     fn tok(t: SyntaxKind) -> m_lexer::TokenKind {
         m_lexer::TokenKind(rowan::SyntaxKind::from(t).0)
