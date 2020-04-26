@@ -43,7 +43,6 @@ impl SyntaxText {
     }
 
     pub fn char_at(&self, offset: TextSize) -> Option<char> {
-        let offset = offset.into();
         let mut start: TextSize = 0.into();
         let res = self.try_for_each_chunk(|chunk| {
             let end = start + TextSize::of(chunk);
