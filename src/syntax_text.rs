@@ -284,10 +284,12 @@ mod tests {
         fn do_check(t1: &[&str], t2: &[&str]) {
             let t1 = build_tree(t1).text();
             let t2 = build_tree(t2).text();
-            let expected = t1.to_string() == t2.to_string();
+            let t1_s = t1.to_string();
+            let t2_s = t2.to_string();
+            let expected = t1_s == t2_s;
             let actual = t1 == t2;
             assert_eq!(expected, actual, "`{}` (SyntaxText) `{}` (SyntaxText)", t1, t2);
-            let actual = t1 == &*t2.to_string();
+            let actual = t1 == t2_s.as_str();
             assert_eq!(expected, actual, "`{}` (SyntaxText) `{}` (&str)", t1, t2);
         }
         fn check(t1: &[&str], t2: &[&str]) {
