@@ -414,7 +414,7 @@ impl SyntaxNode {
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, including tokens.
     #[inline]
-    pub fn preorder_with_tokens<'a>(&'a self) -> impl Iterator<Item = WalkEvent<SyntaxElement>> {
+    pub fn preorder_with_tokens(&self) -> impl Iterator<Item = WalkEvent<SyntaxElement>> {
         let start: SyntaxElement = self.clone().into();
         iter::successors(Some(WalkEvent::Enter(start.clone())), move |pos| {
             let next = match pos {
