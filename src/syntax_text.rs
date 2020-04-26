@@ -96,6 +96,7 @@ impl SyntaxText {
 
     pub fn for_each_chunk<F: FnMut(&str)>(&self, mut f: F) {
         enum Void {}
+        #[allow(clippy::unit_arg)]
         match self.try_for_each_chunk(|chunk| Ok::<(), Void>(f(chunk))) {
             Ok(()) => (),
             Err(void) => match void {},
