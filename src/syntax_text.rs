@@ -58,7 +58,7 @@ impl SyntaxText {
 
     pub fn slice<R: private::SyntaxTextRange>(&self, range: R) -> SyntaxText {
         let start = range.start().unwrap_or_default();
-        let end = range.end().unwrap_or(self.len());
+        let end = range.end().unwrap_or_else(|| self.len());
         assert!(start <= end);
         let len = end - start;
         let start = self.range.start() + start;
