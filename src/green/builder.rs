@@ -1,47 +1,49 @@
-use rustc_hash::FxHashSet;
-
-use crate::{
-    green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
-    NodeOrToken, SmolStr,
+use {
+    crate::{
+        green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
+        NodeOrToken,
+    },
+    std::sync::Arc,
 };
 
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: FxHashSet<GreenNode>,
-    tokens: FxHashSet<GreenToken>,
+    imp: sorbus::green::Builder,
 }
 
 impl NodeCache {
-    fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn node<I>(&mut self, kind: SyntaxKind, children: I) -> Arc<GreenNode>
     where
         I: IntoIterator<Item = GreenElement>,
         I::IntoIter: ExactSizeIterator,
     {
-        let mut node = GreenNode::new(kind, children);
-        // Green nodes are fully immutable, so it's ok to deduplicate them.
-        // This is the same optimization that Roslyn does
-        // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
-        //
-        // For example, all `#[inline]` in this file share the same green node!
-        // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
-        // 17% of the memory for green nodes!
-        // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children().len() <= 3 {
-            match self.nodes.get(&node) {
-                Some(existing) => node = existing.clone(),
-                None => assert!(self.nodes.insert(node.clone())),
-            }
+        let children = children.into_iter().map(|el| match el {
+            NodeOrToken::Node(node) => unsafe {
+                // transmute from rowan to sorbus nominal type
+                sorbus::NodeOrToken::Node(Arc::from_raw(Arc::into_raw(node) as *const _))
+            },
+            NodeOrToken::Token(token) => unsafe {
+                // transmute from rowan to sorbus nominal type
+                sorbus::NodeOrToken::Token(Arc::from_raw(Arc::into_raw(token) as *const _))
+            },
+        });
+        let imp = sorbus::green::Builder::new().node(sorbus::Kind(kind.0), children);
+        unsafe {
+            // transmute from sorbus to rowan nominal type
+            Arc::from_raw(Arc::into_raw(imp) as *const _)
         }
-        node
     }
 
-    fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> GreenToken {
-        let mut token = GreenToken::new(kind, text);
-        match self.tokens.get(&token) {
-            Some(existing) => token = existing.clone(),
-            None => assert!(self.tokens.insert(token.clone())),
+    pub fn token(&mut self, kind: SyntaxKind, text: &str) -> Arc<GreenToken> {
+        let imp = self.imp.token(sorbus::Kind(kind.0), text);
+        unsafe {
+            // transmute from sorbus to rowan nominal type
+            Arc::from_raw(Arc::into_raw(imp) as *const _)
         }
-        token
     }
 }
 
@@ -106,7 +108,7 @@ impl GreenNodeBuilder<'_> {
 
     /// Adds new token to the current branch.
     #[inline]
-    pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
+    pub fn token(&mut self, kind: SyntaxKind, text: &str) {
         let token = self.cache.token(kind, text);
         self.children.push(token.into());
     }
@@ -182,7 +184,7 @@ impl GreenNodeBuilder<'_> {
     /// `start_node_at` and `finish_node` calls
     /// are paired!
     #[inline]
-    pub fn finish(mut self) -> GreenNode {
+    pub fn finish(mut self) -> Arc<GreenNode> {
         assert_eq!(self.children.len(), 1);
         match self.children.pop().unwrap() {
             NodeOrToken::Node(node) => node,

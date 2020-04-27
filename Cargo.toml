@@ -1,18 +1,19 @@
 [package]
 name = "rowan"
-version = "0.10.0"
-authors = ["Aleksey Kladov <aleksey.kladov@gmail.com>"]
+version = "0.11.0"
+authors = [
+    "Aleksey Kladov <aleksey.kladov@gmail.com>",
+    "Christopher Durham (CAD97) <cad97@cad97.com>",
+]
 repository = "https://github.com/rust-analyzer/rowan"
 license = "MIT OR Apache-2.0"
 description = "Library for generic lossless syntax trees"
 edition = "2018"
 
 [dependencies]
-rustc-hash = "1.0.1"
 text-size = "1.0.0"
-smol_str = "0.1.10"
 serde = { version = "1.0.89", optional = true, default-features = false }
-thin-dst = "1.0.0"
+sorbus = { git = "https://github.com/CAD97/sorbus.git" }
 
 [dev-dependencies]
 m_lexer = "0.0.4"

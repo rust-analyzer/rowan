@@ -1,3 +1,5 @@
+use {std::sync::Arc, crate::ArcBorrow};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeOrToken<N, T> {
     Node(N),
@@ -37,6 +39,15 @@ impl<N, T> NodeOrToken<N, T> {
         match self {
             NodeOrToken::Node(node) => NodeOrToken::Node(node),
             NodeOrToken::Token(token) => NodeOrToken::Token(token),
+        }
+    }
+}
+
+impl<N: ?Sized, T: ?Sized> NodeOrToken<Arc<N>, Arc<T>> {
+    pub(crate) fn borrowed(&self) -> NodeOrToken<ArcBorrow<'_, N>, ArcBorrow<'_, T>> {
+        match self {
+            NodeOrToken::Node(node) => NodeOrToken::Node(node.into()),
+            NodeOrToken::Token(token) => NodeOrToken::Token(token.into()),
         }
     }
 }
