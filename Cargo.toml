@@ -11,10 +11,11 @@ description = "Library for generic lossless syntax trees"
 edition = "2018"
 
 [dependencies]
-text-size = "1.0.0"
+text-size = "1.0.0" # public
 serde = { version = "1.0.89", optional = true, default-features = false }
-sorbus = { git = "https://github.com/CAD97/sorbus.git" }
-erasable = "1.2.0"
+rc-borrow = "1.2.0" # public
+sorbus = { git = "https://github.com/CAD97/sorbus.git" } # private
+erasable = "1.2.0" # private
 
 [dev-dependencies]
 smol_str = "0.1.10"

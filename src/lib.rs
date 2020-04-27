@@ -20,10 +20,7 @@ mod utility_types;
 #[cfg(feature = "serde1")]
 mod serde_impls;
 
-// Reexport types for working with strings. We might be too opinionated about
-// these, as a custom interner might work better, but `SmolStr` is a pretty good
-// default.
-pub use sorbus::ArcBorrow;
+pub use rc_borrow::ArcBorrow;
 pub use text_size::{TextLen, TextRange, TextSize};
 
 pub use crate::{
