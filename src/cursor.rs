@@ -4,11 +4,14 @@ use std::{
     hash::{Hash, Hasher},
     iter, mem, ptr,
     rc::Rc,
+    sync::Arc,
 };
+
+use erasable::{ErasablePtr, ErasedPtr, Thin};
 
 use crate::{
     green::{GreenElementRef, SyntaxKind},
-    Children, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
+    ArcBorrow, Children, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange,
     TextSize, TokenAtOffset, WalkEvent,
 };
 
@@ -24,7 +27,7 @@ impl Drop for SyntaxNode {
 // Identity semantics for hash & eq
 impl PartialEq for SyntaxNode {
     fn eq(&self, other: &SyntaxNode) -> bool {
-        self.green().ptr() == other.green().ptr()
+        ptr::eq(&*self.green(), &*other.green())
             && self.text_range().start() == other.text_range().start()
     }
 }
@@ -33,7 +36,7 @@ impl Eq for SyntaxNode {}
 
 impl Hash for SyntaxNode {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ptr::hash(self.green().ptr(), state);
+        ptr::hash(&*self.green(), state);
         self.text_range().start().hash(state);
     }
 }
@@ -87,7 +90,7 @@ impl fmt::Display for SyntaxElement {
 
 #[derive(Debug)]
 enum Kind {
-    Root(GreenNode),
+    Root(Thin<Arc<sorbus::green::Node>>),
     Child { parent: SyntaxNode, index: u32, offset: TextSize },
     Free { next_free: Option<Rc<NodeData>> },
 }
@@ -104,7 +107,7 @@ impl Kind {
 #[derive(Debug)]
 struct NodeData {
     kind: Kind,
-    green: ptr::NonNull<GreenNode>,
+    green: ErasedPtr, // erased ArcBorrow of Node
 }
 
 struct FreeList {
@@ -157,7 +160,7 @@ impl FreeList {
 }
 
 impl NodeData {
-    fn new(kind: Kind, green: ptr::NonNull<GreenNode>) -> Rc<NodeData> {
+    fn new(kind: Kind, green: ErasedPtr) -> Rc<NodeData> {
         let mut node = FreeList::with(|it| it.pop()).unwrap_or_else(|| {
             Rc::new(NodeData {
                 kind: Kind::Free { next_free: None },
@@ -186,45 +189,53 @@ impl SyntaxNode {
         SyntaxNode(data)
     }
 
-    pub fn new_root(green: GreenNode) -> SyntaxNode {
-        let data = NodeData::new(Kind::Root(green), ptr::NonNull::dangling());
+    pub fn new_root(green: Arc<GreenNode>) -> SyntaxNode {
+        let data = unsafe {
+            // transmute from rowan to sorbus nominal type
+            let root = Arc::from_raw(Arc::into_raw(green) as *const sorbus::green::Node).into();
+            NodeData::new(Kind::Root(root), ptr::NonNull::dangling())
+        };
         let mut ret = SyntaxNode::new(data);
-        let green: ptr::NonNull<GreenNode> = match &ret.0.kind {
+        let green: &Thin<Arc<sorbus::green::Node>> = match &ret.0.kind {
             Kind::Root(green) => green.into(),
             _ => unreachable!(),
         };
-        Rc::get_mut(&mut ret.0).unwrap().green = green;
+        Rc::get_mut(&mut ret.0).unwrap().green =
+            Thin::with(green, |green| ErasablePtr::erase(ArcBorrow::from(green)));
         ret
     }
 
-    // Technically, unsafe, but private so that's OK.
-    // Safety: `green` must be a descendent of `parent.green()`
-    fn new_child(
-        green: &GreenNode,
+    /// Safety: `green` must be a descendent of `parent.green()`
+    unsafe fn new_child(
+        green: ArcBorrow<'_, GreenNode>,
         parent: SyntaxNode,
         index: u32,
         offset: TextSize,
     ) -> SyntaxNode {
-        let data = NodeData::new(Kind::Child { parent, index, offset }, green.into());
+        // transmute from rowan to sorbus nominal type
+        let green: ArcBorrow<'_, sorbus::green::Node> = mem::transmute(green);
+        let data = NodeData::new(Kind::Child { parent, index, offset }, ErasablePtr::erase(green));
         SyntaxNode::new(data)
     }
 
     /// Returns a green tree, equal to the green tree this node
-    /// belongs two, except with this node substitute. The complexity
+    /// belongs to, except with this node substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenNode>) -> Arc<GreenNode> {
         assert_eq!(self.kind(), replacement.kind());
         match self.0.kind.as_child() {
             None => replacement,
             Some((parent, me, _offset)) => {
                 let mut replacement = Some(replacement);
-                let children = parent.green().children().enumerate().map(|(i, child)| {
+                let green = parent.green();
+                let children = green.children().enumerate().map(|(i, child)| {
                     if i as u32 == me {
                         replacement.take().unwrap().into()
                     } else {
-                        child.cloned()
+                        child.to_owned()
                     }
                 });
+                #[allow(deprecated)]
                 let new_parent = GreenNode::new(parent.kind(), children);
                 parent.replace_with(new_parent)
             }
@@ -247,8 +258,12 @@ impl SyntaxNode {
         SyntaxText::new(self.clone())
     }
 
-    pub fn green(&self) -> &GreenNode {
-        unsafe { self.0.green.as_ref() }
+    pub fn green(&self) -> ArcBorrow<'_, GreenNode> {
+        unsafe {
+            let green: ArcBorrow<'_, sorbus::green::Node> = ErasablePtr::unerase(self.0.green);
+            // transmute from sorbus to rowan nominal type
+            mem::transmute(green)
+        }
     }
 
     pub fn parent(&self) -> Option<SyntaxNode> {
@@ -273,73 +288,76 @@ impl SyntaxNode {
 
     #[inline]
     pub fn first_child(&self) -> Option<SyntaxNode> {
+        let green = self.green();
         let (node, (index, offset)) =
-            filter_nodes(self.green().children_from(0, self.text_range().start())).next()?;
+            filter_nodes(green.children_from(0, self.text_range().start())).next()?;
 
-        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
+        unsafe { Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset)) }
     }
 
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
+        let green = self.green();
         let (element, (index, offset)) =
-            self.green().children_from(0, self.text_range().start()).next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+            green.children_from(0, self.text_range().start()).next()?;
+        unsafe { Some(SyntaxElement::new(element, self.clone(), index as u32, offset)) }
     }
 
     #[inline]
     pub fn last_child(&self) -> Option<SyntaxNode> {
-        let (node, (index, offset)) = filter_nodes(
-            self.green().children_to(self.green().children().len(), self.text_range().end()),
-        )
-        .next()?;
+        let green = self.green();
+        let (node, (index, offset)) =
+            filter_nodes(green.children_to(self.green().children().len(), self.text_range().end()))
+                .next()?;
 
-        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
+        unsafe { Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset)) }
     }
 
     pub fn last_child_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) = self
-            .green()
-            .children_to(self.green().children().len(), self.text_range().end())
-            .next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+        let green = self.green();
+        let (element, (index, offset)) =
+            green.children_to(self.green().children().len(), self.text_range().end()).next()?;
+        unsafe { Some(SyntaxElement::new(element, self.clone(), index as u32, offset)) }
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
         let (parent, index, _) = self.0.kind.as_child()?;
 
-        let (node, (index, offset)) = filter_nodes(
-            parent.green().children_from((index + 1) as usize, self.text_range().end()),
-        )
-        .next()?;
+        let green = parent.green();
+        let (node, (index, offset)) =
+            filter_nodes(green.children_from((index + 1) as usize, self.text_range().end()))
+                .next()?;
 
-        Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset))
+        unsafe { Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset)) }
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
         let (parent, index, _) = self.0.kind.as_child()?;
 
+        let green = parent.green();
         let (element, (index, offset)) =
-            parent.green().children_from((index + 1) as usize, self.text_range().end()).next()?;
+            green.children_from((index + 1) as usize, self.text_range().end()).next()?;
 
-        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
+        unsafe { Some(SyntaxElement::new(element, parent.clone(), index as u32, offset)) }
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
         let (parent, index, _) = self.0.kind.as_child()?;
 
+        let green = parent.green();
         let (node, (index, offset)) =
-            filter_nodes(parent.green().children_to(index as usize, self.text_range().start()))
-                .next()?;
+            filter_nodes(green.children_to(index as usize, self.text_range().start())).next()?;
 
-        Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset))
+        unsafe { Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset)) }
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
         let (parent, index, _) = self.0.kind.as_child()?;
 
+        let green = parent.green();
         let (element, (index, offset)) =
-            parent.green().children_to(index as usize, self.text_range().start()).next()?;
+            green.children_to(index as usize, self.text_range().start()).next()?;
 
-        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
+        unsafe { Some(SyntaxElement::new(element, parent.clone(), index as u32, offset)) }
     }
 
     /// Return the leftmost token in the subtree of this node
@@ -515,19 +533,21 @@ impl SyntaxToken {
     /// Returns a green tree, equal to the green tree this token
     /// belongs two, except with this token substitute. The complexity
     /// of operation is proportional to the depth of the tree
-    pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenToken>) -> Arc<GreenNode> {
         assert_eq!(self.kind(), replacement.kind());
         let mut replacement = Some(replacement);
         let parent = self.parent();
         let me = self.index;
 
-        let children = parent.green().children().enumerate().map(|(i, child)| {
+        let green = parent.green();
+        let children = green.children().enumerate().map(|(i, child)| {
             if i as u32 == me {
                 replacement.take().unwrap().into()
             } else {
-                child.cloned()
+                child.to_owned()
             }
         });
+        #[allow(deprecated)]
         let new_parent = GreenNode::new(parent.kind(), children);
         parent.replace_with(new_parent)
     }
@@ -540,12 +560,13 @@ impl SyntaxToken {
         TextRange::at(self.offset, self.green().text_len())
     }
 
-    pub fn text(&self) -> &SmolStr {
-        self.green().text()
+    pub fn text(&self) -> &str {
+        ArcBorrow::downgrade(self.green()).text()
     }
 
-    pub fn green(&self) -> &GreenToken {
-        self.parent.green().children().nth(self.index as usize).unwrap().as_token().unwrap()
+    pub fn green(&self) -> ArcBorrow<'_, GreenToken> {
+        let green: ArcBorrow<'_, GreenNode> = self.parent.green();
+        *ArcBorrow::downgrade(green).children().nth(self.index as usize).unwrap().as_token().unwrap()
     }
 
     pub fn parent(&self) -> SyntaxNode {
@@ -557,24 +578,20 @@ impl SyntaxToken {
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) = self
-            .parent
-            .green()
-            .children_from((self.index + 1) as usize, self.text_range().end())
-            .next()?;
+        let green = self.parent.green();
+        let (element, (index, offset)) =
+            green.children_from((self.index + 1) as usize, self.text_range().end()).next()?;
 
-        Some(SyntaxElement::new(element, self.parent(), index as u32, offset))
+        unsafe { Some(SyntaxElement::new(element, self.parent(), index as u32, offset)) }
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
         let parent = self.parent();
-        let (element, (index, offset)) = self
-            .parent
-            .green()
-            .children_to(self.index as usize, self.text_range().start())
-            .next()?;
+        let green = self.parent.green();
+        let (element, (index, offset)) =
+            green.children_to(self.index as usize, self.text_range().start()).next()?;
 
-        Some(SyntaxElement::new(element, parent, index as u32, offset))
+        unsafe { Some(SyntaxElement::new(element, parent, index as u32, offset)) }
     }
 
     pub fn siblings_with_tokens(
@@ -613,7 +630,8 @@ impl SyntaxToken {
 }
 
 impl SyntaxElement {
-    fn new(
+    /// Safety: `parent` must be an ancestor of `element`
+    unsafe fn new(
         element: GreenElementRef<'_>,
         parent: SyntaxNode,
         index: u32,
@@ -705,7 +723,8 @@ struct Iter {
 impl Iter {
     fn new(parent: SyntaxNode) -> Iter {
         let offset = parent.text_range().start();
-        let green: Children<'_> = parent.green().children();
+        let green = parent.green();
+        let green: Children<'_> = green.children();
         // Dirty lifetime laundering: the memory for the children is
         // indirectly owned by parent.
         let green: Children<'static> =
@@ -713,7 +732,7 @@ impl Iter {
         Iter { parent, green, offset, index: 0 }
     }
 
-    fn next(&mut self) -> Option<(GreenElementRef, u32, TextSize)> {
+    fn next(&mut self) -> Option<(GreenElementRef<'_>, u32, TextSize)> {
         self.green.next().map(|element| {
             let offset = self.offset;
             let index = self.index;
@@ -739,7 +758,7 @@ impl Iterator for SyntaxNodeChildren {
         let parent = self.0.parent.clone();
         while let Some((element, index, offset)) = self.0.next() {
             if let Some(node) = element.as_node() {
-                return Some(SyntaxNode::new_child(node, parent, index, offset));
+                return unsafe { Some(SyntaxNode::new_child(*node, parent, index, offset)) };
             }
         }
         None
@@ -759,7 +778,9 @@ impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.0.parent.clone();
-        self.0.next().map(|(green, index, offset)| SyntaxElement::new(green, parent, index, offset))
+        self.0.next().map(|(green, index, offset)| unsafe {
+            SyntaxElement::new(green, parent, index, offset)
+        })
     }
 }
 
@@ -790,7 +811,7 @@ impl GreenNode {
 
 fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
     iter: I,
-) -> impl Iterator<Item = (&'a GreenNode, T)> {
+) -> impl Iterator<Item = (ArcBorrow<'a, GreenNode>, T)> {
     iter.filter_map(|(element, data)| match element {
         NodeOrToken::Node(it) => Some((it, data)),
         NodeOrToken::Token(_) => None,

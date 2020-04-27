@@ -13,7 +13,8 @@
 //!     - "+" Token(Add)
 //!     - "4" Token(Number)
 
-use rowan::{GreenNodeBuilder, NodeOrToken, SmolStr};
+use rowan::{GreenNodeBuilder, NodeOrToken};
+use smol_str::SmolStr;
 use std::iter::Peekable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -72,7 +73,7 @@ impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
     }
     fn bump(&mut self) {
         if let Some((token, string)) = self.iter.next() {
-            self.builder.token(token.into(), string);
+            self.builder.token(token.into(), &string);
         }
     }
     fn parse_val(&mut self) {

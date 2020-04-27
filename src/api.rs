@@ -1,7 +1,7 @@
-use std::{fmt, marker::PhantomData};
+use std::{fmt, marker::PhantomData, sync::Arc};
 
 use crate::{
-    cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxKind, SyntaxText,
+    cursor, ArcBorrow, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxKind, SyntaxText,
     TextRange, TextSize, TokenAtOffset, WalkEvent,
 };
 
@@ -87,7 +87,7 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
         if self.text().len() < 25 {
             return write!(f, " {:?}", self.text());
         }
-        let text = self.text().as_str();
+        let text = self.text();
         for idx in 21..25 {
             if text.is_char_boundary(idx) {
                 let text = format!("{} ...", &text[..idx]);
@@ -146,10 +146,10 @@ impl<L: Language> fmt::Display for SyntaxElement<L> {
 }
 
 impl<L: Language> SyntaxNode<L> {
-    pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
+    pub fn new_root(green: Arc<GreenNode>) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))
     }
-    pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
+    pub fn replace_with(&self, replacement: Arc<GreenNode>) -> Arc<GreenNode> {
         self.raw.replace_with(replacement)
     }
 
@@ -166,7 +166,7 @@ impl<L: Language> SyntaxNode<L> {
     }
 
     pub fn green(&self) -> &GreenNode {
-        self.raw.green()
+        ArcBorrow::downgrade(self.raw.green())
     }
 
     pub fn parent(&self) -> Option<SyntaxNode<L>> {
@@ -262,7 +262,7 @@ impl<L: Language> SyntaxNode<L> {
 }
 
 impl<L: Language> SyntaxToken<L> {
-    pub fn replace_with(&self, new_token: GreenToken) -> GreenNode {
+    pub fn replace_with(&self, new_token: Arc<GreenToken>) -> Arc<GreenNode> {
         self.raw.replace_with(new_token)
     }
 
@@ -274,11 +274,11 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.text_range()
     }
 
-    pub fn text(&self) -> &SmolStr {
+    pub fn text(&self) -> &str {
         self.raw.text()
     }
 
-    pub fn green(&self) -> &GreenToken {
+    pub fn green(&self) -> ArcBorrow<'_, GreenToken> {
         self.raw.green()
     }
 

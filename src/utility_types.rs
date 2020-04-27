@@ -34,13 +34,6 @@ impl<N, T> NodeOrToken<N, T> {
             NodeOrToken::Token(token) => Some(token),
         }
     }
-
-    pub(crate) fn as_ref(&self) -> NodeOrToken<&N, &T> {
-        match self {
-            NodeOrToken::Node(node) => NodeOrToken::Node(node),
-            NodeOrToken::Token(token) => NodeOrToken::Token(token),
-        }
-    }
 }
 
 impl<N: ?Sized, T: ?Sized> NodeOrToken<Arc<N>, Arc<T>> {
@@ -52,11 +45,11 @@ impl<N: ?Sized, T: ?Sized> NodeOrToken<Arc<N>, Arc<T>> {
     }
 }
 
-impl<N: Clone, T: Clone> NodeOrToken<&N, &T> {
-    pub(crate) fn cloned(&self) -> NodeOrToken<N, T> {
+impl<N: ?Sized, T: ?Sized> NodeOrToken<ArcBorrow<'_, N>, ArcBorrow<'_, T>> {
+    pub(crate) fn to_owned(&self) -> NodeOrToken<Arc<N>, Arc<T>> {
         match *self {
-            NodeOrToken::Node(node) => NodeOrToken::Node(node.clone()),
-            NodeOrToken::Token(token) => NodeOrToken::Token(token.clone()),
+            NodeOrToken::Node(node) => NodeOrToken::Node(ArcBorrow::upgrade(node)),
+            NodeOrToken::Token(token) => NodeOrToken::Token(ArcBorrow::upgrade(token)),
         }
     }
 }
