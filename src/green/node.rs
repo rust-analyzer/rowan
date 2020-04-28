@@ -53,6 +53,18 @@ impl GreenNode {
     pub fn children(&self) -> Children<'_> {
         Children { imp: self.imp.children() }
     }
+
+    pub(crate) fn child_by_offset(
+        &self,
+        offset: TextSize,
+    ) -> Option<(usize, TextSize, ArcBorrow<'_, GreenNode>)> {
+        if offset > self.text_len() {
+            return None;
+        }
+        let (index, offset, node) = self.imp.child_with_offset(offset);
+        let node = *node.as_node()?;
+        unsafe { Some((index, offset, mem::transmute(node))) }
+    }
 }
 
 #[derive(Clone)]

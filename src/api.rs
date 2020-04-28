@@ -383,3 +383,27 @@ impl<L: Language> Iterator for SyntaxElementChildren<L> {
         self.raw.next().map(NodeOrToken::from)
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SyntaxNodePtr<L: Language> {
+    pub raw: cursor::SyntaxNodePtr,
+    _p: PhantomData<L>,
+}
+
+impl<L: Language> SyntaxNodePtr<L> {
+    pub fn kind(&self) -> L::Kind {
+        L::kind_from_raw(self.raw.kind)
+    }
+
+    pub fn text_range(&self) -> TextRange {
+        self.raw.text_range
+    }
+
+    pub fn new(node: &SyntaxNode<L>) -> SyntaxNodePtr<L> {
+        SyntaxNodePtr { raw: cursor::SyntaxNodePtr::new(&node.raw), _p: PhantomData }
+    }
+
+    pub fn resolve(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
+        self.raw.resolve(&root.raw).into()
+    }
+}

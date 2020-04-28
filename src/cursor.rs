@@ -523,6 +523,26 @@ impl SyntaxNode {
             };
         }
     }
+
+    pub(crate) fn child_by_range(&self, target_range: TextRange) -> Option<SyntaxNode> {
+        let target_range = target_range - self.text_range().start();
+        let green = self.green();
+        let (index, start_offset, green) = green.child_by_offset(target_range.start())?;
+        let end_offset = start_offset + green.text_len();
+        assert!(start_offset <= target_range.start() && target_range.start() <= end_offset);
+        if !(target_range.end() <= end_offset) {
+            return None;
+        }
+        let res = unsafe {
+            SyntaxNode::new_child(
+                green,
+                self.clone(),
+                index as u32,
+                start_offset + self.text_range().start(),
+            )
+        };
+        Some(res)
+    }
 }
 
 impl SyntaxToken {
@@ -566,7 +586,12 @@ impl SyntaxToken {
 
     pub fn green(&self) -> ArcBorrow<'_, GreenToken> {
         let green: ArcBorrow<'_, GreenNode> = self.parent.green();
-        *ArcBorrow::downgrade(green).children().nth(self.index as usize).unwrap().as_token().unwrap()
+        *ArcBorrow::downgrade(green)
+            .children()
+            .nth(self.index as usize)
+            .unwrap()
+            .as_token()
+            .unwrap()
     }
 
     pub fn parent(&self) -> SyntaxNode {
@@ -816,4 +841,30 @@ fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
         NodeOrToken::Node(it) => Some((it, data)),
         NodeOrToken::Token(_) => None,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SyntaxNodePtr {
+    pub text_range: TextRange,
+    pub(crate) kind: SyntaxKind,
+}
+
+impl SyntaxNodePtr {
+    pub fn new(node: &SyntaxNode) -> SyntaxNodePtr {
+        SyntaxNodePtr { text_range: node.text_range(), kind: node.kind() }
+    }
+
+    pub fn resolve(&self, root: &SyntaxNode) -> SyntaxNode {
+        assert!(root.text_range().contains_range(self.text_range));
+        let mut curr = root.clone();
+        while let Some(next) = curr.child_by_range(self.text_range) {
+            curr = next;
+        }
+        if curr.text_range() == self.text_range && curr.kind() == self.kind {
+            return curr;
+        }
+        curr.ancestors()
+            .find(|it| it.text_range() == self.text_range && it.kind() == self.kind)
+            .unwrap()
+    }
 }
