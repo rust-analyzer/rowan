@@ -165,8 +165,8 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.text()
     }
 
-    pub fn green(&self) -> &GreenNode {
-        ArcBorrow::downgrade(self.raw.green())
+    pub fn green(&self) -> ArcBorrow<'_, GreenNode> {
+        self.raw.green()
     }
 
     pub fn parent(&self) -> Option<SyntaxNode<L>> {

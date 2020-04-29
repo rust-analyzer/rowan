@@ -334,7 +334,8 @@ impl Atom {
         Some(op)
     }
     fn text(&self) -> &str {
-        match self.0.green().children().next() {
+        let green = self.0.green();
+        match ArcBorrow::downgrade(green).children().next() {
             Some(rowan::NodeOrToken::Token(token)) => ArcBorrow::downgrade(token).text(),
             _ => unreachable!(),
         }
