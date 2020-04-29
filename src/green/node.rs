@@ -61,7 +61,8 @@ impl GreenNode {
         if offset > self.text_len() {
             return None;
         }
-        let (index, offset, node) = self.imp.child_with_offset(offset);
+        let index = self.imp.index_of_offset(offset);
+        let (offset, node) = self.imp.children().with_offsets().get(index)?;
         let node = *node.as_node()?;
         unsafe { Some((index, offset, mem::transmute(node))) }
     }
