@@ -1,24 +1,66 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHasher};
 
 use super::token::GreenTokenData;
 use crate::{
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, SmolStr,
 };
+use std::{
+    fmt::Debug,
+    hash::{Hash, Hasher},
+};
 
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: FxHashSet<GreenNode>,
+    nodes: FxHashMap<GreenNodeHash, GreenNode>,
     tokens: FxHashMap<GreenTokenData, GreenToken>,
+}
+
+struct GreenNodeHash {
+    hasher: FxHasher,
+    inner_hash: u64,
+}
+
+impl Eq for GreenNodeHash {}
+impl PartialEq for GreenNodeHash {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner_hash == other.inner_hash
+    }
+}
+
+impl Debug for GreenNodeHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner_hash.fmt(f)
+    }
+}
+
+impl GreenNodeHash {
+    fn new<'a>(kind: SyntaxKind) -> Self {
+        let mut hasher = FxHasher::default();
+        kind.hash(&mut hasher);
+        let inner_hash = hasher.finish();
+        Self { hasher, inner_hash }
+    }
+
+    fn add_child(&mut self, child: &GreenElement) {
+        child.hash(&mut self.hasher);
+        self.inner_hash = self.hasher.finish();
+    }
+}
+
+impl Hash for GreenNodeHash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner_hash.hash(state);
+    }
 }
 
 impl NodeCache {
     fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
     where
-        I: IntoIterator<Item = GreenElement>,
-        I::IntoIter: ExactSizeIterator,
+        I: ExactSizeIterator<Item = GreenElement>,
     {
-        let mut node = GreenNode::new(kind, children);
+        let num_children = children.len();
+
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
@@ -27,13 +69,23 @@ impl NodeCache {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children().len() <= 3 {
-            match self.nodes.get(&node) {
-                Some(existing) => node = existing.clone(),
-                None => assert!(self.nodes.insert(node.clone())),
+        if num_children <= 3 {
+            let mut hash = GreenNodeHash::new(kind);
+            let x: Vec<GreenElement> = children.collect();
+            for child in x.iter() {
+                hash.add_child(child);
             }
+            match self.nodes.get(&hash) {
+                Some(existing) => existing.clone(),
+                None => {
+                    let node = GreenNode::new(kind, x.into_iter());
+                    self.nodes.insert(hash, node.clone());
+                    node
+                }
+            }
+        } else {
+            GreenNode::new(kind, children)
         }
-        node
     }
 
     fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> GreenToken {
