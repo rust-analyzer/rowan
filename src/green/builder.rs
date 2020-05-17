@@ -1,5 +1,6 @@
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
+use super::token::GreenTokenData;
 use crate::{
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, SmolStr,
@@ -8,7 +9,7 @@ use crate::{
 #[derive(Default, Debug)]
 pub struct NodeCache {
     nodes: FxHashSet<GreenNode>,
-    tokens: FxHashSet<GreenToken>,
+    tokens: FxHashMap<GreenTokenData, GreenToken>,
 }
 
 impl NodeCache {
@@ -36,12 +37,16 @@ impl NodeCache {
     }
 
     fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> GreenToken {
-        let mut token = GreenToken::new(kind, text);
-        match self.tokens.get(&token) {
-            Some(existing) => token = existing.clone(),
-            None => assert!(self.tokens.insert(token.clone())),
+        let token_data = GreenTokenData::new(kind, text.clone());
+
+        match self.tokens.get(&token_data) {
+            Some(existing) => existing.clone(),
+            None => {
+                let token = GreenToken::new(kind, text.clone());
+                self.tokens.insert(token_data, token.clone());
+                token
+            }
         }
-        token
     }
 }
 

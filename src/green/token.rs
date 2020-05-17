@@ -4,9 +4,15 @@ use crate::{green::SyntaxKind, SmolStr, TextSize};
 
 #[repr(align(2))] // NB: this is an at-least annotation
 #[derive(Debug, PartialEq, Eq, Hash)]
-struct GreenTokenData {
+pub(crate) struct GreenTokenData {
     kind: SyntaxKind,
     text: SmolStr,
+}
+
+impl GreenTokenData {
+    pub fn new(kind: SyntaxKind, text: SmolStr) -> GreenTokenData {
+        GreenTokenData { kind, text }
+    }
 }
 
 /// Leaf node in the immutable tree.
