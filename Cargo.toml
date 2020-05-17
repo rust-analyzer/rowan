@@ -9,6 +9,7 @@ edition = "2018"
 
 [dependencies]
 rustc-hash = "1.0.1"
+lru = "0.4.3"
 text-size = "1.0.0"
 smallvec = "1.4.0"
 smol_str = "0.1.10"

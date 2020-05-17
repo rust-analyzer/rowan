@@ -1,20 +1,35 @@
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHasher;
 
 use super::token::GreenTokenData;
 use crate::{
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, SmolStr,
 };
+use lru::LruCache;
 use smallvec::SmallVec;
 use std::{
+    cell::RefCell,
     fmt::Debug,
-    hash::{Hash, Hasher},
+    hash::{BuildHasherDefault, Hash, Hasher},
 };
 
-#[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: FxHashMap<GreenNodeHash, GreenNode>,
-    tokens: FxHashMap<GreenTokenData, GreenToken>,
+    nodes: LruCache<GreenNodeHash, GreenNode, FxHasherDefault>,
+    tokens: LruCache<GreenTokenData, GreenToken, FxHasherDefault>,
+}
+
+// FIXME: What is a good value for this?
+const MAX_CACHED: usize = 650000;
+
+type FxHasherDefault = BuildHasherDefault<FxHasher>;
+
+impl NodeCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            nodes: LruCache::with_hasher(MAX_CACHED, FxHasherDefault::default()),
+            tokens: LruCache::with_hasher(MAX_CACHED, FxHasherDefault::default()),
+        }
+    }
 }
 
 struct GreenNodeHash {
@@ -84,7 +99,7 @@ impl NodeCache {
                 Some(existing) => existing.clone(),
                 None => {
                     let node = GreenNode::new(kind, collected_children.into_iter());
-                    self.nodes.insert(hash, node.clone());
+                    self.nodes.put(hash, node.clone());
                     node
                 }
             }
@@ -100,41 +115,10 @@ impl NodeCache {
             Some(existing) => existing.clone(),
             None => {
                 let token = GreenToken::new(kind, text.clone());
-                self.tokens.insert(token_data, token.clone());
+                self.tokens.put(token_data, token.clone());
                 token
             }
         }
-    }
-}
-
-#[derive(Debug)]
-enum MaybeOwned<'a, T> {
-    Owned(T),
-    Borrowed(&'a mut T),
-}
-
-impl<T> std::ops::Deref for MaybeOwned<'_, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        match self {
-            MaybeOwned::Owned(it) => it,
-            MaybeOwned::Borrowed(it) => *it,
-        }
-    }
-}
-
-impl<T> std::ops::DerefMut for MaybeOwned<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        match self {
-            MaybeOwned::Owned(it) => it,
-            MaybeOwned::Borrowed(it) => *it,
-        }
-    }
-}
-
-impl<T: Default> Default for MaybeOwned<'_, T> {
-    fn default() -> Self {
-        MaybeOwned::Owned(T::default())
     }
 }
 
@@ -143,34 +127,31 @@ impl<T: Default> Default for MaybeOwned<'_, T> {
 pub struct Checkpoint(usize);
 
 /// A builder for a green tree.
-#[derive(Default, Debug)]
-pub struct GreenNodeBuilder<'cache> {
-    cache: MaybeOwned<'cache, NodeCache>,
+#[derive(Debug, Default)]
+pub struct GreenNodeBuilder {
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
 
-impl GreenNodeBuilder<'_> {
-    /// Creates new builder.
-    pub fn new() -> GreenNodeBuilder<'static> {
-        GreenNodeBuilder::default()
-    }
+// FIXME: LruCache is Sync so perhaps this is better made global? That will increase reuse but also contention
+thread_local! {
+    static CACHE: RefCell<NodeCache> = RefCell::new(NodeCache::new())
+}
 
-    /// Reusing `NodeCache` between different `GreenNodeBuilder`s saves memory.
-    /// It allows to structurally share underlying trees.
-    pub fn with_cache(cache: &mut NodeCache) -> GreenNodeBuilder<'_> {
-        GreenNodeBuilder {
-            cache: MaybeOwned::Borrowed(cache),
-            parents: Vec::new(),
-            children: Vec::new(),
-        }
+impl GreenNodeBuilder {
+    /// Creates new builder.
+    pub fn new() -> GreenNodeBuilder {
+        Self { parents: Vec::default(), children: Vec::default() }
     }
 
     /// Adds new token to the current branch.
     #[inline]
     pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
-        let token = self.cache.token(kind, text);
-        self.children.push(token.into());
+        CACHE.with(|f| {
+            let mut cache = f.borrow_mut();
+            let token = cache.token(kind, text);
+            self.children.push(token.into());
+        })
     }
 
     /// Start new node and make it current.
@@ -184,10 +165,13 @@ impl GreenNodeBuilder<'_> {
     /// branch as current.
     #[inline]
     pub fn finish_node(&mut self) {
-        let (kind, first_child) = self.parents.pop().unwrap();
-        let children = self.children.drain(first_child..);
-        let node = self.cache.node(kind, children);
-        self.children.push(node.into());
+        CACHE.with(|f| {
+            let (kind, first_child) = self.parents.pop().unwrap();
+            let children = self.children.drain(first_child..);
+            let mut cache = f.borrow_mut();
+            let node = cache.node(kind, children);
+            self.children.push(node.into());
+        })
     }
 
     /// Prepare for maybe wrapping the next node.

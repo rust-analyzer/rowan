@@ -60,7 +60,7 @@ type SyntaxToken = rowan::SyntaxToken<Lang>;
 type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
 struct Parser<I: Iterator<Item = (SyntaxKind, SmolStr)>> {
-    builder: GreenNodeBuilder<'static>,
+    builder: GreenNodeBuilder,
     iter: Peekable<I>,
 }
 impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
