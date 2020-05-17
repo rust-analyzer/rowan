@@ -10,7 +10,7 @@ pub(crate) struct GreenTokenData {
 }
 
 impl GreenTokenData {
-    pub fn new(kind: SyntaxKind, text: SmolStr) -> GreenTokenData {
+    pub(crate) fn new(kind: SyntaxKind, text: SmolStr) -> GreenTokenData {
         GreenTokenData { kind, text }
     }
 }
