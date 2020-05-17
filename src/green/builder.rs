@@ -5,6 +5,7 @@ use crate::{
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, SmolStr,
 };
+use smallvec::SmallVec;
 use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
@@ -60,7 +61,7 @@ impl NodeCache {
         I: ExactSizeIterator<Item = GreenElement>,
     {
         let num_children = children.len();
-
+        const MAX_CHILDREN: usize = 3;
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
@@ -69,16 +70,20 @@ impl NodeCache {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if num_children <= 3 {
+        if num_children <= MAX_CHILDREN {
             let mut hash = GreenNodeHash::new(kind);
-            let x: Vec<GreenElement> = children.collect();
-            for child in x.iter() {
+            let mut collected_children =
+                SmallVec::<[GreenElement; MAX_CHILDREN]>::with_capacity(MAX_CHILDREN);
+            for child in children {
+                collected_children.push(child);
+            }
+            for child in collected_children.iter() {
                 hash.add_child(child);
             }
             match self.nodes.get(&hash) {
                 Some(existing) => existing.clone(),
                 None => {
-                    let node = GreenNode::new(kind, x.into_iter());
+                    let node = GreenNode::new(kind, collected_children.into_iter());
                     self.nodes.insert(hash, node.clone());
                     node
                 }
