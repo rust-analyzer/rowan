@@ -17,41 +17,24 @@ pub struct NodeCache {
     tokens: FxHashMap<GreenTokenData, GreenToken>,
 }
 
+#[derive(Debug, Hash, Eq, PartialEq)]
 struct GreenNodeHash {
-    hasher: FxHasher,
     inner_hash: u64,
 }
 
-impl Eq for GreenNodeHash {}
-impl PartialEq for GreenNodeHash {
-    fn eq(&self, other: &Self) -> bool {
-        self.inner_hash == other.inner_hash
-    }
-}
-
-impl Debug for GreenNodeHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.inner_hash.fmt(f)
-    }
-}
-
 impl GreenNodeHash {
-    fn new<'a>(kind: SyntaxKind) -> Self {
+    fn new<'a, I>(kind: SyntaxKind, children: I) -> Self
+    where
+        I: Iterator<Item = &'a GreenElement>,
+    {
         let mut hasher = FxHasher::default();
         kind.hash(&mut hasher);
+
+        for child in children {
+            child.hash(&mut hasher);
+        }
         let inner_hash = hasher.finish();
-        Self { hasher, inner_hash }
-    }
-
-    fn add_child(&mut self, child: &GreenElement) {
-        child.hash(&mut self.hasher);
-        self.inner_hash = self.hasher.finish();
-    }
-}
-
-impl Hash for GreenNodeHash {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner_hash.hash(state);
+        Self { inner_hash }
     }
 }
 
@@ -73,11 +56,9 @@ impl NodeCache {
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
         if num_children <= MAX_CHILDREN {
-            let mut hash = GreenNodeHash::new(kind);
             let collected_children: SmallVec<[GreenElement; MAX_CHILDREN]> = children.collect();
-            for child in collected_children.iter() {
-                hash.add_child(child);
-            }
+            let hash = GreenNodeHash::new(kind, collected_children.iter());
+
             match self.nodes.get(&hash) {
                 Some(existing) => existing.clone(),
                 None => {
