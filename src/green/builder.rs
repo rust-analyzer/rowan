@@ -72,11 +72,7 @@ impl NodeCache {
         // Future work: make hashing faster by avoiding rehashing of subtrees.
         if num_children <= MAX_CHILDREN {
             let mut hash = GreenNodeHash::new(kind);
-            let mut collected_children =
-                SmallVec::<[GreenElement; MAX_CHILDREN]>::with_capacity(MAX_CHILDREN);
-            for child in children {
-                collected_children.push(child);
-            }
+            let collected_children: SmallVec<[GreenElement; MAX_CHILDREN]> = children.collect();
             for child in collected_children.iter() {
                 hash.add_child(child);
             }
