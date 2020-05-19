@@ -58,8 +58,10 @@ impl Hash for GreenNodeHash {
 impl NodeCache {
     fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
     where
-        I: ExactSizeIterator<Item = GreenElement>,
+        I: IntoIterator<Item = GreenElement>,
+        I::IntoIter: ExactSizeIterator,
     {
+        let children = children.into_iter();
         let num_children = children.len();
         const MAX_CHILDREN: usize = 3;
         // Green nodes are fully immutable, so it's ok to deduplicate them.
