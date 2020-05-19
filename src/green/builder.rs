@@ -23,6 +23,7 @@ struct GreenNodeHash {
 }
 
 impl GreenNodeHash {
+    /// Constructs a hash of a node by hashing the kind, and the pointers to all the children.
     fn new<'a, I>(kind: SyntaxKind, children: I) -> Self
     where
         I: Iterator<Item = &'a GreenElement>,
@@ -31,7 +32,15 @@ impl GreenNodeHash {
         kind.hash(&mut hasher);
 
         for child in children {
-            child.hash(&mut hasher);
+            match child {
+                NodeOrToken::Node(node) => {
+                    node.kind().hash(&mut hasher);
+                    node.ptr().hash(&mut hasher);
+                }
+                NodeOrToken::Token(token) => {
+                    token.hash(&mut hasher);
+                }
+            }
         }
         let inner_hash = hasher.finish();
         Self { inner_hash }
@@ -54,7 +63,6 @@ impl NodeCache {
         // For example, all `#[inline]` in this file share the same green node!
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
-        // Future work: make hashing faster by avoiding rehashing of subtrees.
         if num_children <= MAX_CHILDREN {
             let collected_children: SmallVec<[GreenElement; MAX_CHILDREN]> = children.collect();
             let hash = GreenNodeHash::new(kind, collected_children.iter());
