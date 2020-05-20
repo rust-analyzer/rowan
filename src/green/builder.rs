@@ -1,4 +1,4 @@
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHashMap;
 
 use super::token::GreenTokenData;
 use crate::{
@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
+    ptr,
 };
 
 #[derive(Default, Debug)]
@@ -17,35 +18,52 @@ pub struct NodeCache {
     tokens: FxHashMap<GreenTokenData, GreenToken>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug)]
 struct GreenNodeHash {
-    inner_hash: u64,
+    kind: SyntaxKind,
+    children: ChildrenVec,
 }
 
 impl GreenNodeHash {
     /// Constructs a hash of a node by hashing the kind, and the pointers to all the children.
-    fn new<'a, I>(kind: SyntaxKind, children: I) -> Self
-    where
-        I: Iterator<Item = &'a GreenElement>,
-    {
-        let mut hasher = FxHasher::default();
-        kind.hash(&mut hasher);
+    fn new(kind: SyntaxKind, children: ChildrenVec) -> Self {
+        Self { kind, children }
+    }
+}
 
-        for child in children {
+impl Hash for GreenNodeHash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+
+        for child in self.children.iter() {
             match child {
                 NodeOrToken::Node(node) => {
-                    node.kind().hash(&mut hasher);
-                    node.ptr().hash(&mut hasher);
+                    node.kind().hash(state);
+                    node.ptr().hash(state);
                 }
                 NodeOrToken::Token(token) => {
-                    token.hash(&mut hasher);
+                    token.hash(state);
                 }
             }
         }
-        let inner_hash = hasher.finish();
-        Self { inner_hash }
     }
 }
+
+impl Eq for GreenNodeHash {}
+impl PartialEq for GreenNodeHash {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.children.len() == other.children.len()
+            && self.children.iter().zip(other.children.iter()).all(|pair| match pair {
+                (NodeOrToken::Node(lhs), NodeOrToken::Node(rhs)) => ptr::eq(lhs.ptr(), rhs.ptr()),
+                (NodeOrToken::Token(lhs), NodeOrToken::Token(rhs)) => *lhs == *rhs,
+                _ => false,
+            })
+    }
+}
+
+const MAX_CHILDREN: usize = 3;
+type ChildrenVec = SmallVec<[GreenElement; MAX_CHILDREN]>;
 
 impl NodeCache {
     fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
@@ -55,7 +73,7 @@ impl NodeCache {
     {
         let children = children.into_iter();
         let num_children = children.len();
-        const MAX_CHILDREN: usize = 3;
+
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
@@ -64,8 +82,8 @@ impl NodeCache {
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
         if num_children <= MAX_CHILDREN {
-            let collected_children: SmallVec<[GreenElement; MAX_CHILDREN]> = children.collect();
-            let hash = GreenNodeHash::new(kind, collected_children.iter());
+            let collected_children: ChildrenVec = children.collect();
+            let hash = GreenNodeHash::new(kind, collected_children.clone());
 
             match self.nodes.get(&hash) {
                 Some(existing) => existing.clone(),
