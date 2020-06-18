@@ -10,6 +10,7 @@ struct GreenTokenData {
 }
 
 /// Leaf node in the immutable tree.
+#[repr(transparent)]
 pub struct GreenToken {
     ptr: ptr::NonNull<GreenTokenData>,
 }

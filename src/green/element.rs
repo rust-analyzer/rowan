@@ -1,6 +1,6 @@
 use std::{fmt, hash, mem};
 
-use thin_dst::ErasedPtr;
+use erasable::ErasedPtr;
 
 use crate::{
     green::{GreenNode, GreenToken, SyntaxKind},
