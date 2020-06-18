@@ -1,6 +1,7 @@
 use std::{iter::FusedIterator, slice, sync::Arc};
 
-use thin_dst::{ThinArc, ThinData};
+use erasable::Thin;
+use slice_dst::SliceWithHeader;
 
 use crate::{
     green::{GreenElement, GreenElementRef, PackedGreenElement, SyntaxKind},
@@ -17,8 +18,9 @@ pub(super) struct GreenNodeHead {
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct GreenNode {
-    pub(super) data: ThinArc<GreenNodeHead, PackedGreenElement>,
+    pub(super) data: Thin<Arc<SliceWithHeader<GreenNodeHead, PackedGreenElement>>>,
 }
 
 impl GreenNode {
@@ -34,12 +36,12 @@ impl GreenNode {
             .into_iter()
             .inspect(|it| text_len += it.text_len())
             .map(PackedGreenElement::from);
-        let data = ThinArc::new(GreenNodeHead { kind, text_len: 0.into() }, children);
+        let mut data: Arc<_> =
+            SliceWithHeader::new(GreenNodeHead { kind, text_len: 0.into() }, children);
 
         // XXX: fixup `text_len` after construction, because we can't iterate
         // `children` twice.
-        let mut data: Arc<ThinData<GreenNodeHead, PackedGreenElement>> = data.into();
-        Arc::get_mut(&mut data).unwrap().head.text_len = text_len;
+        Arc::get_mut(&mut data).unwrap().header.text_len = text_len;
 
         GreenNode { data: data.into() }
     }
@@ -47,13 +49,13 @@ impl GreenNode {
     /// Kind of this node.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
-        self.data.head.kind
+        self.data.header.kind
     }
 
     /// Returns the length of the text covered by this node.
     #[inline]
     pub fn text_len(&self) -> TextSize {
-        self.data.head.text_len
+        self.data.header.text_len
     }
 
     /// Children of this node.
@@ -63,7 +65,7 @@ impl GreenNode {
     }
 
     pub(crate) fn ptr(&self) -> *const u8 {
-        let r: &ThinData<_, _> = &self.data;
+        let r: &SliceWithHeader<_, _> = &*self.data;
         r as *const _ as _
     }
 }
