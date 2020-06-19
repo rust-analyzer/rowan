@@ -62,6 +62,12 @@ impl GreenToken {
     pub fn text_len(&self) -> TextSize {
         TextSize::try_from(self.text().len()).unwrap()
     }
+
+    pub(super) fn strong_count(&self) -> usize {
+        let ptr = Self::remove_tag(self.ptr);
+        let arc = unsafe { ManuallyDrop::new(Arc::from_raw(ptr.as_ptr())) };
+        Arc::strong_count(&arc)
+    }
 }
 
 impl fmt::Debug for GreenToken {

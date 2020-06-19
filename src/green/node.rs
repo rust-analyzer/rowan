@@ -68,6 +68,10 @@ impl GreenNode {
         let r: &SliceWithHeader<_, _> = &*self.data;
         r as *const _ as _
     }
+
+    pub(super) fn strong_count(&self) -> usize {
+        Thin::with(&self.data, |node| Arc::strong_count(node))
+    }
 }
 
 #[derive(Debug, Clone)]
