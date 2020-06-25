@@ -23,7 +23,7 @@ mod serde_impls;
 // these, as a custom interner might work better, but `SmolStr` is a pretty good
 // default.
 pub use smol_str::SmolStr;
-pub use text_size::{TextRange, TextSize, TextLen};
+pub use text_size::{TextLen, TextRange, TextSize};
 
 pub use crate::{
     api::{
