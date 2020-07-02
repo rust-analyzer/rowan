@@ -38,22 +38,34 @@ impl NodeCache {
         self.tokens.raw_entry_mut().from_key(&token).or_insert(token, ()).0.clone()
     }
 
-    fn turn_node_gc(&mut self) -> bool {
+    fn collect_root_nodes(&mut self) -> Vec<GreenNode> {
         // NB: `drain_filter` is `retain` but with an iterator of the removed elements.
         // i.e.: elements where the predicate is FALSE are removed and iterated over.
-        self.nodes.drain_filter(|node, ()| node.strong_count() > 1).any(|_| true)
+        self.nodes.drain_filter(|node, ()| node.strong_count() > 1).map(|(node, _)| node).collect()
     }
 
-    fn turn_token_gc(&mut self) -> bool {
-        self.tokens.drain_filter(|token, ()| token.strong_count() > 1).any(|_| true)
+    fn collect_tokens(&mut self) {
+        self.tokens.retain(|token, ()| token.strong_count() > 1)
     }
 
     /// Garbage collect any elements in this cache that are only held by this cache.
     pub fn gc(&mut self) {
-        while self.turn_node_gc() {
-            continue;
+        let mut to_drop = self.collect_root_nodes();
+
+        while let Some(node) = to_drop.pop() {
+            if node.strong_count() <= 2 {
+                self.nodes.remove(&node);
+
+                // queue children for (potential) removal from the cache
+                for child in node.children() {
+                    if let Some(node) = child.into_node() {
+                        to_drop.push(node.clone());
+                    }
+                }
+            }
         }
-        self.turn_token_gc();
+
+        self.collect_tokens();
     }
 }
 
