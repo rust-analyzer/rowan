@@ -1,0 +1,5 @@
+status = [
+    "Tests (stable)",
+    "Tests (beta)",
+]
+delete_merged_branches = true
