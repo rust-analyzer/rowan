@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use hashbrown::HashMap;
 
 use crate::{
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
@@ -7,8 +7,8 @@ use crate::{
 
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: FxHashSet<GreenNode>,
-    tokens: FxHashSet<GreenToken>,
+    nodes: HashMap<GreenNode, ()>,
+    tokens: HashMap<GreenToken, ()>,
 }
 
 impl NodeCache {
@@ -17,7 +17,7 @@ impl NodeCache {
         I: IntoIterator<Item = GreenElement>,
         I::IntoIter: ExactSizeIterator,
     {
-        let mut node = GreenNode::new(kind, children);
+        let node = GreenNode::new(kind, children);
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
@@ -27,21 +27,45 @@ impl NodeCache {
         // 17% of the memory for green nodes!
         // Future work: make hashing faster by avoiding rehashing of subtrees.
         if node.children().len() <= 3 {
-            match self.nodes.get(&node) {
-                Some(existing) => node = existing.clone(),
-                None => assert!(self.nodes.insert(node.clone())),
-            }
+            self.nodes.raw_entry_mut().from_key(&node).or_insert(node, ()).0.clone()
+        } else {
+            node
         }
-        node
     }
 
     fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> GreenToken {
-        let mut token = GreenToken::new(kind, text);
-        match self.tokens.get(&token) {
-            Some(existing) => token = existing.clone(),
-            None => assert!(self.tokens.insert(token.clone())),
+        let token = GreenToken::new(kind, text);
+        self.tokens.raw_entry_mut().from_key(&token).or_insert(token, ()).0.clone()
+    }
+
+    fn collect_root_nodes(&mut self) -> Vec<GreenNode> {
+        // NB: `drain_filter` is `retain` but with an iterator of the removed elements.
+        // i.e.: elements where the predicate is FALSE are removed and iterated over.
+        self.nodes.drain_filter(|node, ()| node.strong_count() > 1).map(|(node, _)| node).collect()
+    }
+
+    fn collect_tokens(&mut self) {
+        self.tokens.retain(|token, ()| token.strong_count() > 1)
+    }
+
+    /// Garbage collect any elements in this cache that are only held by this cache.
+    pub fn gc(&mut self) {
+        let mut to_drop = self.collect_root_nodes();
+
+        while let Some(node) = to_drop.pop() {
+            if node.strong_count() <= 2 {
+                self.nodes.remove(&node);
+
+                // queue children for (potential) removal from the cache
+                for child in node.children() {
+                    if let Some(node) = child.into_node() {
+                        to_drop.push(node.clone());
+                    }
+                }
+            }
         }
-        token
+
+        self.collect_tokens();
     }
 }
 
