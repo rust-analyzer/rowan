@@ -1,11 +1,11 @@
-use std::{iter::FusedIterator, slice, sync::Arc};
+use std::{iter::FusedIterator, mem, slice, sync::Arc};
 
 use erasable::Thin;
 use slice_dst::SliceWithHeader;
 
 use crate::{
     green::{GreenElement, GreenElementRef, PackedGreenElement, SyntaxKind},
-    TextSize,
+    GreenToken, TextSize,
 };
 
 #[repr(align(2))] // NB: this is an at-least annotation
@@ -22,6 +22,23 @@ pub(super) struct GreenNodeHead {
 pub struct GreenNode {
     pub(super) data: Thin<Arc<SliceWithHeader<GreenNodeHead, PackedGreenElement>>>,
 }
+
+enum GreenChild {
+    Node {
+        // offset: TextSize,
+        node: GreenNode
+    },
+    Token {
+        // offset: TextSize,
+        token: GreenToken
+    },
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = {
+    let cond = mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2;
+    [()][(!cond) as usize]
+};
 
 impl GreenNode {
     /// Creates new Node.
