@@ -3,8 +3,8 @@ mod token;
 mod element;
 mod builder;
 
+use self::element::GreenElement;
 pub(crate) use self::element::GreenElementRef;
-use self::element::{GreenElement, PackedGreenElement};
 
 pub use self::{
     builder::{Checkpoint, GreenNodeBuilder, NodeCache},
@@ -26,7 +26,6 @@ mod tests {
         f::<GreenNode>();
         f::<GreenToken>();
         f::<GreenElement>();
-        f::<PackedGreenElement>();
     }
 
     #[test]
@@ -36,6 +35,5 @@ mod tests {
         eprintln!("GreenNode          {}", size_of::<GreenNode>());
         eprintln!("GreenToken         {}", size_of::<GreenToken>());
         eprintln!("GreenElement       {}", size_of::<GreenElement>());
-        eprintln!("PackedGreenElement {}", size_of::<PackedGreenElement>());
     }
 }

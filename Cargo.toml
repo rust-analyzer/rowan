@@ -8,9 +8,7 @@ description = "Library for generic lossless syntax trees"
 edition = "2018"
 
 [dependencies]
-erasable = "1.2.1"
 rustc-hash = "1.0.1"
-slice-dst = "1.4.1"
 smol_str = "0.1.10"
 text-size = "1.0.0"
 triomphe = "0.1.1"
