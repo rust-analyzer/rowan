@@ -32,38 +32,23 @@ impl fmt::Debug for GreenNode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GreenChild {
-    Node {
-        // offset: TextSize,
-        node: GreenNode,
-    },
-    Token {
-        // offset: TextSize,
-        token: GreenToken,
-    },
-}
-
-impl From<GreenElement> for GreenChild {
-    fn from(e: GreenElement) -> Self {
-        match e {
-            NodeOrToken::Node(node) => GreenChild::Node { node },
-            NodeOrToken::Token(token) => GreenChild::Token { token },
-        }
-    }
+    Node { offset_in_parent: TextSize, node: GreenNode },
+    Token { offset_in_parent: TextSize, token: GreenToken },
 }
 
 impl GreenChild {
     fn as_ref(&self) -> GreenElementRef {
         match self {
-            GreenChild::Node { node } => NodeOrToken::Node(node),
-            GreenChild::Token { token } => NodeOrToken::Token(token),
+            GreenChild::Node { node, .. } => NodeOrToken::Node(node),
+            GreenChild::Token { token, .. } => NodeOrToken::Token(token),
         }
     }
 }
 
 #[cfg(target_pointer_width = "64")]
-const _: () = {
+const _: i32 = {
     let cond = mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2;
-    [()][(!cond) as usize]
+    0 / cond as i32
 };
 
 impl GreenNode {
@@ -75,8 +60,14 @@ impl GreenNode {
         I::IntoIter: ExactSizeIterator,
     {
         let mut text_len: TextSize = 0.into();
-        let children =
-            children.into_iter().inspect(|it| text_len += it.text_len()).map(GreenChild::from);
+        let children = children.into_iter().map(|el| {
+            let offset_in_parent = text_len;
+            text_len += el.text_len();
+            match el {
+                NodeOrToken::Node(node) => GreenChild::Node { offset_in_parent, node },
+                NodeOrToken::Token(token) => GreenChild::Token { offset_in_parent, token },
+            }
+        });
 
         let data =
             ThinArc::from_header_and_iter(GreenNodeHead { kind, text_len: 0.into() }, children);
@@ -112,6 +103,18 @@ impl GreenNode {
 
     pub fn ptr(&self) -> *const c_void {
         self.data.heap_ptr()
+    }
+
+    pub(crate) fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNode {
+        let mut replacement = Some(new_child);
+        let children = self.children().enumerate().map(|(i, child)| {
+            if i == idx {
+                replacement.take().unwrap()
+            } else {
+                child.cloned()
+            }
+        });
+        GreenNode::new(self.kind(), children)
     }
 }
 

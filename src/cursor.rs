@@ -217,15 +217,7 @@ impl SyntaxNode {
         match self.0.kind.as_child() {
             None => replacement,
             Some((parent, me, _offset)) => {
-                let mut replacement = Some(replacement);
-                let children = parent.green().children().enumerate().map(|(i, child)| {
-                    if i as u32 == me {
-                        replacement.take().unwrap().into()
-                    } else {
-                        child.cloned()
-                    }
-                });
-                let new_parent = GreenNode::new(parent.kind(), children);
+                let new_parent = parent.green().replace_child(me as usize, replacement.into());
                 parent.replace_with(new_parent)
             }
         }
