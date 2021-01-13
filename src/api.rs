@@ -149,6 +149,9 @@ impl<L: Language> SyntaxNode<L> {
     pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))
     }
+    /// Returns a green tree, equal to the green tree this node
+    /// belongs two, except with this node substitute. The complexity
+    /// of operation is proportional to the depth of the tree
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         self.raw.replace_with(replacement)
     }
@@ -217,10 +220,12 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
 
+    /// Return the leftmost token in the subtree of this node.
     pub fn first_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.first_token().map(SyntaxToken::from)
     }
 
+    /// Return the rightmost token in the subtree of this node.
     pub fn last_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.last_token().map(SyntaxToken::from)
     }
@@ -244,24 +249,37 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.descendants_with_tokens().map(NodeOrToken::from)
     }
 
+    /// Traverse the subtree rooted at the current node (including the current
+    /// node) in preorder, excluding tokens.
     pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<SyntaxNode<L>>> {
         self.raw.preorder().map(|event| event.map(SyntaxNode::from))
     }
 
+    /// Traverse the subtree rooted at the current node (including the current
+    /// node) in preorder, including tokens.
     pub fn preorder_with_tokens(&self) -> impl Iterator<Item = WalkEvent<SyntaxElement<L>>> {
         self.raw.preorder_with_tokens().map(|event| event.map(NodeOrToken::from))
     }
 
+    /// Find a token in the subtree corresponding to this node, which covers the offset.
+    /// Precondition: offset must be withing node's range.
     pub fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken<L>> {
         self.raw.token_at_offset(offset).map(SyntaxToken::from)
     }
 
+    /// Return the deepest node or token in the current subtree that fully
+    /// contains the range. If the range is empty and is contained in two leaf
+    /// nodes, either one can be returned. Precondition: range must be contained
+    /// withing the current node
     pub fn covering_element(&self, range: TextRange) -> SyntaxElement<L> {
         NodeOrToken::from(self.raw.covering_element(range))
     }
 }
 
 impl<L: Language> SyntaxToken<L> {
+    /// Returns a green tree, equal to the green tree this token
+    /// belongs two, except with this token substitute. The complexity
+    /// of operation is proportional to the depth of the tree
     pub fn replace_with(&self, new_token: GreenToken) -> GreenNode {
         self.raw.replace_with(new_token)
     }
@@ -305,10 +323,12 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.siblings_with_tokens(direction).map(SyntaxElement::from)
     }
 
+    /// Next token in the tree (i.e, not necessary a sibling).
     pub fn next_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.next_token().map(SyntaxToken::from)
     }
 
+    /// Previous token in the tree (i.e, not necessary a sibling).
     pub fn prev_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.prev_token().map(SyntaxToken::from)
     }

@@ -209,9 +209,6 @@ impl SyntaxNode {
         SyntaxNode::new(data)
     }
 
-    /// Returns a green tree, equal to the green tree this node
-    /// belongs two, except with this node substitute. The complexity
-    /// of operation is proportional to the depth of the tree
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         match self.0.kind.as_child() {
@@ -334,13 +331,11 @@ impl SyntaxNode {
         Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
     }
 
-    /// Return the leftmost token in the subtree of this node
     #[inline]
     pub fn first_token(&self) -> Option<SyntaxToken> {
         self.first_child_or_token()?.first_token()
     }
 
-    /// Return the rightmost token in the subtree of this node
     #[inline]
     pub fn last_token(&self) -> Option<SyntaxToken> {
         self.last_child_or_token()?.last_token()
@@ -378,8 +373,6 @@ impl SyntaxNode {
         })
     }
 
-    /// Traverse the subtree rooted at the current node (including the current
-    /// node) in preorder, excluding tokens.
     #[inline]
     pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<SyntaxNode>> {
         let this = self.clone();
@@ -403,8 +396,6 @@ impl SyntaxNode {
         })
     }
 
-    /// Traverse the subtree rooted at the current node (including the current
-    /// node) in preorder, including tokens.
     #[inline]
     pub fn preorder_with_tokens<'a>(&'a self) -> impl Iterator<Item = WalkEvent<SyntaxElement>> {
         let start: SyntaxElement = self.clone().into();
@@ -431,8 +422,6 @@ impl SyntaxNode {
         })
     }
 
-    /// Find a token in the subtree corresponding to this node, which covers the offset.
-    /// Precondition: offset must be withing node's range.
     pub fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
         // TODO: this could be faster if we first drill-down to node, and only
         // then switch to token search. We should also replace explicit
@@ -470,10 +459,6 @@ impl SyntaxNode {
         }
     }
 
-    /// Return the deepest node or token in the current subtree that fully
-    /// contains the range. If the range is empty and is contained in two leaf
-    /// nodes, either one can be returned. Precondition: range must be contained
-    /// withing the current node
     pub fn covering_element(&self, range: TextRange) -> SyntaxElement {
         let mut res: SyntaxElement = self.clone().into();
         loop {
@@ -504,9 +489,6 @@ impl SyntaxToken {
         SyntaxToken { parent, index, offset }
     }
 
-    /// Returns a green tree, equal to the green tree this token
-    /// belongs two, except with this token substitute. The complexity
-    /// of operation is proportional to the depth of the tree
     pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         let mut replacement = Some(replacement);
@@ -580,7 +562,6 @@ impl SyntaxToken {
         })
     }
 
-    /// Next token in the tree (i.e, not necessary a sibling)
     pub fn next_token(&self) -> Option<SyntaxToken> {
         match self.next_sibling_or_token() {
             Some(element) => element.first_token(),
@@ -591,7 +572,7 @@ impl SyntaxToken {
                 .and_then(|element| element.first_token()),
         }
     }
-    /// Previous token in the tree (i.e, not necessary a sibling)
+
     pub fn prev_token(&self) -> Option<SyntaxToken> {
         match self.prev_sibling_or_token() {
             Some(element) => element.last_token(),
