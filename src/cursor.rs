@@ -470,17 +470,28 @@ impl SyntaxNode {
             );
             res = match &res {
                 NodeOrToken::Token(_) => return res,
-                NodeOrToken::Node(node) => {
-                    match node
-                        .children_with_tokens()
-                        .find(|child| child.text_range().contains_range(range))
-                    {
-                        Some(child) => child,
-                        None => return res,
-                    }
-                }
+                NodeOrToken::Node(node) => match node.child_or_token_at_range(range) {
+                    Some(it) => it,
+                    None => return res,
+                },
             };
         }
+    }
+
+    pub fn child_or_token_at_range(&self, range: TextRange) -> Option<SyntaxElement> {
+        let start_offset = self.text_range().start();
+        let (index, offset, child) = self.green().child_at_range(range - start_offset)?;
+        let index = index as u32;
+        let offset = offset + start_offset;
+        let res: SyntaxElement = match child {
+            NodeOrToken::Node(node) => {
+                let data =
+                    NodeData::new(Kind::Child { parent: self.clone(), index, offset }, node.into());
+                SyntaxNode::new(data).into()
+            }
+            NodeOrToken::Token(_token) => SyntaxToken::new(self.clone(), index, offset).into(),
+        };
+        Some(res)
     }
 }
 

@@ -4,7 +4,7 @@ use triomphe::{Arc, ThinArc};
 
 use crate::{
     green::{GreenElement, GreenElementRef, SyntaxKind},
-    GreenToken, NodeOrToken, TextSize,
+    GreenToken, NodeOrToken, TextRange, TextSize,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -42,6 +42,16 @@ impl GreenChild {
             GreenChild::Node { node, .. } => NodeOrToken::Node(node),
             GreenChild::Token { token, .. } => NodeOrToken::Token(token),
         }
+    }
+    fn offset_in_parent(&self) -> TextSize {
+        match self {
+            GreenChild::Node { offset_in_parent, .. }
+            | GreenChild::Token { offset_in_parent, .. } => *offset_in_parent,
+        }
+    }
+    fn range_in_parent(&self) -> TextRange {
+        let len = self.as_ref().text_len();
+        TextRange::at(self.offset_in_parent(), len)
     }
 }
 
@@ -99,6 +109,24 @@ impl GreenNode {
     #[inline]
     pub fn children(&self) -> Children<'_> {
         Children { inner: self.data.slice.iter() }
+    }
+
+    pub(crate) fn child_at_range(
+        &self,
+        range: TextRange,
+    ) -> Option<(usize, TextSize, GreenElementRef<'_>)> {
+        let idx = self
+            .data
+            .slice
+            .binary_search_by(|it| {
+                let child_range = it.range_in_parent();
+                TextRange::ordering(child_range, range)
+            })
+            // XXX: this handles empty ranges
+            .unwrap_or_else(|it| it.saturating_sub(1));
+        let child =
+            &self.data.slice.get(idx).filter(|it| it.range_in_parent().contains_range(range))?;
+        Some((idx, child.offset_in_parent(), child.as_ref()))
     }
 
     pub fn ptr(&self) -> *const c_void {

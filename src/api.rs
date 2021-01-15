@@ -274,6 +274,10 @@ impl<L: Language> SyntaxNode<L> {
     pub fn covering_element(&self, range: TextRange) -> SyntaxElement<L> {
         NodeOrToken::from(self.raw.covering_element(range))
     }
+
+    pub fn child_or_token_at_range(&self, range: TextRange) -> Option<SyntaxElement<L>> {
+        self.raw.child_or_token_at_range(range).map(SyntaxElement::from)
+    }
 }
 
 impl<L: Language> SyntaxToken<L> {
