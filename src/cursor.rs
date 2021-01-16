@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     fmt,
     hash::{Hash, Hasher},
     iter, mem, ptr,
@@ -14,12 +13,6 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct SyntaxNode(Rc<NodeData>);
-
-impl Drop for SyntaxNode {
-    fn drop(&mut self) {
-        NodeData::delete(&mut self.0)
-    }
-}
 
 // Identity semantics for hash & eq
 impl PartialEq for SyntaxNode {
@@ -89,7 +82,6 @@ impl fmt::Display for SyntaxElement {
 enum Kind {
     Root(GreenNode),
     Child { parent: SyntaxNode, index: u32, offset: TextSize },
-    Free { next_free: Option<Rc<NodeData>> },
 }
 
 impl Kind {
@@ -107,77 +99,9 @@ struct NodeData {
     green: ptr::NonNull<GreenNode>,
 }
 
-struct FreeList {
-    first_free: Option<Rc<NodeData>>,
-    len: usize,
-}
-
-const FREE_LIST_LEN: usize = 128;
-
-impl FreeList {
-    fn new() -> FreeList {
-        let mut res = FreeList { first_free: None, len: 0 };
-        for _ in 0..FREE_LIST_LEN {
-            res.try_push(&mut Rc::new(NodeData {
-                kind: Kind::Free { next_free: None },
-                green: ptr::NonNull::dangling(),
-            }))
-        }
-        res
-    }
-
-    fn with<T, F: FnOnce(&mut FreeList) -> T>(f: F) -> T {
-        thread_local! {
-            static INSTANCE: RefCell<FreeList> = RefCell::new(FreeList::new());
-        }
-        INSTANCE.with(|it| f(&mut *it.borrow_mut()))
-    }
-
-    fn pop(&mut self) -> Option<Rc<NodeData>> {
-        let mut node = self.first_free.take()?;
-        self.len -= 1;
-        {
-            let node = Rc::get_mut(&mut node).unwrap();
-            self.first_free = match &mut node.kind {
-                Kind::Free { next_free } => next_free.take(),
-                _ => unreachable!(),
-            }
-        }
-        Some(node)
-    }
-
-    fn try_push(&mut self, node: &mut Rc<NodeData>) {
-        if self.len >= FREE_LIST_LEN {
-            return;
-        }
-        Rc::get_mut(node).unwrap().kind = Kind::Free { next_free: self.first_free.take() };
-        self.first_free = Some(Rc::clone(node));
-        self.len += 1;
-    }
-}
-
 impl NodeData {
     fn new(kind: Kind, green: ptr::NonNull<GreenNode>) -> Rc<NodeData> {
-        let mut node = FreeList::with(|it| it.pop()).unwrap_or_else(|| {
-            Rc::new(NodeData {
-                kind: Kind::Free { next_free: None },
-                green: ptr::NonNull::dangling(),
-            })
-        });
-
-        {
-            let node = Rc::get_mut(&mut node).unwrap();
-            node.kind = kind;
-            node.green = green;
-        }
-        node
-    }
-    fn delete(this: &mut Rc<NodeData>) {
-        if let Some(this_mut) = Rc::get_mut(this) {
-            // NB: this might drop SyntaxNodes
-            this_mut.kind = Kind::Free { next_free: None };
-            FreeList::with(|it| it.try_push(this))
-        }
+        Rc::new(NodeData { kind, green })
     }
 }
 
@@ -244,7 +168,6 @@ impl SyntaxNode {
         match &self.0.kind {
             Kind::Root(_) => None,
             Kind::Child { parent, .. } => Some(parent.clone()),
-            Kind::Free { .. } => unreachable!(),
         }
     }
 
