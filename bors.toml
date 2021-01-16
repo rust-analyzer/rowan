@@ -1,5 +1,2 @@
-status = [
-    "Tests (stable)",
-    "Tests (beta)",
-]
+status = [ "Rust" ]
 delete_merged_branches = true

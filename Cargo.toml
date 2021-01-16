@@ -7,6 +7,11 @@ license = "MIT OR Apache-2.0"
 description = "Library for generic lossless syntax trees"
 edition = "2018"
 
+exclude = [".github/", "bors.toml", "rustfmt.toml"]
+
+[workspace]
+members = ["xtask"]
+
 [dependencies]
 rustc-hash = "1.0.1"
 smol_str = "0.1.10"
