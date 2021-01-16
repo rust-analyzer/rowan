@@ -297,26 +297,8 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn preorder(&self) -> impl Iterator<Item = WalkEvent<SyntaxNode>> {
-        let this = self.clone();
-        iter::successors(Some(WalkEvent::Enter(self.clone())), move |pos| {
-            let next = match pos {
-                WalkEvent::Enter(node) => match node.first_child() {
-                    Some(child) => WalkEvent::Enter(child),
-                    None => WalkEvent::Leave(node.clone()),
-                },
-                WalkEvent::Leave(node) => {
-                    if node == &this {
-                        return None;
-                    }
-                    match node.next_sibling() {
-                        Some(sibling) => WalkEvent::Enter(sibling),
-                        None => WalkEvent::Leave(node.parent().unwrap()),
-                    }
-                }
-            };
-            Some(next)
-        })
+    pub fn preorder(&self) -> Preorder {
+        Preorder::new(self.clone())
     }
 
     #[inline]
@@ -702,4 +684,58 @@ fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
         NodeOrToken::Node(it) => Some((it, data)),
         NodeOrToken::Token(_) => None,
     })
+}
+
+pub struct Preorder {
+    root: SyntaxNode,
+    next: Option<WalkEvent<SyntaxNode>>,
+    skip_subtree: bool,
+}
+
+impl Preorder {
+    fn new(root: SyntaxNode) -> Preorder {
+        let next = Some(WalkEvent::Enter(root.clone()));
+        Preorder { root, next, skip_subtree: false }
+    }
+
+    pub fn skip_subtree(&mut self) {
+        self.skip_subtree = true;
+    }
+    #[cold]
+    fn do_skip(&mut self) {
+        self.next = self.next.take().map(|next| match next {
+            WalkEvent::Enter(first_child) => WalkEvent::Leave(first_child.parent().unwrap()),
+            WalkEvent::Leave(parent) => WalkEvent::Leave(parent),
+        })
+    }
+}
+
+impl Iterator for Preorder {
+    type Item = WalkEvent<SyntaxNode>;
+
+    fn next(&mut self) -> Option<WalkEvent<SyntaxNode>> {
+        if self.skip_subtree {
+            self.do_skip();
+            self.skip_subtree = false;
+        }
+        let next = self.next.take();
+        self.next = next.as_ref().and_then(|next| {
+            Some(match next {
+                WalkEvent::Enter(node) => match node.first_child() {
+                    Some(child) => WalkEvent::Enter(child),
+                    None => WalkEvent::Leave(node.clone()),
+                },
+                WalkEvent::Leave(node) => {
+                    if node == &self.root {
+                        return None;
+                    }
+                    match node.next_sibling() {
+                        Some(sibling) => WalkEvent::Enter(sibling),
+                        None => WalkEvent::Leave(node.parent().unwrap()),
+                    }
+                }
+            })
+        });
+        next
+    }
 }
