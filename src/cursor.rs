@@ -79,29 +79,21 @@ impl fmt::Display for SyntaxElement {
 }
 
 #[derive(Debug)]
-enum Kind {
-    Root(GreenNode),
-    Child { parent: SyntaxNode, index: u32, offset: TextSize },
-}
-
-impl Kind {
-    fn as_child(&self) -> Option<(&SyntaxNode, u32, TextSize)> {
-        match self {
-            Kind::Child { parent, index, offset } => Some((parent, *index, *offset)),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug)]
 struct NodeData {
-    kind: Kind,
+    parent: Option<SyntaxNode>,
+    index: u32,
+    offset: TextSize,
     green: ptr::NonNull<GreenNode>,
 }
 
-impl NodeData {
-    fn new(kind: Kind, green: ptr::NonNull<GreenNode>) -> Rc<NodeData> {
-        Rc::new(NodeData { kind, green })
+impl Drop for NodeData {
+    #[inline]
+    fn drop(&mut self) {
+        if self.parent.is_none() {
+            unsafe {
+                Box::from_raw(self.green.as_ptr());
+            }
+        }
     }
 }
 
@@ -111,14 +103,13 @@ impl SyntaxNode {
     }
 
     pub fn new_root(green: GreenNode) -> SyntaxNode {
-        let data = NodeData::new(Kind::Root(green), ptr::NonNull::dangling());
-        let mut ret = SyntaxNode::new(data);
-        let green: ptr::NonNull<GreenNode> = match &ret.0.kind {
-            Kind::Root(green) => green.into(),
-            _ => unreachable!(),
+        let data = NodeData {
+            parent: None,
+            index: 0,
+            offset: 0.into(),
+            green: ptr::NonNull::from(Box::leak(Box::new(green))),
         };
-        Rc::get_mut(&mut ret.0).unwrap().green = green;
-        ret
+        SyntaxNode::new(Rc::new(data))
     }
 
     // Technically, unsafe, but private so that's OK.
@@ -129,16 +120,18 @@ impl SyntaxNode {
         index: u32,
         offset: TextSize,
     ) -> SyntaxNode {
-        let data = NodeData::new(Kind::Child { parent, index, offset }, green.into());
-        SyntaxNode::new(data)
+        let data =
+            NodeData { parent: Some(parent), index, offset, green: ptr::NonNull::from(green) };
+        SyntaxNode::new(Rc::new(data))
     }
 
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
-        match self.0.kind.as_child() {
+        match &self.0.parent {
             None => replacement,
-            Some((parent, me, _offset)) => {
-                let new_parent = parent.green().replace_child(me as usize, replacement.into());
+            Some(parent) => {
+                let new_parent =
+                    parent.green().replace_child(self.0.index as usize, replacement.into());
                 parent.replace_with(new_parent)
             }
         }
@@ -149,11 +142,9 @@ impl SyntaxNode {
     }
 
     pub fn text_range(&self) -> TextRange {
-        let offset = match self.0.kind.as_child() {
-            Some((_, _, it)) => it,
-            _ => 0.into(),
-        };
-        TextRange::at(offset, self.green().text_len())
+        let offset = self.0.offset;
+        let len = self.green().text_len();
+        TextRange::at(offset, len)
     }
 
     pub fn text(&self) -> SyntaxText {
@@ -165,10 +156,7 @@ impl SyntaxNode {
     }
 
     pub fn parent(&self) -> Option<SyntaxNode> {
-        match &self.0.kind {
-            Kind::Root(_) => None,
-            Kind::Child { parent, .. } => Some(parent.clone()),
-        }
+        self.0.parent.clone()
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
@@ -216,10 +204,10 @@ impl SyntaxNode {
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
-        let (parent, index, _) = self.0.kind.as_child()?;
+        let parent = self.0.parent.as_ref()?;
 
         let (node, (index, offset)) = filter_nodes(
-            parent.green().children_from((index + 1) as usize, self.text_range().end()),
+            parent.green().children_from((self.0.index + 1) as usize, self.text_range().end()),
         )
         .next()?;
 
@@ -227,29 +215,32 @@ impl SyntaxNode {
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let (parent, index, _) = self.0.kind.as_child()?;
+        let parent = self.0.parent.as_ref()?;
 
-        let (element, (index, offset)) =
-            parent.green().children_from((index + 1) as usize, self.text_range().end()).next()?;
+        let (element, (index, offset)) = parent
+            .green()
+            .children_from((self.0.index + 1) as usize, self.text_range().end())
+            .next()?;
 
         Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
-        let (parent, index, _) = self.0.kind.as_child()?;
+        let parent = self.0.parent.as_ref()?;
 
-        let (node, (index, offset)) =
-            filter_nodes(parent.green().children_to(index as usize, self.text_range().start()))
-                .next()?;
+        let (node, (index, offset)) = filter_nodes(
+            parent.green().children_to(self.0.index as usize, self.text_range().start()),
+        )
+        .next()?;
 
         Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset))
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let (parent, index, _) = self.0.kind.as_child()?;
+        let parent = self.0.parent.as_ref()?;
 
         let (element, (index, offset)) =
-            parent.green().children_to(index as usize, self.text_range().start()).next()?;
+            parent.green().children_to(self.0.index as usize, self.text_range().start()).next()?;
 
         Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
     }
@@ -390,9 +381,7 @@ impl SyntaxNode {
         let offset = offset + start_offset;
         let res: SyntaxElement = match child {
             NodeOrToken::Node(node) => {
-                let data =
-                    NodeData::new(Kind::Child { parent: self.clone(), index, offset }, node.into());
-                SyntaxNode::new(data).into()
+                SyntaxNode::new_child(node.into(), self.clone(), index, offset).into()
             }
             NodeOrToken::Token(_token) => SyntaxToken::new(self.clone(), index, offset).into(),
         };
