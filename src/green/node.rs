@@ -13,6 +13,18 @@ pub(super) struct GreenNodeHead {
     text_len: TextSize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum GreenChild {
+    Node { offset_in_parent: TextSize, node: GreenNode },
+    Token { offset_in_parent: TextSize, token: GreenToken },
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: i32 = {
+    let cond = mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2;
+    0 / cond as i32
+};
+
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -28,12 +40,6 @@ impl fmt::Debug for GreenNode {
             .field("n_children", &self.children().len())
             .finish()
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum GreenChild {
-    Node { offset_in_parent: TextSize, node: GreenNode },
-    Token { offset_in_parent: TextSize, token: GreenToken },
 }
 
 impl GreenChild {
@@ -54,12 +60,6 @@ impl GreenChild {
         TextRange::at(self.offset_in_parent(), len)
     }
 }
-
-#[cfg(target_pointer_width = "64")]
-const _: i32 = {
-    let cond = mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2;
-    0 / cond as i32
-};
 
 impl GreenNode {
     /// Creates new Node.

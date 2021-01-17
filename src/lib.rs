@@ -16,6 +16,8 @@ pub mod cursor;
 pub mod api;
 mod syntax_text;
 mod utility_types;
+
+mod cow_mut;
 #[cfg(feature = "serde1")]
 mod serde_impls;
 

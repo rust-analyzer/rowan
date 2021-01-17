@@ -18,17 +18,13 @@ pub struct SyntaxNode<L: Language> {
     _p: PhantomData<L>,
 }
 
-impl<L: Language> From<cursor::SyntaxNode> for SyntaxNode<L> {
-    fn from(raw: cursor::SyntaxNode) -> SyntaxNode<L> {
-        SyntaxNode { raw, _p: PhantomData }
-    }
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct SyntaxToken<L: Language> {
+    raw: cursor::SyntaxToken,
+    _p: PhantomData<L>,
 }
 
-impl<L: Language> From<SyntaxNode<L>> for cursor::SyntaxNode {
-    fn from(node: SyntaxNode<L>) -> cursor::SyntaxNode {
-        node.raw
-    }
-}
+pub type SyntaxElement<L> = NodeOrToken<SyntaxNode<L>, SyntaxToken<L>>;
 
 impl<L: Language> fmt::Debug for SyntaxNode<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -63,24 +59,6 @@ impl<L: Language> fmt::Display for SyntaxNode<L> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct SyntaxToken<L: Language> {
-    raw: cursor::SyntaxToken,
-    _p: PhantomData<L>,
-}
-
-impl<L: Language> From<cursor::SyntaxToken> for SyntaxToken<L> {
-    fn from(raw: cursor::SyntaxToken) -> SyntaxToken<L> {
-        SyntaxToken { raw, _p: PhantomData }
-    }
-}
-
-impl<L: Language> From<SyntaxToken<L>> for cursor::SyntaxToken {
-    fn from(token: SyntaxToken<L>) -> cursor::SyntaxToken {
-        token.raw
-    }
-}
-
 impl<L: Language> fmt::Debug for SyntaxToken<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}@{:?}", self.kind(), self.text_range())?;
@@ -101,26 +79,6 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
 impl<L: Language> fmt::Display for SyntaxToken<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.raw, f)
-    }
-}
-
-pub type SyntaxElement<L> = NodeOrToken<SyntaxNode<L>, SyntaxToken<L>>;
-
-impl<L: Language> From<cursor::SyntaxElement> for SyntaxElement<L> {
-    fn from(raw: cursor::SyntaxElement) -> SyntaxElement<L> {
-        match raw {
-            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
-            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
-        }
-    }
-}
-
-impl<L: Language> From<SyntaxElement<L>> for cursor::SyntaxElement {
-    fn from(element: SyntaxElement<L>) -> cursor::SyntaxElement {
-        match element {
-            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
-            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
-        }
     }
 }
 
@@ -423,5 +381,47 @@ impl<L: Language> Iterator for Preorder<L> {
     type Item = WalkEvent<SyntaxNode<L>>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(|it| it.map(SyntaxNode::from))
+    }
+}
+
+impl<L: Language> From<cursor::SyntaxNode> for SyntaxNode<L> {
+    fn from(raw: cursor::SyntaxNode) -> SyntaxNode<L> {
+        SyntaxNode { raw, _p: PhantomData }
+    }
+}
+
+impl<L: Language> From<SyntaxNode<L>> for cursor::SyntaxNode {
+    fn from(node: SyntaxNode<L>) -> cursor::SyntaxNode {
+        node.raw
+    }
+}
+
+impl<L: Language> From<cursor::SyntaxToken> for SyntaxToken<L> {
+    fn from(raw: cursor::SyntaxToken) -> SyntaxToken<L> {
+        SyntaxToken { raw, _p: PhantomData }
+    }
+}
+
+impl<L: Language> From<SyntaxToken<L>> for cursor::SyntaxToken {
+    fn from(token: SyntaxToken<L>) -> cursor::SyntaxToken {
+        token.raw
+    }
+}
+
+impl<L: Language> From<cursor::SyntaxElement> for SyntaxElement<L> {
+    fn from(raw: cursor::SyntaxElement) -> SyntaxElement<L> {
+        match raw {
+            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
+            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
+        }
+    }
+}
+
+impl<L: Language> From<SyntaxElement<L>> for cursor::SyntaxElement {
+    fn from(element: SyntaxElement<L>) -> cursor::SyntaxElement {
+        match element {
+            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
+            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
+        }
     }
 }
