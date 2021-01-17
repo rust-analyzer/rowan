@@ -1,6 +1,7 @@
 use rustc_hash::FxHashSet;
 
 use crate::{
+    cow_mut::CowMut,
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
     NodeOrToken, SmolStr,
 };
@@ -45,37 +46,6 @@ impl NodeCache {
     }
 }
 
-#[derive(Debug)]
-enum MaybeOwned<'a, T> {
-    Owned(T),
-    Borrowed(&'a mut T),
-}
-
-impl<T> std::ops::Deref for MaybeOwned<'_, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        match self {
-            MaybeOwned::Owned(it) => it,
-            MaybeOwned::Borrowed(it) => *it,
-        }
-    }
-}
-
-impl<T> std::ops::DerefMut for MaybeOwned<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        match self {
-            MaybeOwned::Owned(it) => it,
-            MaybeOwned::Borrowed(it) => *it,
-        }
-    }
-}
-
-impl<T: Default> Default for MaybeOwned<'_, T> {
-    fn default() -> Self {
-        MaybeOwned::Owned(T::default())
-    }
-}
-
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
 pub struct Checkpoint(usize);
@@ -83,7 +53,7 @@ pub struct Checkpoint(usize);
 /// A builder for a green tree.
 #[derive(Default, Debug)]
 pub struct GreenNodeBuilder<'cache> {
-    cache: MaybeOwned<'cache, NodeCache>,
+    cache: CowMut<'cache, NodeCache>,
     parents: Vec<(SyntaxKind, usize)>,
     children: Vec<GreenElement>,
 }
@@ -98,7 +68,7 @@ impl GreenNodeBuilder<'_> {
     /// It allows to structurally share underlying trees.
     pub fn with_cache(cache: &mut NodeCache) -> GreenNodeBuilder<'_> {
         GreenNodeBuilder {
-            cache: MaybeOwned::Borrowed(cache),
+            cache: CowMut::Borrowed(cache),
             parents: Vec::new(),
             children: Vec::new(),
         }
