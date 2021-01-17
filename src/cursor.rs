@@ -11,7 +11,7 @@ use crate::{
     TextSize, TokenAtOffset, WalkEvent,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SyntaxNode(Rc<NodeData>);
 
 // Identity semantics for hash & eq
@@ -30,6 +30,15 @@ impl Hash for SyntaxNode {
     fn hash<H: Hasher>(&self, state: &mut H) {
         ptr::hash(self.green().ptr(), state);
         self.text_range().start().hash(state);
+    }
+}
+
+impl fmt::Debug for SyntaxNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SyntaxNode")
+            .field("kind", &self.kind())
+            .field("text_range", &self.text_range())
+            .finish()
     }
 }
 
@@ -82,7 +91,6 @@ impl fmt::Display for SyntaxElement {
     }
 }
 
-#[derive(Debug)]
 struct NodeData {
     parent: Option<SyntaxNode>,
     index: u32,
