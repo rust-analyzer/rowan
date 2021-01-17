@@ -1,4 +1,7 @@
-use rustc_hash::FxHashSet;
+use std::hash::{BuildHasherDefault, Hash, Hasher};
+
+use hashbrown::hash_map::RawEntryMut;
+use rustc_hash::FxHasher;
 
 use crate::{
     cow_mut::CowMut,
@@ -6,19 +9,44 @@ use crate::{
     NodeOrToken, SmolStr,
 };
 
+type HashMap<K, V> = hashbrown::HashMap<K, V, BuildHasherDefault<FxHasher>>;
+
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: FxHashSet<GreenNode>,
-    tokens: FxHashSet<GreenToken>,
+    nodes: HashMap<GreenNode, ()>,
+    tokens: HashMap<GreenToken, ()>,
 }
 
 impl NodeCache {
-    fn node<I>(&mut self, kind: SyntaxKind, children: I) -> GreenNode
-    where
-        I: IntoIterator<Item = GreenElement>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let mut node = GreenNode::new(kind, children);
+    fn node(
+        &mut self,
+        kind: SyntaxKind,
+        children: &mut Vec<(u64, GreenElement)>,
+        first_child: usize,
+    ) -> (u64, GreenNode) {
+        let build_node = move |children: &mut Vec<(u64, GreenElement)>| {
+            GreenNode::new(kind, children.drain(first_child..).map(|(_, it)| it))
+        };
+        let children_ref = &children[first_child..];
+        if children_ref.len() > 3 {
+            let node = build_node(children);
+            return (0, node);
+        }
+
+        // Manually compute the hash to avoid repeatedly hashing subtrees.
+        let hash = {
+            let mut h = FxHasher::default();
+            kind.hash(&mut h);
+            for &(hash, _) in children_ref {
+                if hash == 0 {
+                    let node = build_node(children);
+                    return (0, node);
+                }
+                hash.hash(&mut h);
+            }
+            h.finish()
+        };
+
         // Green nodes are fully immutable, so it's ok to deduplicate them.
         // This is the same optimization that Roslyn does
         // https://github.com/KirillOsenkov/Bliki/wiki/Roslyn-Immutable-Trees
@@ -26,23 +54,48 @@ impl NodeCache {
         // For example, all `#[inline]` in this file share the same green node!
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
-        // Future work: make hashing faster by avoiding rehashing of subtrees.
-        if node.children().len() <= 3 {
-            match self.nodes.get(&node) {
-                Some(existing) => node = existing.clone(),
-                None => assert!(self.nodes.insert(node.clone())),
+        let entry = self.nodes.raw_entry_mut().from_hash(hash, |node| {
+            node.kind() == kind
+                && node.children().len() == children_ref.len()
+                && node.children().eq(children_ref.iter().map(|(_, it)| it.as_ref()))
+        });
+
+        let node = match entry {
+            RawEntryMut::Occupied(entry) => {
+                drop(children.drain(first_child..));
+                entry.key().clone()
             }
-        }
-        node
+            RawEntryMut::Vacant(entry) => {
+                let node = build_node(children);
+                entry.insert_hashed_nocheck(hash, node.clone(), ());
+                node
+            }
+        };
+
+        (hash, node)
     }
 
-    fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> GreenToken {
-        let mut token = GreenToken::new(kind, text);
-        match self.tokens.get(&token) {
-            Some(existing) => token = existing.clone(),
-            None => assert!(self.tokens.insert(token.clone())),
-        }
-        token
+    fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> (u64, GreenToken) {
+        let hash = {
+            let mut h = FxHasher::default();
+            kind.hash(&mut h);
+            text.as_str().hash(&mut h);
+            h.finish()
+        };
+        let entry = self
+            .tokens
+            .raw_entry_mut()
+            .from_hash(hash, |token| token.kind() == kind && token.text() == &text);
+
+        let token = match entry {
+            RawEntryMut::Occupied(entry) => entry.key().clone(),
+            RawEntryMut::Vacant(entry) => {
+                let token = GreenToken::new(kind, text);
+                entry.insert_hashed_nocheck(hash, token.clone(), ());
+                token
+            }
+        };
+        (hash, token)
     }
 }
 
@@ -55,7 +108,7 @@ pub struct Checkpoint(usize);
 pub struct GreenNodeBuilder<'cache> {
     cache: CowMut<'cache, NodeCache>,
     parents: Vec<(SyntaxKind, usize)>,
-    children: Vec<GreenElement>,
+    children: Vec<(u64, GreenElement)>,
 }
 
 impl GreenNodeBuilder<'_> {
@@ -77,8 +130,8 @@ impl GreenNodeBuilder<'_> {
     /// Adds new token to the current branch.
     #[inline]
     pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
-        let token = self.cache.token(kind, text);
-        self.children.push(token.into());
+        let (hash, token) = self.cache.token(kind, text);
+        self.children.push((hash, token.into()));
     }
 
     /// Start new node and make it current.
@@ -93,9 +146,8 @@ impl GreenNodeBuilder<'_> {
     #[inline]
     pub fn finish_node(&mut self) {
         let (kind, first_child) = self.parents.pop().unwrap();
-        let children = self.children.drain(first_child..);
-        let node = self.cache.node(kind, children);
-        self.children.push(node.into());
+        let (hash, node) = self.cache.node(kind, &mut self.children, first_child);
+        self.children.push((hash, node.into()));
     }
 
     /// Prepare for maybe wrapping the next node.
@@ -154,7 +206,7 @@ impl GreenNodeBuilder<'_> {
     #[inline]
     pub fn finish(mut self) -> GreenNode {
         assert_eq!(self.children.len(), 1);
-        match self.children.pop().unwrap() {
+        match self.children.pop().unwrap().1 {
             NodeOrToken::Node(node) => node,
             NodeOrToken::Token(_) => panic!(),
         }
