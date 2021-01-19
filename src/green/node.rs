@@ -4,6 +4,7 @@ use triomphe::{Arc, ThinArc};
 
 use crate::{
     green::{GreenElement, GreenElementRef, SyntaxKind},
+    utility_types::static_assert,
     GreenToken, NodeOrToken, TextRange, TextSize,
 };
 
@@ -20,10 +21,7 @@ enum GreenChild {
 }
 
 #[cfg(target_pointer_width = "64")]
-const _: i32 = {
-    let cond = mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2;
-    0 / cond as i32
-};
+static_assert!(mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2);
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
