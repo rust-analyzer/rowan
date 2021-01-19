@@ -72,7 +72,7 @@ impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
     }
     fn bump(&mut self) {
         if let Some((token, string)) = self.iter.next() {
-            self.builder.token(token.into(), string);
+            self.builder.token(token.into(), string.as_str());
         }
     }
     fn parse_val(&mut self) {
