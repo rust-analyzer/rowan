@@ -1,8 +1,8 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    cursor, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxKind, SyntaxText,
-    TextRange, TextSize, TokenAtOffset, WalkEvent,
+    cursor, green::GreenNodeData, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr,
+    SyntaxKind, SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -126,7 +126,7 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.text()
     }
 
-    pub fn green(&self) -> &GreenNode {
+    pub fn green(&self) -> &GreenNodeData {
         self.raw.green()
     }
 

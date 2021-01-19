@@ -31,7 +31,9 @@ pub use crate::{
     api::{
         Language, SyntaxElement, SyntaxElementChildren, SyntaxNode, SyntaxNodeChildren, SyntaxToken,
     },
-    green::{Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenToken, SyntaxKind},
+    green::{
+        Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenNodeData, GreenToken, SyntaxKind,
+    },
     syntax_text::SyntaxText,
     utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };

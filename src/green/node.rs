@@ -1,5 +1,6 @@
-use std::{ffi::c_void, fmt, iter::FusedIterator, mem, ops, slice};
+use std::{borrow::Borrow, fmt, iter::FusedIterator, mem, ops, ptr, slice};
 
+use mem::ManuallyDrop;
 use triomphe::{Arc, HeaderSlice, HeaderWithLength, ThinArc};
 
 use crate::{
@@ -32,8 +33,29 @@ pub struct GreenNodeData {
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
 #[derive(Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct GreenNode {
     ptr: ThinArc<GreenNodeHead, GreenChild>,
+}
+
+impl ToOwned for GreenNodeData {
+    type Owned = GreenNode;
+
+    #[inline]
+    fn to_owned(&self) -> GreenNode {
+        unsafe {
+            let green = GreenNode::from_raw(ptr::NonNull::from(self));
+            let green = ManuallyDrop::new(green);
+            GreenNode::clone(&green)
+        }
+    }
+}
+
+impl Borrow<GreenNodeData> for GreenNode {
+    #[inline]
+    fn borrow(&self) -> &GreenNodeData {
+        &*self
+    }
 }
 
 impl fmt::Debug for GreenNodeData {
@@ -54,17 +76,24 @@ impl fmt::Debug for GreenNode {
 }
 
 impl GreenNodeData {
+    #[inline]
+    fn repr(&self) -> &Repr {
+        unsafe {
+            let len = self.data.header.length;
+            let fake_slice: *const [GreenChild] =
+                slice::from_raw_parts(&self.data as *const ReprThin as *const GreenChild, len);
+            &*(fake_slice as *const _)
+        }
+    }
+
+    #[inline]
     fn header(&self) -> &GreenNodeHead {
         &self.data.header.header
     }
 
+    #[inline]
     fn slice(&self) -> &[GreenChild] {
-        let dst_ref: &Repr = unsafe {
-            let len = self.data.header.length;
-            let fake_slice: *const [GreenChild] = slice::from_raw_parts(&self.data as *const ReprThin as *const GreenChild, len);
-            &*(fake_slice as *const _)
-        };
-        &dst_ref.slice
+        &self.repr().slice
     }
 
     /// Kind of this node.
@@ -118,6 +147,7 @@ impl GreenNodeData {
 impl ops::Deref for GreenNode {
     type Target = GreenNodeData;
 
+    #[inline]
     fn deref(&self) -> &GreenNodeData {
         unsafe {
             let repr: &Repr = &self.ptr;
@@ -159,24 +189,37 @@ impl GreenNode {
         GreenNode { ptr: data }
     }
 
-    pub fn ptr(&self) -> *const c_void {
-        self.ptr.heap_ptr()
+    #[inline]
+    pub(crate) fn into_raw(this: GreenNode) -> ptr::NonNull<GreenNodeData> {
+        let green = ManuallyDrop::new(this);
+        let green: &GreenNodeData = &*green;
+        ptr::NonNull::from(&*green)
+    }
+
+    #[inline]
+    pub(crate) unsafe fn from_raw(ptr: ptr::NonNull<GreenNodeData>) -> GreenNode {
+        let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
+        let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenNodeHead, GreenChild>>(arc);
+        GreenNode { ptr: arc }
     }
 }
 
 impl GreenChild {
+    #[inline]
     fn as_ref(&self) -> GreenElementRef {
         match self {
             GreenChild::Node { node, .. } => NodeOrToken::Node(node),
             GreenChild::Token { token, .. } => NodeOrToken::Token(token),
         }
     }
+    #[inline]
     fn offset_in_parent(&self) -> TextSize {
         match self {
             GreenChild::Node { offset_in_parent, .. }
             | GreenChild::Token { offset_in_parent, .. } => *offset_in_parent,
         }
     }
+    #[inline]
     fn range_in_parent(&self) -> TextRange {
         let len = self.as_ref().text_len();
         TextRange::at(self.offset_in_parent(), len)
