@@ -34,14 +34,14 @@ impl GreenToken {
 
     /// Text of this Token.
     #[inline]
-    pub fn text(&self) -> &SmolStr {
+    pub fn text(&self) -> &str {
         &self.data.text
     }
 
     /// Returns the length of the text covered by this token.
     #[inline]
     pub fn text_len(&self) -> TextSize {
-        TextSize::of(self.text().as_str())
+        TextSize::of(self.text())
     }
 }
 

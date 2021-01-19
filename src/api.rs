@@ -1,8 +1,8 @@
 use std::{fmt, marker::PhantomData};
 
 use crate::{
-    cursor, green::GreenNodeData, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr,
-    SyntaxKind, SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
+    cursor, green::GreenNodeData, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxKind,
+    SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -65,7 +65,7 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
         if self.text().len() < 25 {
             return write!(f, " {:?}", self.text());
         }
-        let text = self.text().as_str();
+        let text = self.text();
         for idx in 21..25 {
             if text.is_char_boundary(idx) {
                 let text = format!("{} ...", &text[..idx]);
@@ -254,7 +254,7 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.text_range()
     }
 
-    pub fn text(&self) -> &SmolStr {
+    pub fn text(&self) -> &str {
         self.raw.text()
     }
 

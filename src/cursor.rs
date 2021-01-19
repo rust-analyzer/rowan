@@ -7,8 +7,8 @@ use std::{
 
 use crate::{
     green::{GreenElementRef, GreenNodeData, SyntaxKind},
-    Children, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
-    TextSize, TokenAtOffset, WalkEvent,
+    Children, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize,
+    TokenAtOffset, WalkEvent,
 };
 
 pub struct SyntaxNode {
@@ -497,7 +497,7 @@ impl SyntaxToken {
     }
 
     #[inline]
-    pub fn text(&self) -> &SmolStr {
+    pub fn text(&self) -> &str {
         self.green().text()
     }
 
