@@ -38,6 +38,7 @@ impl Drop for SyntaxNode {
     }
 }
 
+#[inline(never)]
 fn free(mut data: Box<NodeData>) {
     loop {
         debug_assert_eq!(data.rc.get(), 0);

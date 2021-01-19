@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    arc::{self, Arc, HeaderSlice, ThinArc},
+    arc::{Arc, HeaderSlice, ThinArc},
     green::{GreenElement, GreenElementRef, SyntaxKind},
     utility_types::static_assert,
     GreenToken, NodeOrToken, TextRange, TextSize,
@@ -81,18 +81,13 @@ impl fmt::Debug for GreenNode {
 
 impl GreenNodeData {
     #[inline]
-    fn repr(&self) -> &Repr {
-        unsafe { &*arc::thin_to_thick_ref(&self.data as *const _ as *mut _) }
-    }
-
-    #[inline]
     fn header(&self) -> &GreenNodeHead {
         &self.data.header
     }
 
     #[inline]
     fn slice(&self) -> &[GreenChild] {
-        &self.repr().slice
+        self.data.slice()
     }
 
     /// Kind of this node.

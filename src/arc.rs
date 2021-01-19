@@ -1,3 +1,4 @@
+//! Vendored and stripped down version of triomphe
 use std::{
     alloc::{self, Layout},
     cmp::Ordering,
@@ -250,8 +251,26 @@ impl<T: ?Sized + Hash> Hash for Arc<T> {
 #[repr(C)]
 pub(crate) struct HeaderSlice<H, T: ?Sized> {
     pub(crate) header: H,
-    pub(crate) length: usize,
-    pub(crate) slice: T,
+    length: usize,
+    slice: T,
+}
+
+impl<H, T> HeaderSlice<H, [T]> {
+    pub(crate) fn slice(&self) -> &[T] {
+        &self.slice
+    }
+}
+
+impl<H, T> Deref for HeaderSlice<H, [T; 0]> {
+    type Target = HeaderSlice<H, [T]>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            let len = self.length;
+            let fake_slice: *const [T] = slice::from_raw_parts(self as *const _ as *const T, len);
+            &*(fake_slice as *const HeaderSlice<H, [T]>)
+        }
+    }
 }
 
 /// A "thin" `Arc` containing dynamically sized data
@@ -279,25 +298,13 @@ unsafe impl<H: Sync + Send, T: Sync + Send> Send for ThinArc<H, T> {}
 unsafe impl<H: Sync + Send, T: Sync + Send> Sync for ThinArc<H, T> {}
 
 // Synthesize a fat pointer from a thin pointer.
-//
-// See the comment around the analogous operation in from_header_and_iter.
 fn thin_to_thick<H, T>(
     thin: *mut ArcInner<HeaderSlice<H, [T; 0]>>,
 ) -> *mut ArcInner<HeaderSlice<H, [T]>> {
     let len = unsafe { (*thin).data.length };
     let fake_slice: *mut [T] = unsafe { slice::from_raw_parts_mut(thin as *mut T, len) };
-
+    // Transplants metadata.
     fake_slice as *mut ArcInner<HeaderSlice<H, [T]>>
-}
-
-pub(crate) fn thin_to_thick_ref<H, T>(
-    thin: *mut HeaderSlice<H, [T; 0]>,
-) -> *mut HeaderSlice<H, [T]> {
-    unsafe {
-        let len = (*thin).length;
-        let fake_slice: *mut [T] = slice::from_raw_parts_mut(thin as *mut T, len);
-        fake_slice as *mut HeaderSlice<H, [T]>
-    }
 }
 
 impl<H, T> ThinArc<H, T> {
