@@ -1,9 +1,15 @@
-use std::{ffi::c_void, fmt, iter::FusedIterator, mem, slice};
-
-use triomphe::{Arc, ThinArc};
+use std::{
+    borrow::Borrow,
+    fmt,
+    iter::FusedIterator,
+    mem::{self, ManuallyDrop},
+    ops, ptr, slice,
+};
 
 use crate::{
+    arc::{Arc, HeaderSlice, ThinArc},
     green::{GreenElement, GreenElementRef, SyntaxKind},
+    utility_types::static_assert,
     GreenToken, NodeOrToken, TextRange, TextSize,
 };
 
@@ -18,21 +24,45 @@ enum GreenChild {
     Node { offset_in_parent: TextSize, node: GreenNode },
     Token { offset_in_parent: TextSize, token: GreenToken },
 }
-
 #[cfg(target_pointer_width = "64")]
-const _: i32 = {
-    let cond = mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2;
-    0 / cond as i32
-};
+static_assert!(mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2);
+
+type Repr = HeaderSlice<GreenNodeHead, [GreenChild]>;
+type ReprThin = HeaderSlice<GreenNodeHead, [GreenChild; 0]>;
+#[repr(transparent)]
+pub struct GreenNodeData {
+    data: ReprThin,
+}
 
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
 #[derive(Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct GreenNode {
-    data: ThinArc<GreenNodeHead, GreenChild>,
+    ptr: ThinArc<GreenNodeHead, GreenChild>,
 }
 
-impl fmt::Debug for GreenNode {
+impl ToOwned for GreenNodeData {
+    type Owned = GreenNode;
+
+    #[inline]
+    fn to_owned(&self) -> GreenNode {
+        unsafe {
+            let green = GreenNode::from_raw(ptr::NonNull::from(self));
+            let green = ManuallyDrop::new(green);
+            GreenNode::clone(&green)
+        }
+    }
+}
+
+impl Borrow<GreenNodeData> for GreenNode {
+    #[inline]
+    fn borrow(&self) -> &GreenNodeData {
+        &*self
+    }
+}
+
+impl fmt::Debug for GreenNodeData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GreenNode")
             .field("kind", &self.kind())
@@ -42,22 +72,82 @@ impl fmt::Debug for GreenNode {
     }
 }
 
-impl GreenChild {
-    fn as_ref(&self) -> GreenElementRef {
-        match self {
-            GreenChild::Node { node, .. } => NodeOrToken::Node(node),
-            GreenChild::Token { token, .. } => NodeOrToken::Token(token),
-        }
+impl fmt::Debug for GreenNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let data: &GreenNodeData = &*self;
+        fmt::Debug::fmt(data, f)
     }
-    fn offset_in_parent(&self) -> TextSize {
-        match self {
-            GreenChild::Node { offset_in_parent, .. }
-            | GreenChild::Token { offset_in_parent, .. } => *offset_in_parent,
-        }
+}
+
+impl GreenNodeData {
+    #[inline]
+    fn header(&self) -> &GreenNodeHead {
+        &self.data.header
     }
-    fn range_in_parent(&self) -> TextRange {
-        let len = self.as_ref().text_len();
-        TextRange::at(self.offset_in_parent(), len)
+
+    #[inline]
+    fn slice(&self) -> &[GreenChild] {
+        self.data.slice()
+    }
+
+    /// Kind of this node.
+    #[inline]
+    pub fn kind(&self) -> SyntaxKind {
+        self.header().kind
+    }
+
+    /// Returns the length of the text covered by this node.
+    #[inline]
+    pub fn text_len(&self) -> TextSize {
+        self.header().text_len
+    }
+
+    /// Children of this node.
+    #[inline]
+    pub fn children(&self) -> Children<'_> {
+        Children { inner: self.slice().iter() }
+    }
+
+    pub(crate) fn child_at_range(
+        &self,
+        range: TextRange,
+    ) -> Option<(usize, TextSize, GreenElementRef<'_>)> {
+        let idx = self
+            .slice()
+            .binary_search_by(|it| {
+                let child_range = it.range_in_parent();
+                TextRange::ordering(child_range, range)
+            })
+            // XXX: this handles empty ranges
+            .unwrap_or_else(|it| it.saturating_sub(1));
+        let child =
+            &self.slice().get(idx).filter(|it| it.range_in_parent().contains_range(range))?;
+        Some((idx, child.offset_in_parent(), child.as_ref()))
+    }
+
+    pub(crate) fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNode {
+        let mut replacement = Some(new_child);
+        let children = self.children().enumerate().map(|(i, child)| {
+            if i == idx {
+                replacement.take().unwrap()
+            } else {
+                child.cloned()
+            }
+        });
+        GreenNode::new(self.kind(), children)
+    }
+}
+
+impl ops::Deref for GreenNode {
+    type Target = GreenNodeData;
+
+    #[inline]
+    fn deref(&self) -> &GreenNodeData {
+        unsafe {
+            let repr: &Repr = &self.ptr;
+            let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
+            mem::transmute::<&ReprThin, &GreenNodeData>(repr)
+        }
     }
 }
 
@@ -86,63 +176,47 @@ impl GreenNode {
         // `children` twice.
         let data = {
             let mut data = Arc::from_thin(data);
-            Arc::get_mut(&mut data).unwrap().header.header.text_len = text_len;
+            Arc::get_mut(&mut data).unwrap().header.text_len = text_len;
             Arc::into_thin(data)
         };
 
-        GreenNode { data }
+        GreenNode { ptr: data }
     }
 
-    /// Kind of this node.
     #[inline]
-    pub fn kind(&self) -> SyntaxKind {
-        self.data.header.header.kind
+    pub(crate) fn into_raw(this: GreenNode) -> ptr::NonNull<GreenNodeData> {
+        let green = ManuallyDrop::new(this);
+        let green: &GreenNodeData = &*green;
+        ptr::NonNull::from(&*green)
     }
 
-    /// Returns the length of the text covered by this node.
     #[inline]
-    pub fn text_len(&self) -> TextSize {
-        self.data.header.header.text_len
+    pub(crate) unsafe fn from_raw(ptr: ptr::NonNull<GreenNodeData>) -> GreenNode {
+        let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
+        let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenNodeHead, GreenChild>>(arc);
+        GreenNode { ptr: arc }
     }
+}
 
-    /// Children of this node.
+impl GreenChild {
     #[inline]
-    pub fn children(&self) -> Children<'_> {
-        Children { inner: self.data.slice.iter() }
+    fn as_ref(&self) -> GreenElementRef {
+        match self {
+            GreenChild::Node { node, .. } => NodeOrToken::Node(node),
+            GreenChild::Token { token, .. } => NodeOrToken::Token(token),
+        }
     }
-
-    pub(crate) fn child_at_range(
-        &self,
-        range: TextRange,
-    ) -> Option<(usize, TextSize, GreenElementRef<'_>)> {
-        let idx = self
-            .data
-            .slice
-            .binary_search_by(|it| {
-                let child_range = it.range_in_parent();
-                TextRange::ordering(child_range, range)
-            })
-            // XXX: this handles empty ranges
-            .unwrap_or_else(|it| it.saturating_sub(1));
-        let child =
-            &self.data.slice.get(idx).filter(|it| it.range_in_parent().contains_range(range))?;
-        Some((idx, child.offset_in_parent(), child.as_ref()))
+    #[inline]
+    fn offset_in_parent(&self) -> TextSize {
+        match self {
+            GreenChild::Node { offset_in_parent, .. }
+            | GreenChild::Token { offset_in_parent, .. } => *offset_in_parent,
+        }
     }
-
-    pub fn ptr(&self) -> *const c_void {
-        self.data.heap_ptr()
-    }
-
-    pub(crate) fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNode {
-        let mut replacement = Some(new_child);
-        let children = self.children().enumerate().map(|(i, child)| {
-            if i == idx {
-                replacement.take().unwrap()
-            } else {
-                child.cloned()
-            }
-        });
-        GreenNode::new(self.kind(), children)
+    #[inline]
+    fn range_in_parent(&self) -> TextRange {
+        let len = self.as_ref().text_len();
+        TextRange::at(self.offset_in_parent(), len)
     }
 }
 

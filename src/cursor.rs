@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    green::{GreenElementRef, SyntaxKind},
+    green::{GreenElementRef, GreenNodeData, SyntaxKind},
     Children, Direction, GreenNode, GreenToken, NodeOrToken, SmolStr, SyntaxText, TextRange,
     TextSize, TokenAtOffset, WalkEvent,
 };
@@ -38,6 +38,7 @@ impl Drop for SyntaxNode {
     }
 }
 
+#[inline(never)]
 fn free(mut data: Box<NodeData>) {
     loop {
         debug_assert_eq!(data.rc.get(), 0);
@@ -53,7 +54,7 @@ fn free(mut data: Box<NodeData>) {
                 }
             }
             None => unsafe {
-                Box::from_raw(data.green.as_ptr());
+                GreenNode::from_raw(data.green);
                 break;
             },
         }
@@ -64,8 +65,7 @@ fn free(mut data: Box<NodeData>) {
 impl PartialEq for SyntaxNode {
     #[inline]
     fn eq(&self, other: &SyntaxNode) -> bool {
-        self.green().ptr() == other.green().ptr()
-            && self.text_range().start() == other.text_range().start()
+        self.key() == other.key()
     }
 }
 
@@ -74,8 +74,7 @@ impl Eq for SyntaxNode {}
 impl Hash for SyntaxNode {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ptr::hash(self.green().ptr(), state);
-        self.text_range().start().hash(state);
+        self.key().hash(state);
     }
 }
 
@@ -142,7 +141,7 @@ struct NodeData {
     parent: Option<SyntaxNode>,
     index: u32,
     offset: TextSize,
-    green: ptr::NonNull<GreenNode>,
+    green: ptr::NonNull<GreenNodeData>,
 }
 
 impl SyntaxNode {
@@ -156,7 +155,7 @@ impl SyntaxNode {
             parent: None,
             index: 0,
             offset: 0.into(),
-            green: unsafe { ptr::NonNull::new_unchecked(Box::into_raw(Box::new(green))) },
+            green: GreenNode::into_raw(green),
         };
         SyntaxNode::new(data)
     }
@@ -174,9 +173,16 @@ impl SyntaxNode {
             parent: Some(parent),
             index,
             offset,
-            green: ptr::NonNull::from(green),
+            green: {
+                let green: &GreenNodeData = &*green;
+                ptr::NonNull::from(green)
+            },
         };
         SyntaxNode::new(data)
+    }
+
+    fn key(&self) -> (ptr::NonNull<GreenNodeData>, TextSize) {
+        (self.data().green, self.data().offset)
     }
 
     #[inline]
@@ -214,7 +220,7 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn green(&self) -> &GreenNode {
+    pub fn green(&self) -> &GreenNodeData {
         unsafe { self.data().green.as_ref() }
     }
 
@@ -718,7 +724,7 @@ impl Iterator for SyntaxElementChildren {
     }
 }
 
-impl GreenNode {
+impl GreenNodeData {
     fn children_from(
         &self,
         start_index: usize,

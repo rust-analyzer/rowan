@@ -140,3 +140,10 @@ impl<T> Iterator for TokenAtOffset<T> {
 }
 
 impl<T> ExactSizeIterator for TokenAtOffset<T> {}
+
+macro_rules! _static_assert {
+    ($expr:expr) => {
+        const _: i32 = 0 / $expr as i32;
+    };
+}
+pub(crate) use _static_assert as static_assert;
