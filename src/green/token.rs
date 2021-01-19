@@ -1,8 +1,6 @@
 use std::fmt;
 
-use triomphe::Arc;
-
-use crate::{green::SyntaxKind, SmolStr, TextSize};
+use crate::{arc::Arc, green::SyntaxKind, SmolStr, TextSize};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct GreenTokenData {

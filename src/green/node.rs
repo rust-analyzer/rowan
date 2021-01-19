@@ -1,9 +1,13 @@
-use std::{borrow::Borrow, fmt, iter::FusedIterator, mem, ops, ptr, slice};
-
-use mem::ManuallyDrop;
-use triomphe::{Arc, HeaderSlice, HeaderWithLength, ThinArc};
+use std::{
+    borrow::Borrow,
+    fmt,
+    iter::FusedIterator,
+    mem::{self, ManuallyDrop},
+    ops, ptr, slice,
+};
 
 use crate::{
+    arc::{self, Arc, HeaderSlice, ThinArc},
     green::{GreenElement, GreenElementRef, SyntaxKind},
     utility_types::static_assert,
     GreenToken, NodeOrToken, TextRange, TextSize,
@@ -23,8 +27,8 @@ enum GreenChild {
 #[cfg(target_pointer_width = "64")]
 static_assert!(mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2);
 
-type Repr = HeaderSlice<HeaderWithLength<GreenNodeHead>, [GreenChild]>;
-type ReprThin = HeaderSlice<HeaderWithLength<GreenNodeHead>, [GreenChild; 0]>;
+type Repr = HeaderSlice<GreenNodeHead, [GreenChild]>;
+type ReprThin = HeaderSlice<GreenNodeHead, [GreenChild; 0]>;
 #[repr(transparent)]
 pub struct GreenNodeData {
     data: ReprThin,
@@ -78,17 +82,12 @@ impl fmt::Debug for GreenNode {
 impl GreenNodeData {
     #[inline]
     fn repr(&self) -> &Repr {
-        unsafe {
-            let len = self.data.header.length;
-            let fake_slice: *const [GreenChild] =
-                slice::from_raw_parts(&self.data as *const ReprThin as *const GreenChild, len);
-            &*(fake_slice as *const _)
-        }
+        unsafe { &*arc::thin_to_thick_ref(&self.data as *const _ as *mut _) }
     }
 
     #[inline]
     fn header(&self) -> &GreenNodeHead {
-        &self.data.header.header
+        &self.data.header
     }
 
     #[inline]
@@ -182,7 +181,7 @@ impl GreenNode {
         // `children` twice.
         let data = {
             let mut data = Arc::from_thin(data);
-            Arc::get_mut(&mut data).unwrap().header.header.text_len = text_len;
+            Arc::get_mut(&mut data).unwrap().header.text_len = text_len;
             Arc::into_thin(data)
         };
 
