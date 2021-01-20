@@ -11,8 +11,13 @@ use crate::{
     TextSize,
 };
 
-type Repr = HeaderSlice<SyntaxKind, [u8]>;
-type ReprThin = HeaderSlice<SyntaxKind, [u8; 0]>;
+#[derive(PartialEq, Eq, Hash)]
+struct GreenTokenHead {
+    kind: SyntaxKind,
+}
+
+type Repr = HeaderSlice<GreenTokenHead, [u8]>;
+type ReprThin = HeaderSlice<GreenTokenHead, [u8; 0]>;
 #[repr(transparent)]
 pub struct GreenTokenData {
     data: ReprThin,
@@ -22,7 +27,7 @@ pub struct GreenTokenData {
 #[derive(PartialEq, Eq, Hash, Clone)]
 #[repr(transparent)]
 pub struct GreenToken {
-    ptr: ThinArc<SyntaxKind, u8>,
+    ptr: ThinArc<GreenTokenHead, u8>,
 }
 
 impl ToOwned for GreenTokenData {
@@ -65,7 +70,7 @@ impl GreenTokenData {
     /// Kind of this Token.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
-        self.data.header
+        self.data.header.kind
     }
 
     /// Text of this Token.
@@ -85,14 +90,15 @@ impl GreenToken {
     /// Creates new Token.
     #[inline]
     pub fn new(kind: SyntaxKind, text: &str) -> GreenToken {
-        let ptr = ThinArc::from_header_and_iter(kind, text.bytes());
+        let head = GreenTokenHead { kind };
+        let ptr = ThinArc::from_header_and_iter(head, text.bytes());
         GreenToken { ptr }
     }
 
     #[inline]
     pub(crate) unsafe fn from_raw(ptr: ptr::NonNull<GreenTokenData>) -> GreenToken {
         let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
-        let arc = mem::transmute::<Arc<ReprThin>, ThinArc<SyntaxKind, u8>>(arc);
+        let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenTokenHead, u8>>(arc);
         GreenToken { ptr: arc }
     }
 }
