@@ -6,7 +6,7 @@ use rustc_hash::FxHasher;
 use crate::{
     cow_mut::CowMut,
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
-    NodeOrToken, SmolStr,
+    NodeOrToken,
 };
 
 type HashMap<K, V> = hashbrown::HashMap<K, V, BuildHasherDefault<FxHasher>>;
@@ -75,17 +75,17 @@ impl NodeCache {
         (hash, node)
     }
 
-    fn token(&mut self, kind: SyntaxKind, text: SmolStr) -> (u64, GreenToken) {
+    fn token(&mut self, kind: SyntaxKind, text: &str) -> (u64, GreenToken) {
         let hash = {
             let mut h = FxHasher::default();
             kind.hash(&mut h);
-            text.as_str().hash(&mut h);
+            text.hash(&mut h);
             h.finish()
         };
         let entry = self
             .tokens
             .raw_entry_mut()
-            .from_hash(hash, |token| token.kind() == kind && token.text() == &text);
+            .from_hash(hash, |token| token.kind() == kind && token.text() == text);
 
         let token = match entry {
             RawEntryMut::Occupied(entry) => entry.key().clone(),
@@ -129,7 +129,7 @@ impl GreenNodeBuilder<'_> {
 
     /// Adds new token to the current branch.
     #[inline]
-    pub fn token(&mut self, kind: SyntaxKind, text: SmolStr) {
+    pub fn token(&mut self, kind: SyntaxKind, text: &str) {
         let (hash, token) = self.cache.token(kind, text);
         self.children.push((hash, token.into()));
     }

@@ -13,7 +13,7 @@
 //!     - "+" Token(Add)
 //!     - "4" Token(Number)
 
-use rowan::{GreenNodeBuilder, NodeOrToken, SmolStr};
+use rowan::{GreenNodeBuilder, NodeOrToken};
 use std::iter::Peekable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,11 +59,11 @@ type SyntaxToken = rowan::SyntaxToken<Lang>;
 #[allow(unused)]
 type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
-struct Parser<I: Iterator<Item = (SyntaxKind, SmolStr)>> {
+struct Parser<I: Iterator<Item = (SyntaxKind, String)>> {
     builder: GreenNodeBuilder<'static>,
     iter: Peekable<I>,
 }
-impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
+impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     fn peek(&mut self) -> Option<SyntaxKind> {
         while self.iter.peek().map(|&(t, _)| t == WHITESPACE).unwrap_or(false) {
             self.bump();
@@ -72,7 +72,7 @@ impl<I: Iterator<Item = (SyntaxKind, SmolStr)>> Parser<I> {
     }
     fn bump(&mut self) {
         if let Some((token, string)) = self.iter.next() {
-            self.builder.token(token.into(), string);
+            self.builder.token(token.into(), string.as_str());
         }
     }
     fn parse_val(&mut self) {

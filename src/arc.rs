@@ -47,14 +47,6 @@ unsafe impl<T: ?Sized + Sync + Send> Send for Arc<T> {}
 unsafe impl<T: ?Sized + Sync + Send> Sync for Arc<T> {}
 
 impl<T> Arc<T> {
-    /// Construct an `Arc<T>`
-    #[inline]
-    pub(crate) fn new(data: T) -> Self {
-        let ptr = Box::into_raw(Box::new(ArcInner { count: atomic::AtomicUsize::new(1), data }));
-
-        unsafe { Arc { p: ptr::NonNull::new_unchecked(ptr), phantom: PhantomData } }
-    }
-
     /// Reconstruct the Arc<T> from a raw pointer obtained from into_raw()
     ///
     /// Note: This raw pointer will be offset in the allocation and must be preceded
