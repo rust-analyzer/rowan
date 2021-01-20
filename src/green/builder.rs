@@ -6,7 +6,7 @@ use rustc_hash::FxHasher;
 use crate::{
     cow_mut::CowMut,
     green::{GreenElement, GreenNode, GreenToken, SyntaxKind},
-    NodeOrToken, 
+    NodeOrToken,
 };
 
 type HashMap<K, V> = hashbrown::HashMap<K, V, BuildHasherDefault<FxHasher>>;
