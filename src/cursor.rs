@@ -5,6 +5,8 @@ use std::{
     iter, mem, ptr,
 };
 
+use countme::Count;
+
 use crate::{
     green::{GreenElementRef, GreenNodeData, SyntaxKind},
     Children, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize,
@@ -142,6 +144,7 @@ struct NodeData {
     index: u32,
     offset: TextSize,
     green: ptr::NonNull<GreenNodeData>,
+    _c: Count<SyntaxNode>,
 }
 
 impl SyntaxNode {
@@ -156,6 +159,7 @@ impl SyntaxNode {
             index: 0,
             offset: 0.into(),
             green: GreenNode::into_raw(green),
+            _c: Count::new(),
         };
         SyntaxNode::new(data)
     }
@@ -177,6 +181,7 @@ impl SyntaxNode {
                 let green: &GreenNodeData = &*green;
                 ptr::NonNull::from(green)
             },
+            _c: Count::new(),
         };
         SyntaxNode::new(data)
     }

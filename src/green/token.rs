@@ -5,6 +5,8 @@ use std::{
     ops, ptr,
 };
 
+use countme::Count;
+
 use crate::{
     arc::{Arc, HeaderSlice, ThinArc},
     green::SyntaxKind,
@@ -14,6 +16,7 @@ use crate::{
 #[derive(PartialEq, Eq, Hash)]
 struct GreenTokenHead {
     kind: SyntaxKind,
+    _c: Count<GreenToken>,
 }
 
 type Repr = HeaderSlice<GreenTokenHead, [u8]>;
@@ -90,7 +93,7 @@ impl GreenToken {
     /// Creates new Token.
     #[inline]
     pub fn new(kind: SyntaxKind, text: &str) -> GreenToken {
-        let head = GreenTokenHead { kind };
+        let head = GreenTokenHead { kind, _c: Count::new() };
         let ptr = ThinArc::from_header_and_iter(head, text.bytes());
         GreenToken { ptr }
     }
