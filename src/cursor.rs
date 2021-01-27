@@ -163,18 +163,22 @@ impl NodeData {
         offset: TextSize,
         green: &GreenNodeData,
     ) -> NodeData {
-        let children = green
+        let n = green
             .children()
-            .enumerate()
-            .filter_map(|(i, ch)| match ch {
-                NodeOrToken::Node(_) => Some(Cell::new(1 | (i << 1))),
-                NodeOrToken::Token(_) => None,
+            .filter(|it| match it {
+                NodeOrToken::Node(_) => true,
+                NodeOrToken::Token(_) => false,
             })
-            .collect();
+            .count();
+        let mut buf = Vec::with_capacity(n);
+        buf.extend(green.children().enumerate().filter_map(|(i, ch)| match ch {
+            NodeOrToken::Node(_) => Some(Cell::new(1 | (i << 1))),
+            NodeOrToken::Token(_) => None,
+        }));
         NodeData {
             rc: Cell::new(0),
             parent: parent.map(ptr::NonNull::from),
-            children,
+            children: buf.into_boxed_slice(),
             gindex,
             index,
             offset,
@@ -225,7 +229,6 @@ impl SyntaxNode {
     pub fn new_root(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let data = NodeData::new(None, 0, 0, 0.into(), unsafe { green.as_ref() });
-        data.inc_rc();
         let ptr = Box::into_raw(Box::new(data));
         unsafe { SyntaxNode::new(&*ptr) }
     }
