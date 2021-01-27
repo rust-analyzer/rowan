@@ -111,6 +111,10 @@ impl GreenNodeData {
         Children { inner: self.slice().iter() }
     }
 
+    pub(crate) fn nth_child(&self, idx: usize) -> Option<(TextSize, GreenElementRef)> {
+        self.slice().get(idx).map(|it| (it.offset_in_parent(), it.as_ref()))
+    }
+
     pub(crate) fn child_at_range(
         &self,
         range: TextRange,
