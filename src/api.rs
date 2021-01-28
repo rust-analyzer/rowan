@@ -149,15 +149,13 @@ impl<L: Language> SyntaxNode<L> {
     pub fn first_child(&self) -> Option<SyntaxNode<L>> {
         self.raw.first_child().map(Self::from)
     }
-
-    pub fn first_child_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.first_child_or_token().map(NodeOrToken::from)
-    }
-
     pub fn last_child(&self) -> Option<SyntaxNode<L>> {
         self.raw.last_child().map(Self::from)
     }
 
+    pub fn first_child_or_token(&self) -> Option<SyntaxElement<L>> {
+        self.raw.first_child_or_token().map(NodeOrToken::from)
+    }
     pub fn last_child_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.last_child_or_token().map(NodeOrToken::from)
     }
@@ -165,15 +163,13 @@ impl<L: Language> SyntaxNode<L> {
     pub fn next_sibling(&self) -> Option<SyntaxNode<L>> {
         self.raw.next_sibling().map(Self::from)
     }
-
-    pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
-        self.raw.next_sibling_or_token().map(NodeOrToken::from)
-    }
-
     pub fn prev_sibling(&self) -> Option<SyntaxNode<L>> {
         self.raw.prev_sibling().map(Self::from)
     }
 
+    pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
+        self.raw.next_sibling_or_token().map(NodeOrToken::from)
+    }
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
@@ -182,7 +178,6 @@ impl<L: Language> SyntaxNode<L> {
     pub fn first_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.first_token().map(SyntaxToken::from)
     }
-
     /// Return the rightmost token in the subtree of this node.
     pub fn last_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.last_token().map(SyntaxToken::from)
@@ -273,7 +268,6 @@ impl<L: Language> SyntaxToken<L> {
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.next_sibling_or_token().map(NodeOrToken::from)
     }
-
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
@@ -289,7 +283,6 @@ impl<L: Language> SyntaxToken<L> {
     pub fn next_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.next_token().map(SyntaxToken::from)
     }
-
     /// Previous token in the tree (i.e, not necessary a sibling).
     pub fn prev_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.prev_token().map(SyntaxToken::from)
@@ -331,7 +324,6 @@ impl<L: Language> SyntaxElement<L> {
             NodeOrToken::Token(it) => it.next_sibling_or_token(),
         }
     }
-
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         match self {
             NodeOrToken::Node(it) => it.prev_sibling_or_token(),
