@@ -23,9 +23,9 @@ pub(super) struct GreenNodeHead {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum GreenChild {
-    Node { offset_in_parent: TextSize, node: GreenNode },
-    Token { offset_in_parent: TextSize, token: GreenToken },
+pub(crate) enum GreenChild {
+    Node { rel_offset: TextSize, node: GreenNode },
+    Token { rel_offset: TextSize, token: GreenToken },
 }
 #[cfg(target_pointer_width = "64")]
 static_assert!(mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2);
@@ -108,24 +108,23 @@ impl GreenNodeData {
     /// Children of this node.
     #[inline]
     pub fn children(&self) -> Children<'_> {
-        Children { inner: self.slice().iter() }
+        Children { raw: self.slice().iter() }
     }
 
     pub(crate) fn child_at_range(
         &self,
-        range: TextRange,
+        rel_range: TextRange,
     ) -> Option<(usize, TextSize, GreenElementRef<'_>)> {
         let idx = self
             .slice()
             .binary_search_by(|it| {
-                let child_range = it.range_in_parent();
-                TextRange::ordering(child_range, range)
+                let child_range = it.rel_range();
+                TextRange::ordering(child_range, rel_range)
             })
             // XXX: this handles empty ranges
             .unwrap_or_else(|it| it.saturating_sub(1));
-        let child =
-            &self.slice().get(idx).filter(|it| it.range_in_parent().contains_range(range))?;
-        Some((idx, child.offset_in_parent(), child.as_ref()))
+        let child = &self.slice().get(idx).filter(|it| it.rel_range().contains_range(rel_range))?;
+        Some((idx, child.rel_offset(), child.as_ref()))
     }
 
     pub(crate) fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNode {
@@ -164,11 +163,11 @@ impl GreenNode {
     {
         let mut text_len: TextSize = 0.into();
         let children = children.into_iter().map(|el| {
-            let offset_in_parent = text_len;
+            let rel_offset = text_len;
             text_len += el.text_len();
             match el {
-                NodeOrToken::Node(node) => GreenChild::Node { offset_in_parent, node },
-                NodeOrToken::Token(token) => GreenChild::Token { offset_in_parent, token },
+                NodeOrToken::Node(node) => GreenChild::Node { rel_offset, node },
+                NodeOrToken::Token(token) => GreenChild::Token { rel_offset, token },
             }
         });
 
@@ -205,36 +204,37 @@ impl GreenNode {
 
 impl GreenChild {
     #[inline]
-    fn as_ref(&self) -> GreenElementRef {
+    pub(crate) fn as_ref(&self) -> GreenElementRef {
         match self {
             GreenChild::Node { node, .. } => NodeOrToken::Node(node),
             GreenChild::Token { token, .. } => NodeOrToken::Token(token),
         }
     }
     #[inline]
-    fn offset_in_parent(&self) -> TextSize {
+    pub(crate) fn rel_offset(&self) -> TextSize {
         match self {
-            GreenChild::Node { offset_in_parent, .. }
-            | GreenChild::Token { offset_in_parent, .. } => *offset_in_parent,
+            GreenChild::Node { rel_offset, .. } | GreenChild::Token { rel_offset, .. } => {
+                *rel_offset
+            }
         }
     }
     #[inline]
-    fn range_in_parent(&self) -> TextRange {
+    fn rel_range(&self) -> TextRange {
         let len = self.as_ref().text_len();
-        TextRange::at(self.offset_in_parent(), len)
+        TextRange::at(self.rel_offset(), len)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Children<'a> {
-    inner: slice::Iter<'a, GreenChild>,
+    pub(crate) raw: slice::Iter<'a, GreenChild>,
 }
 
 // NB: forward everything stable that iter::Slice specializes as of Rust 1.39.0
 impl ExactSizeIterator for Children<'_> {
     #[inline(always)]
     fn len(&self) -> usize {
-        self.inner.len()
+        self.raw.len()
     }
 }
 
@@ -243,12 +243,12 @@ impl<'a> Iterator for Children<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<GreenElementRef<'a>> {
-        self.inner.next().map(GreenChild::as_ref)
+        self.raw.next().map(GreenChild::as_ref)
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+        self.raw.size_hint()
     }
 
     #[inline]
@@ -256,12 +256,12 @@ impl<'a> Iterator for Children<'a> {
     where
         Self: Sized,
     {
-        self.inner.count()
+        self.raw.count()
     }
 
     #[inline]
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        self.inner.nth(n).map(GreenChild::as_ref)
+        self.raw.nth(n).map(GreenChild::as_ref)
     }
 
     #[inline]
@@ -288,12 +288,12 @@ impl<'a> Iterator for Children<'a> {
 impl<'a> DoubleEndedIterator for Children<'a> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.inner.next_back().map(GreenChild::as_ref)
+        self.raw.next_back().map(GreenChild::as_ref)
     }
 
     #[inline]
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
-        self.inner.nth_back(n).map(GreenChild::as_ref)
+        self.raw.nth_back(n).map(GreenChild::as_ref)
     }
 
     #[inline]
