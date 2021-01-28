@@ -187,7 +187,7 @@ impl SyntaxNode {
     }
 
     fn key(&self) -> (ptr::NonNull<GreenNodeData>, TextSize) {
-        (self.data().green, self.data().offset)
+        (self.data().green, self.offset())
     }
 
     #[inline]
@@ -213,8 +213,13 @@ impl SyntaxNode {
     }
 
     #[inline]
+    fn offset(&self) -> TextSize {
+        self.data().offset
+    }
+
+    #[inline]
     pub fn text_range(&self) -> TextRange {
-        let offset = self.data().offset;
+        let offset = self.offset();
         let len = self.green().text_len();
         TextRange::at(offset, len)
     }
@@ -251,35 +256,20 @@ impl SyntaxNode {
 
     pub fn first_child(&self) -> Option<SyntaxNode> {
         self.green().find_child(0, |elem| elem.into_node()).map(|(index, rel_offset, green)| {
-            SyntaxNode::new_child(
-                green,
-                self.clone(),
-                index as u32,
-                self.data().offset + rel_offset,
-            )
+            SyntaxNode::new_child(green, self.clone(), index as u32, self.offset() + rel_offset)
         })
     }
 
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
         self.green().children().raw.next().map(|child| {
-            SyntaxElement::new(
-                child.as_ref(),
-                self.clone(),
-                0,
-                self.data().offset + child.offset_in_parent(),
-            )
+            SyntaxElement::new(child.as_ref(), self.clone(), 0, self.offset() + child.rel_offset())
         })
     }
 
     pub fn last_child(&self) -> Option<SyntaxNode> {
         self.green().rfind_child(self.green().children().len(), |elem| elem.into_node()).map(
             |(index, rel_offset, green)| {
-                SyntaxNode::new_child(
-                    green,
-                    self.clone(),
-                    index as u32,
-                    self.data().offset + rel_offset,
-                )
+                SyntaxNode::new_child(green, self.clone(), index as u32, self.offset() + rel_offset)
             },
         )
     }
@@ -290,7 +280,7 @@ impl SyntaxNode {
                 child.as_ref(),
                 self.clone(),
                 index as u32,
-                self.data().offset + child.offset_in_parent(),
+                self.offset() + child.rel_offset(),
             )
         })
     }
@@ -304,7 +294,7 @@ impl SyntaxNode {
                     green,
                     parent.clone(),
                     index as u32,
-                    parent.data().offset + rel_offset,
+                    parent.offset() + rel_offset,
                 )
             },
         )
@@ -319,7 +309,7 @@ impl SyntaxNode {
                     green,
                     parent.clone(),
                     index as u32,
-                    parent.data().offset + rel_offset,
+                    parent.offset() + rel_offset,
                 )
             },
         )
@@ -334,7 +324,7 @@ impl SyntaxNode {
                     green,
                     parent.clone(),
                     index as u32,
-                    parent.data().offset + rel_offset,
+                    parent.offset() + rel_offset,
                 )
             },
         )
@@ -349,7 +339,7 @@ impl SyntaxNode {
                     green,
                     parent.clone(),
                     index as u32,
-                    parent.data().offset + rel_offset,
+                    parent.offset() + rel_offset,
                 )
             },
         )
@@ -487,17 +477,10 @@ impl SyntaxNode {
     }
 
     pub fn child_or_token_at_range(&self, range: TextRange) -> Option<SyntaxElement> {
-        let start_offset = self.text_range().start();
-        let (index, offset, child) = self.green().child_at_range(range - start_offset)?;
-        let index = index as u32;
-        let offset = offset + start_offset;
-        let res: SyntaxElement = match child {
-            NodeOrToken::Node(node) => {
-                SyntaxNode::new_child(node.into(), self.clone(), index, offset).into()
-            }
-            NodeOrToken::Token(_token) => SyntaxToken::new(self.clone(), index, offset).into(),
-        };
-        Some(res)
+        let rel_range = range - self.offset();
+        self.green().child_at_range(rel_range).map(|(index, rel_offset, green)| {
+            SyntaxElement::new(green, self.clone(), index as u32, self.offset() + rel_offset)
+        })
     }
 }
 
@@ -561,7 +544,7 @@ impl SyntaxToken {
             element,
             self.parent(),
             index as u32,
-            self.parent.data().offset + rel_offset,
+            self.parent.offset() + rel_offset,
         ))
     }
 
@@ -573,7 +556,7 @@ impl SyntaxToken {
             element,
             self.parent(),
             index as u32,
-            self.parent.data().offset + rel_offset,
+            self.parent.offset() + rel_offset,
         ))
     }
 
@@ -705,7 +688,7 @@ struct Iter {
 
 impl Iter {
     fn new(parent: SyntaxNode) -> Iter {
-        let offset = parent.text_range().start();
+        let offset = parent.offset();
         let green: Children<'_> = parent.green().children();
         // Dirty lifetime laundering: the memory for the children is
         // indirectly owned by parent.
