@@ -127,28 +127,6 @@ impl GreenNodeData {
         Some((idx, child.rel_offset(), child.as_ref()))
     }
 
-    pub(crate) fn find_child<'a, T, F: Fn(GreenElementRef<'a>) -> Option<T>>(
-        &'a self,
-        from: usize,
-        pred: F,
-    ) -> Option<(usize, TextSize, T)> {
-        self.slice()[from..].iter().enumerate().find_map(|(i, child)| {
-            pred(child.as_ref()).map(|it| (i + from, child.rel_offset(), it))
-        })
-    }
-
-    pub(crate) fn rfind_child<'a, T, F: Fn(GreenElementRef<'a>) -> Option<T>>(
-        &'a self,
-        to: usize,
-        pred: F,
-    ) -> Option<(usize, TextSize, T)> {
-        self.slice()[..to]
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(i, child)| pred(child.as_ref()).map(|it| (i, child.rel_offset(), it)))
-    }
-
     pub(crate) fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNode {
         let mut replacement = Some(new_child);
         let children = self.children().enumerate().map(|(i, child)| {

@@ -255,16 +255,28 @@ impl SyntaxNode {
     }
 
     pub fn first_child(&self) -> Option<SyntaxNode> {
-        self.green().find_child(0, |elem| elem.into_node()).map(|(index, rel_offset, green)| {
-            SyntaxNode::new_child(green, self.clone(), index as u32, self.offset() + rel_offset)
+        self.green().children().raw.enumerate().find_map(|(index, child)| {
+            child.as_ref().into_node().map(|green| {
+                SyntaxNode::new_child(
+                    green,
+                    self.clone(),
+                    index as u32,
+                    self.offset() + child.rel_offset(),
+                )
+            })
         })
     }
     pub fn last_child(&self) -> Option<SyntaxNode> {
-        self.green().rfind_child(self.green().children().len(), |elem| elem.into_node()).map(
-            |(index, rel_offset, green)| {
-                SyntaxNode::new_child(green, self.clone(), index as u32, self.offset() + rel_offset)
-            },
-        )
+        self.green().children().raw.enumerate().rev().find_map(|(index, child)| {
+            child.as_ref().into_node().map(|green| {
+                SyntaxNode::new_child(
+                    green,
+                    self.clone(),
+                    index as u32,
+                    self.offset() + child.rel_offset(),
+                )
+            })
+        })
     }
 
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
@@ -285,60 +297,64 @@ impl SyntaxNode {
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
         let parent = self.data().parent.as_ref()?;
-
-        parent.green().find_child(self.data().index as usize + 1, |elem| elem.into_node()).map(
-            |(index, rel_offset, green)| {
+        let mut children = parent.green().children().raw.enumerate();
+        children.nth(self.data().index as usize);
+        children.find_map(|(index, child)| {
+            child.as_ref().into_node().map(|green| {
                 SyntaxNode::new_child(
                     green,
                     parent.clone(),
                     index as u32,
-                    parent.offset() + rel_offset,
+                    parent.offset() + child.rel_offset(),
                 )
-            },
-        )
+            })
+        })
     }
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
         let parent = self.data().parent.as_ref()?;
-
-        parent.green().rfind_child(self.data().index as usize, |elem| elem.into_node()).map(
-            |(index, rel_offset, green)| {
+        let mut children = parent.green().children().raw.enumerate().rev();
+        children.nth(parent.green().children().len() - self.data().index as usize);
+        children.find_map(|(index, child)| {
+            child.as_ref().into_node().map(|green| {
                 SyntaxNode::new_child(
                     green,
                     parent.clone(),
                     index as u32,
-                    parent.offset() + rel_offset,
+                    parent.offset() + child.rel_offset(),
                 )
-            },
-        )
+            })
+        })
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
         let parent = self.data().parent.as_ref()?;
-
-        parent.green().find_child(self.data().index as usize + 1, Some).map(
-            |(index, rel_offset, green)| {
+        parent.green().children().raw.enumerate().nth(self.data().index as usize + 1).map(
+            |(index, child)| {
                 SyntaxElement::new(
-                    green,
+                    child.as_ref(),
                     parent.clone(),
                     index as u32,
-                    parent.offset() + rel_offset,
+                    parent.offset() + child.rel_offset(),
                 )
             },
         )
     }
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
         let parent = self.data().parent.as_ref()?;
-
-        parent.green().rfind_child(self.data().index as usize, Some).map(
-            |(index, rel_offset, green)| {
+        parent
+            .green()
+            .children()
+            .raw
+            .enumerate()
+            .nth(self.data().index.checked_sub(1)? as usize)
+            .map(|(index, child)| {
                 SyntaxElement::new(
-                    green,
+                    child.as_ref(),
                     parent.clone(),
                     index as u32,
-                    parent.offset() + rel_offset,
+                    parent.offset() + child.rel_offset(),
                 )
-            },
-        )
+            })
     }
 
     pub fn first_token(&self) -> Option<SyntaxToken> {
@@ -532,26 +548,28 @@ impl SyntaxToken {
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let (index, rel_offset, element) =
-            self.parent.green().find_child((self.index + 1) as usize, Some)?;
-
-        Some(SyntaxElement::new(
-            element,
-            self.parent(),
-            index as u32,
-            self.parent.offset() + rel_offset,
-        ))
+        self.parent.green().children().raw.enumerate().nth((self.index + 1) as usize).map(
+            |(index, child)| {
+                SyntaxElement::new(
+                    child.as_ref(),
+                    self.parent(),
+                    index as u32,
+                    self.parent.offset() + child.rel_offset(),
+                )
+            },
+        )
     }
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let (index, rel_offset, element) =
-            self.parent.green().rfind_child(self.index as usize, Some)?;
-
-        Some(SyntaxElement::new(
-            element,
-            self.parent(),
-            index as u32,
-            self.parent.offset() + rel_offset,
-        ))
+        self.parent.green().children().raw.enumerate().nth(self.index.checked_sub(1)? as usize).map(
+            |(index, child)| {
+                SyntaxElement::new(
+                    child.as_ref(),
+                    self.parent(),
+                    index as u32,
+                    self.parent.offset() + child.rel_offset(),
+                )
+            },
+        )
     }
 
     pub fn siblings_with_tokens(
