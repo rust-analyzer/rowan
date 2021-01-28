@@ -250,77 +250,109 @@ impl SyntaxNode {
     }
 
     pub fn first_child(&self) -> Option<SyntaxNode> {
-        let (node, (index, offset)) =
-            filter_nodes(self.green().children_from(0, self.text_range().start())).next()?;
-
-        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
+        self.green().find_child(0, |elem| elem.into_node()).map(|(index, rel_offset, green)| {
+            SyntaxNode::new_child(
+                green,
+                self.clone(),
+                index as u32,
+                self.data().offset + rel_offset,
+            )
+        })
     }
 
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) =
-            self.green().children_from(0, self.text_range().start()).next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+        self.green().children().raw.next().map(|child| {
+            SyntaxElement::new(
+                child.as_ref(),
+                self.clone(),
+                0,
+                self.data().offset + child.offset_in_parent(),
+            )
+        })
     }
 
     pub fn last_child(&self) -> Option<SyntaxNode> {
-        let (node, (index, offset)) = filter_nodes(
-            self.green().children_to(self.green().children().len(), self.text_range().end()),
+        self.green().rfind_child(self.green().children().len(), |elem| elem.into_node()).map(
+            |(index, rel_offset, green)| {
+                SyntaxNode::new_child(
+                    green,
+                    self.clone(),
+                    index as u32,
+                    self.data().offset + rel_offset,
+                )
+            },
         )
-        .next()?;
-
-        Some(SyntaxNode::new_child(node, self.clone(), index as u32, offset))
     }
 
     pub fn last_child_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) = self
-            .green()
-            .children_to(self.green().children().len(), self.text_range().end())
-            .next()?;
-        Some(SyntaxElement::new(element, self.clone(), index as u32, offset))
+        self.green().children().raw.enumerate().next_back().map(|(index, child)| {
+            SyntaxElement::new(
+                child.as_ref(),
+                self.clone(),
+                index as u32,
+                self.data().offset + child.offset_in_parent(),
+            )
+        })
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
         let parent = self.data().parent.as_ref()?;
 
-        let (node, (index, offset)) = filter_nodes(
-            parent.green().children_from((self.data().index + 1) as usize, self.text_range().end()),
+        parent.green().find_child(self.data().index as usize + 1, |elem| elem.into_node()).map(
+            |(index, rel_offset, green)| {
+                SyntaxNode::new_child(
+                    green,
+                    parent.clone(),
+                    index as u32,
+                    parent.data().offset + rel_offset,
+                )
+            },
         )
-        .next()?;
-
-        Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset))
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
         let parent = self.data().parent.as_ref()?;
 
-        let (element, (index, offset)) = parent
-            .green()
-            .children_from((self.data().index + 1) as usize, self.text_range().end())
-            .next()?;
-
-        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
+        parent.green().find_child(self.data().index as usize + 1, Some).map(
+            |(index, rel_offset, green)| {
+                SyntaxElement::new(
+                    green,
+                    parent.clone(),
+                    index as u32,
+                    parent.data().offset + rel_offset,
+                )
+            },
+        )
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
         let parent = self.data().parent.as_ref()?;
 
-        let (node, (index, offset)) = filter_nodes(
-            parent.green().children_to(self.data().index as usize, self.text_range().start()),
+        parent.green().rfind_child(self.data().index as usize, |elem| elem.into_node()).map(
+            |(index, rel_offset, green)| {
+                SyntaxNode::new_child(
+                    green,
+                    parent.clone(),
+                    index as u32,
+                    parent.data().offset + rel_offset,
+                )
+            },
         )
-        .next()?;
-
-        Some(SyntaxNode::new_child(node, parent.clone(), index as u32, offset))
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
         let parent = self.data().parent.as_ref()?;
 
-        let (element, (index, offset)) = parent
-            .green()
-            .children_to(self.data().index as usize, self.text_range().start())
-            .next()?;
-
-        Some(SyntaxElement::new(element, parent.clone(), index as u32, offset))
+        parent.green().rfind_child(self.data().index as usize, Some).map(
+            |(index, rel_offset, green)| {
+                SyntaxElement::new(
+                    green,
+                    parent.clone(),
+                    index as u32,
+                    parent.data().offset + rel_offset,
+                )
+            },
+        )
     }
 
     pub fn first_token(&self) -> Option<SyntaxToken> {
@@ -522,24 +554,27 @@ impl SyntaxToken {
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let (element, (index, offset)) = self
-            .parent
-            .green()
-            .children_from((self.index + 1) as usize, self.text_range().end())
-            .next()?;
+        let (index, rel_offset, element) =
+            self.parent.green().find_child((self.index + 1) as usize, Some)?;
 
-        Some(SyntaxElement::new(element, self.parent(), index as u32, offset))
+        Some(SyntaxElement::new(
+            element,
+            self.parent(),
+            index as u32,
+            self.parent.data().offset + rel_offset,
+        ))
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
-        let parent = self.parent();
-        let (element, (index, offset)) = self
-            .parent
-            .green()
-            .children_to(self.index as usize, self.text_range().start())
-            .next()?;
+        let (index, rel_offset, element) =
+            self.parent.green().rfind_child(self.index as usize, Some)?;
 
-        Some(SyntaxElement::new(element, parent, index as u32, offset))
+        Some(SyntaxElement::new(
+            element,
+            self.parent(),
+            index as u32,
+            self.parent.data().offset + rel_offset,
+        ))
     }
 
     pub fn siblings_with_tokens(
@@ -727,40 +762,6 @@ impl Iterator for SyntaxElementChildren {
         let parent = self.0.parent.clone();
         self.0.next().map(|(green, index, offset)| SyntaxElement::new(green, parent, index, offset))
     }
-}
-
-impl GreenNodeData {
-    fn children_from(
-        &self,
-        start_index: usize,
-        mut offset: TextSize,
-    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextSize))> {
-        self.children().skip(start_index).enumerate().map(move |(index, element)| {
-            let element_offset = offset;
-            offset += element.text_len();
-            (element, (start_index + index, element_offset))
-        })
-    }
-
-    fn children_to(
-        &self,
-        end_index: usize,
-        mut offset: TextSize,
-    ) -> impl Iterator<Item = (GreenElementRef, (usize, TextSize))> {
-        self.children().take(end_index).rev().enumerate().map(move |(index, element)| {
-            offset -= element.text_len();
-            (element, (end_index - index - 1, offset))
-        })
-    }
-}
-
-fn filter_nodes<'a, I: Iterator<Item = (GreenElementRef<'a>, T)>, T>(
-    iter: I,
-) -> impl Iterator<Item = (&'a GreenNode, T)> {
-    iter.filter_map(|(element, data)| match element {
-        NodeOrToken::Node(it) => Some((it, data)),
-        NodeOrToken::Token(_) => None,
-    })
 }
 
 pub struct Preorder {
