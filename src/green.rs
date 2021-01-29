@@ -4,7 +4,8 @@ mod element;
 mod builder;
 
 use self::element::GreenElement;
-pub(crate) use self::element::GreenElementRef;
+
+pub(crate) use self::{element::GreenElementRef, node::GreenChild};
 
 pub use self::{
     builder::{Checkpoint, GreenNodeBuilder, NodeCache},
