@@ -2,15 +2,15 @@ use std::{
     cell::Cell,
     fmt,
     hash::{Hash, Hasher},
-    iter, mem, ptr,
+    iter, mem, ptr, slice,
 };
 
 use countme::Count;
 
 use crate::{
-    green::{GreenElementRef, GreenNodeData, SyntaxKind},
-    Children, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize,
-    TokenAtOffset, WalkEvent,
+    green::{GreenChild, GreenElementRef, GreenNodeData, SyntaxKind},
+    Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize, TokenAtOffset,
+    WalkEvent,
 };
 
 pub struct SyntaxNode {
@@ -690,29 +690,39 @@ impl SyntaxElement {
 #[derive(Clone, Debug)]
 struct Iter {
     parent: SyntaxNode,
-    green: Children<'static>,
-    offset: TextSize,
-    index: u32,
+    green: iter::Enumerate<slice::Iter<'static, GreenChild>>,
 }
 
 impl Iter {
     fn new(parent: SyntaxNode) -> Iter {
-        let offset = parent.offset();
-        let green: Children<'_> = parent.green().children();
+        let green = parent.green().children().raw.enumerate();
         // Dirty lifetime laundering: the memory for the children is
         // indirectly owned by parent.
-        let green: Children<'static> =
-            unsafe { mem::transmute::<Children<'_>, Children<'static>>(green) };
-        Iter { parent, green, offset, index: 0 }
+        let green = unsafe { mem::transmute(green) };
+        Iter { parent, green }
     }
-
-    fn next(&mut self) -> Option<(GreenElementRef, u32, TextSize)> {
-        self.green.next().map(|element| {
-            let offset = self.offset;
-            let index = self.index;
-            self.offset += element.text_len();
-            self.index += 1;
-            (element, index, offset)
+    fn next_node(&mut self) -> Option<SyntaxNode> {
+        let parent = &self.parent;
+        self.green.find_map(|(index, child)| {
+            child.as_ref().into_node().map(|green| {
+                SyntaxNode::new_child(
+                    green,
+                    parent.clone(),
+                    index as u32,
+                    parent.offset() + child.rel_offset(),
+                )
+            })
+        })
+    }
+    fn next_element(&mut self) -> Option<SyntaxElement> {
+        let parent = &self.parent;
+        self.green.next().map(|(index, child)| {
+            SyntaxElement::new(
+                child.as_ref(),
+                parent.clone(),
+                index as u32,
+                parent.offset() + child.rel_offset(),
+            )
         })
     }
 }
@@ -729,13 +739,7 @@ impl SyntaxNodeChildren {
 impl Iterator for SyntaxNodeChildren {
     type Item = SyntaxNode;
     fn next(&mut self) -> Option<Self::Item> {
-        let parent = self.0.parent.clone();
-        while let Some((element, index, offset)) = self.0.next() {
-            if let Some(node) = element.as_node() {
-                return Some(SyntaxNode::new_child(node, parent, index, offset));
-            }
-        }
-        None
+        self.0.next_node()
     }
 }
 
@@ -751,8 +755,7 @@ impl SyntaxElementChildren {
 impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<Self::Item> {
-        let parent = self.0.parent.clone();
-        self.0.next().map(|(green, index, offset)| SyntaxElement::new(green, parent, index, offset))
+        self.0.next_element()
     }
 }
 
