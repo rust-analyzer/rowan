@@ -26,6 +26,12 @@ pub struct GreenTokenData {
     data: ReprThin,
 }
 
+impl PartialEq for GreenTokenData {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind() == other.kind() && self.text() == other.text()
+    }
+}
+
 /// Leaf node in the immutable tree.
 #[derive(PartialEq, Eq, Hash, Clone)]
 #[repr(transparent)]
@@ -109,6 +115,12 @@ impl GreenToken {
         let head = GreenTokenHead { kind, _c: Count::new() };
         let ptr = ThinArc::from_header_and_iter(head, text.bytes());
         GreenToken { ptr }
+    }
+    #[inline]
+    pub(crate) fn into_raw(this: GreenToken) -> ptr::NonNull<GreenTokenData> {
+        let green = ManuallyDrop::new(this);
+        let green: &GreenTokenData = &*green;
+        ptr::NonNull::from(&*green)
     }
 
     #[inline]

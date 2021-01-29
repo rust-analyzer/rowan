@@ -57,7 +57,7 @@ impl NodeCache {
         let entry = self.nodes.raw_entry_mut().from_hash(hash, |node| {
             node.kind() == kind
                 && node.children().len() == children_ref.len()
-                && node.children().eq(children_ref.iter().map(|(_, it)| it.as_ref()))
+                && node.children().eq(children_ref.iter().map(|(_, it)| it.as_deref()))
         });
 
         let node = match entry {

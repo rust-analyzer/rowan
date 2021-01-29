@@ -37,6 +37,12 @@ pub struct GreenNodeData {
     data: ReprThin,
 }
 
+impl PartialEq for GreenNodeData {
+    fn eq(&self, other: &Self) -> bool {
+        self.header() == other.header() && self.slice() == other.slice()
+    }
+}
+
 /// Internal node in the immutable tree.
 /// It has other nodes and tokens as children.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -150,7 +156,7 @@ impl GreenNodeData {
             if i == index {
                 replacement.take().unwrap()
             } else {
-                child.cloned()
+                child.to_owned()
             }
         });
         GreenNode::new(self.kind(), children)
@@ -170,7 +176,7 @@ impl GreenNodeData {
         R: ops::RangeBounds<usize>,
         I: IntoIterator<Item = GreenElement>,
     {
-        let mut children: Vec<_> = self.children().map(|it| it.cloned()).collect();
+        let mut children: Vec<_> = self.children().map(|it| it.to_owned()).collect();
         children.splice(range, replace_with);
         GreenNode::new(self.kind(), children)
     }

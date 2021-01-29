@@ -1,3 +1,9 @@
+use std::{
+    fmt,
+    ops::{AddAssign, Deref},
+};
+use text_size::TextSize;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeOrToken<N, T> {
     Node(N),
@@ -32,20 +38,13 @@ impl<N, T> NodeOrToken<N, T> {
             NodeOrToken::Token(token) => Some(token),
         }
     }
-
-    pub(crate) fn as_ref(&self) -> NodeOrToken<&N, &T> {
-        match self {
-            NodeOrToken::Node(node) => NodeOrToken::Node(node),
-            NodeOrToken::Token(token) => NodeOrToken::Token(token),
-        }
-    }
 }
 
-impl<N: Clone, T: Clone> NodeOrToken<&N, &T> {
-    pub(crate) fn cloned(&self) -> NodeOrToken<N, T> {
-        match *self {
-            NodeOrToken::Node(node) => NodeOrToken::Node(node.clone()),
-            NodeOrToken::Token(token) => NodeOrToken::Token(token.clone()),
+impl<N: Deref, T: Deref> NodeOrToken<N, T> {
+    pub(crate) fn as_deref(&self) -> NodeOrToken<&N::Target, &T::Target> {
+        match self {
+            NodeOrToken::Node(node) => NodeOrToken::Node(&*node),
+            NodeOrToken::Token(token) => NodeOrToken::Token(&*token),
         }
     }
 }
@@ -155,6 +154,27 @@ macro_rules! _static_assert {
         const _: i32 = 0 / $expr as i32;
     };
 }
-use std::fmt;
 
 pub(crate) use _static_assert as static_assert;
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum Delta<T> {
+    Add(T),
+    Sub(T),
+}
+
+// This won't be coherent :-(
+// impl<T: AddAssign + SubAssign> AddAssign<Delta<T>> for T
+macro_rules! impls {
+    ($($ty:ident)*) => {$(
+        impl AddAssign<Delta<$ty>> for $ty {
+            fn add_assign(&mut self, rhs: Delta<$ty>) {
+                match rhs {
+                    Delta::Add(amt) => *self += amt,
+                    Delta::Sub(amt) => *self -= amt,
+                }
+            }
+        }
+    )*};
+}
+impls!(u32 TextSize);

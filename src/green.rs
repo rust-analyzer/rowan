@@ -10,7 +10,7 @@ pub(crate) use self::{element::GreenElementRef, node::GreenChild};
 pub use self::{
     builder::{Checkpoint, GreenNodeBuilder, NodeCache},
     node::{Children, GreenNode, GreenNodeData},
-    token::GreenToken,
+    token::{GreenToken, GreenTokenData},
 };
 
 /// SyntaxKind is a type tag for each token or node.

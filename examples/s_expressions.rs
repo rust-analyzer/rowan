@@ -321,7 +321,7 @@ impl Atom {
         self.text().parse().ok()
     }
     fn as_op(&self) -> Option<Op> {
-        let op = match self.text() {
+        let op = match self.text().as_str() {
             "+" => Op::Add,
             "-" => Op::Sub,
             "*" => Op::Mul,
@@ -330,9 +330,9 @@ impl Atom {
         };
         Some(op)
     }
-    fn text(&self) -> &str {
+    fn text(&self) -> String {
         match self.0.green().children().next() {
-            Some(rowan::NodeOrToken::Token(token)) => token.text(),
+            Some(rowan::NodeOrToken::Token(token)) => token.text().to_string(),
             _ => unreachable!(),
         }
     }

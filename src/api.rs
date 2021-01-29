@@ -1,7 +1,7 @@
-use std::{fmt, marker::PhantomData};
+use std::{fmt, iter, marker::PhantomData, ops::Range};
 
 use crate::{
-    cursor, green::GreenNodeData, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxKind,
+    cursor, green::GreenTokenData, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxKind,
     SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
 };
 
@@ -113,11 +113,15 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.text_range()
     }
 
+    pub fn index(&self) -> usize {
+        self.raw.index()
+    }
+
     pub fn text(&self) -> SyntaxText {
         self.raw.text()
     }
 
-    pub fn green(&self) -> &GreenNodeData {
+    pub fn green(&self) -> GreenNode {
         self.raw.green()
     }
 
@@ -222,6 +226,19 @@ impl<L: Language> SyntaxNode<L> {
     pub fn child_or_token_at_range(&self, range: TextRange) -> Option<SyntaxElement<L>> {
         self.raw.child_or_token_at_range(range).map(SyntaxElement::from)
     }
+
+    pub fn clone_for_update(&self) -> SyntaxNode<L> {
+        SyntaxNode::from(self.raw.clone_for_update())
+    }
+
+    pub fn detach(&self) {
+        self.raw.detach()
+    }
+
+    pub fn splice_children(&self, to_delete: Range<usize>, to_insert: Vec<SyntaxElement<L>>) {
+        let to_insert = to_insert.into_iter().map(cursor::SyntaxElement::from).collect::<Vec<_>>();
+        self.raw.splice_children(to_delete, to_insert)
+    }
 }
 
 impl<L: Language> SyntaxToken<L> {
@@ -240,16 +257,20 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.text_range()
     }
 
+    pub fn index(&self) -> usize {
+        self.raw.index()
+    }
+
     pub fn text(&self) -> &str {
         self.raw.text()
     }
 
-    pub fn green(&self) -> &GreenToken {
+    pub fn green(&self) -> &GreenTokenData {
         self.raw.green()
     }
 
-    pub fn parent(&self) -> SyntaxNode<L> {
-        SyntaxNode::from(self.raw.parent())
+    pub fn parent(&self) -> Option<SyntaxNode<L>> {
+        self.raw.parent().map(SyntaxNode::from)
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {
@@ -278,6 +299,10 @@ impl<L: Language> SyntaxToken<L> {
     pub fn prev_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.prev_token().map(SyntaxToken::from)
     }
+
+    pub fn detach(&self) {
+        self.raw.detach()
+    }
 }
 
 impl<L: Language> SyntaxElement<L> {
@@ -285,6 +310,13 @@ impl<L: Language> SyntaxElement<L> {
         match self {
             NodeOrToken::Node(it) => it.text_range(),
             NodeOrToken::Token(it) => it.text_range(),
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        match self {
+            NodeOrToken::Node(it) => it.index(),
+            NodeOrToken::Token(it) => it.index(),
         }
     }
 
@@ -298,15 +330,16 @@ impl<L: Language> SyntaxElement<L> {
     pub fn parent(&self) -> Option<SyntaxNode<L>> {
         match self {
             NodeOrToken::Node(it) => it.parent(),
-            NodeOrToken::Token(it) => Some(it.parent()),
+            NodeOrToken::Token(it) => it.parent(),
         }
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {
-        match self {
-            NodeOrToken::Node(it) => it.ancestors(),
-            NodeOrToken::Token(it) => it.parent().ancestors(),
-        }
+        let first = match self {
+            NodeOrToken::Node(it) => Some(it.clone()),
+            NodeOrToken::Token(it) => it.parent(),
+        };
+        iter::successors(first, SyntaxNode::parent)
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
@@ -319,6 +352,12 @@ impl<L: Language> SyntaxElement<L> {
         match self {
             NodeOrToken::Node(it) => it.prev_sibling_or_token(),
             NodeOrToken::Token(it) => it.prev_sibling_or_token(),
+        }
+    }
+    pub fn detach(&self) {
+        match self {
+            NodeOrToken::Node(it) => it.detach(),
+            NodeOrToken::Token(it) => it.detach(),
         }
     }
 }

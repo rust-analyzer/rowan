@@ -1,10 +1,12 @@
 use crate::{
     green::{GreenNode, GreenToken, SyntaxKind},
-    NodeOrToken, TextSize,
+    GreenNodeData, NodeOrToken, TextSize,
 };
 
+use super::GreenTokenData;
+
 pub(super) type GreenElement = NodeOrToken<GreenNode, GreenToken>;
-pub(crate) type GreenElementRef<'a> = NodeOrToken<&'a GreenNode, &'a GreenToken>;
+pub(crate) type GreenElementRef<'a> = NodeOrToken<&'a GreenNodeData, &'a GreenTokenData>;
 
 impl From<GreenNode> for GreenElement {
     #[inline]
@@ -34,17 +36,26 @@ impl<'a> From<&'a GreenToken> for GreenElementRef<'a> {
     }
 }
 
+impl GreenElementRef<'_> {
+    pub fn to_owned(self) -> GreenElement {
+        match self {
+            NodeOrToken::Node(it) => NodeOrToken::Node(it.to_owned()),
+            NodeOrToken::Token(it) => NodeOrToken::Token(it.to_owned()),
+        }
+    }
+}
+
 impl GreenElement {
     /// Returns kind of this element.
     #[inline]
     pub fn kind(&self) -> SyntaxKind {
-        self.as_ref().kind()
+        self.as_deref().kind()
     }
 
     /// Returns the length of the text covered by this element.
     #[inline]
     pub fn text_len(&self) -> TextSize {
-        self.as_ref().text_len()
+        self.as_deref().text_len()
     }
 }
 
