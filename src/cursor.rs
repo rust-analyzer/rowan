@@ -679,74 +679,44 @@ impl SyntaxElement {
 }
 
 #[derive(Clone, Debug)]
-struct Iter {
-    parent: SyntaxNode,
-    green: iter::Enumerate<slice::Iter<'static, GreenChild>>,
+pub struct SyntaxNodeChildren {
+    next: Option<SyntaxNode>,
 }
-
-impl Iter {
-    fn new(parent: SyntaxNode) -> Iter {
-        let green = parent.green().children().raw.enumerate();
-        // Dirty lifetime laundering: the memory for the children is
-        // indirectly owned by parent.
-        let green = unsafe { mem::transmute(green) };
-        Iter { parent, green }
-    }
-    fn next_node(&mut self) -> Option<SyntaxNode> {
-        let parent = &self.parent;
-        self.green.find_map(|(index, child)| {
-            child.as_ref().into_node().map(|green| {
-                SyntaxNode::new_child(
-                    green,
-                    parent.clone(),
-                    index as u32,
-                    parent.offset() + child.rel_offset(),
-                )
-            })
-        })
-    }
-    fn next_element(&mut self) -> Option<SyntaxElement> {
-        let parent = &self.parent;
-        self.green.next().map(|(index, child)| {
-            SyntaxElement::new(
-                child.as_ref(),
-                parent.clone(),
-                index as u32,
-                parent.offset() + child.rel_offset(),
-            )
-        })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SyntaxNodeChildren(Iter);
 
 impl SyntaxNodeChildren {
     fn new(parent: SyntaxNode) -> SyntaxNodeChildren {
-        SyntaxNodeChildren(Iter::new(parent))
+        SyntaxNodeChildren { next: parent.first_child() }
     }
 }
 
 impl Iterator for SyntaxNodeChildren {
     type Item = SyntaxNode;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next_node()
+    fn next(&mut self) -> Option<SyntaxNode> {
+        self.next.take().map(|next| {
+            self.next = next.next_sibling();
+            next
+        })
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct SyntaxElementChildren(Iter);
+pub struct SyntaxElementChildren {
+    next: Option<SyntaxElement>,
+}
 
 impl SyntaxElementChildren {
     fn new(parent: SyntaxNode) -> SyntaxElementChildren {
-        SyntaxElementChildren(Iter::new(parent))
+        SyntaxElementChildren { next: parent.first_child_or_token() }
     }
 }
 
 impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next_element()
+    fn next(&mut self) -> Option<SyntaxElement> {
+        self.next.take().map(|next| {
+            self.next = next.next_sibling_or_token();
+            next
+        })
     }
 }
 
