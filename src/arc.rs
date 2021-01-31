@@ -6,7 +6,7 @@ use std::{
     marker::PhantomData,
     mem::{self, ManuallyDrop},
     ops::Deref,
-    ptr, slice,
+    ptr,
     sync::atomic::{
         self,
         Ordering::{Acquire, Relaxed, Release},
@@ -259,7 +259,8 @@ impl<H, T> Deref for HeaderSlice<H, [T; 0]> {
     fn deref(&self) -> &Self::Target {
         unsafe {
             let len = self.length;
-            let fake_slice: *const [T] = slice::from_raw_parts(self as *const _ as *const T, len);
+            let fake_slice: *const [T] =
+                ptr::slice_from_raw_parts(self as *const _ as *const T, len);
             &*(fake_slice as *const HeaderSlice<H, [T]>)
         }
     }
@@ -294,7 +295,7 @@ fn thin_to_thick<H, T>(
     thin: *mut ArcInner<HeaderSlice<H, [T; 0]>>,
 ) -> *mut ArcInner<HeaderSlice<H, [T]>> {
     let len = unsafe { (*thin).data.length };
-    let fake_slice: *mut [T] = unsafe { slice::from_raw_parts_mut(thin as *mut T, len) };
+    let fake_slice: *mut [T] = ptr::slice_from_raw_parts_mut(thin as *mut T, len);
     // Transplants metadata.
     fake_slice as *mut ArcInner<HeaderSlice<H, [T]>>
 }
