@@ -6,7 +6,7 @@ use std::{
     marker::PhantomData,
     mem::{self, ManuallyDrop},
     ops::Deref,
-    ptr, slice,
+    ptr,
     sync::atomic::{
         self,
         Ordering::{Acquire, Relaxed, Release},
@@ -259,7 +259,8 @@ impl<H, T> Deref for HeaderSlice<H, [T; 0]> {
     fn deref(&self) -> &Self::Target {
         unsafe {
             let len = self.length;
-            let fake_slice: *const [T] = slice::from_raw_parts(self as *const _ as *const T, len);
+            let fake_slice: *const [T] =
+                ptr::slice_from_raw_parts(self as *const _ as *const T, len);
             &*(fake_slice as *const HeaderSlice<H, [T]>)
         }
     }
