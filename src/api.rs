@@ -94,15 +94,6 @@ impl<L: Language> From<SyntaxToken<L>> for SyntaxElement<L> {
     }
 }
 
-impl<L: Language> fmt::Display for SyntaxElement<L> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeOrToken::Node(it) => fmt::Display::fmt(it, f),
-            NodeOrToken::Token(it) => fmt::Display::fmt(it, f),
-        }
-    }
-}
-
 impl<L: Language> SyntaxNode<L> {
     pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))

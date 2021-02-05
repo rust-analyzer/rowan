@@ -69,6 +69,19 @@ impl fmt::Debug for GreenToken {
     }
 }
 
+impl fmt::Display for GreenToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let data: &GreenTokenData = &*self;
+        fmt::Display::fmt(data, f)
+    }
+}
+
+impl fmt::Display for GreenTokenData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.text())
+    }
+}
+
 impl GreenTokenData {
     /// Kind of this Token.
     #[inline]

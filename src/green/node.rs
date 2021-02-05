@@ -82,6 +82,22 @@ impl fmt::Debug for GreenNode {
     }
 }
 
+impl fmt::Display for GreenNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let data: &GreenNodeData = &*self;
+        fmt::Display::fmt(data, f)
+    }
+}
+
+impl fmt::Display for GreenNodeData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for child in self.children() {
+            write!(f, "{}", child)?;
+        }
+        Ok(())
+    }
+}
+
 impl GreenNodeData {
     #[inline]
     fn header(&self) -> &GreenNodeHead {

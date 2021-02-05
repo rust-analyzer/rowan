@@ -50,6 +50,15 @@ impl<N: Clone, T: Clone> NodeOrToken<&N, &T> {
     }
 }
 
+impl<N: fmt::Display, T: fmt::Display> fmt::Display for NodeOrToken<N, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeOrToken::Node(node) => fmt::Display::fmt(node, f),
+            NodeOrToken::Token(token) => fmt::Display::fmt(token, f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Direction {
     Next,
@@ -146,4 +155,6 @@ macro_rules! _static_assert {
         const _: i32 = 0 / $expr as i32;
     };
 }
+use std::fmt;
+
 pub(crate) use _static_assert as static_assert;
