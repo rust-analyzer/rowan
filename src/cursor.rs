@@ -129,15 +129,6 @@ impl From<SyntaxToken> for SyntaxElement {
     }
 }
 
-impl fmt::Display for SyntaxElement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeOrToken::Node(it) => fmt::Display::fmt(it, f),
-            NodeOrToken::Token(it) => fmt::Display::fmt(it, f),
-        }
-    }
-}
-
 struct NodeData {
     rc: Cell<u32>,
     parent: Option<SyntaxNode>,
