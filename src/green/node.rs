@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     fmt,
-    iter::FusedIterator,
+    iter::{self, FusedIterator},
     mem::{self, ManuallyDrop},
     ops, ptr, slice,
 };
@@ -143,15 +143,35 @@ impl GreenNodeData {
         Some((idx, child.rel_offset(), child.as_ref()))
     }
 
-    pub(crate) fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNode {
+    #[must_use]
+    pub fn replace_child(&self, index: usize, new_child: GreenElement) -> GreenNode {
         let mut replacement = Some(new_child);
         let children = self.children().enumerate().map(|(i, child)| {
-            if i == idx {
+            if i == index {
                 replacement.take().unwrap()
             } else {
                 child.cloned()
             }
         });
+        GreenNode::new(self.kind(), children)
+    }
+    #[must_use]
+    pub fn insert_child(&self, index: usize, new_child: GreenElement) -> GreenNode {
+        // https://github.com/rust-lang/rust/issues/34433
+        self.splice_children(index..index, iter::once(new_child))
+    }
+    #[must_use]
+    pub fn remove_child(&self, index: usize) -> GreenNode {
+        self.splice_children(index..=index, iter::empty())
+    }
+    #[must_use]
+    pub fn splice_children<R, I>(&self, range: R, replace_with: I) -> GreenNode
+    where
+        R: ops::RangeBounds<usize>,
+        I: IntoIterator<Item = GreenElement>,
+    {
+        let mut children: Vec<_> = self.children().map(|it| it.cloned()).collect();
+        children.splice(range, replace_with);
         GreenNode::new(self.kind(), children)
     }
 }
