@@ -237,6 +237,21 @@ impl NodeData {
             let mut res = Box::into_raw(Box::new(res));
             if mutable {
                 if let Err(node) = sll::init((*res).parent().map(|it| &it.first), &*res) {
+                    if cfg!(debug_assertions) {
+                        assert_eq!((*node).index(), (*res).index());
+                        match ((*node).green(), (*res).green()) {
+                            (NodeOrToken::Node(lhs), NodeOrToken::Node(rhs)) => {
+                                assert!(ptr::eq(lhs, rhs))
+                            }
+                            (NodeOrToken::Token(lhs), NodeOrToken::Token(rhs)) => {
+                                assert!(ptr::eq(lhs, rhs))
+                            }
+                            it => {
+                                panic!("node/token confusion: {:?}", it)
+                            }
+                        }
+                    }
+
                     Box::from_raw(res);
                     res = node as *mut _;
                     (*res).inc_rc();
@@ -855,7 +870,11 @@ impl SyntaxToken {
         match self.data().green().as_token() {
             Some(it) => it.text(),
             None => {
-                debug_assert!(false);
+                debug_assert!(
+                    false,
+                    "corrupted tree: a node thinks it is a token: {:?}",
+                    self.data().green().as_node().unwrap().to_string()
+                );
                 ""
             }
         }
