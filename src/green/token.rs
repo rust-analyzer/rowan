@@ -9,7 +9,7 @@ use countme::Count;
 
 use crate::{
     arc::{Arc, HeaderSlice, ThinArc},
-    green::SyntaxKind,
+    green::{SyntaxKind, TokenText},
     TextSize,
 };
 
@@ -101,6 +101,12 @@ impl GreenTokenData {
         unsafe { std::str::from_utf8_unchecked(self.data.slice()) }
     }
 
+    /// An owned text of this Token.
+    #[inline]
+    pub fn token_text(&self) -> TokenText {
+        TokenText::new(self)
+    }
+
     /// Returns the length of the text covered by this token.
     #[inline]
     pub fn text_len(&self) -> TextSize {
@@ -128,6 +134,20 @@ impl GreenToken {
         let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
         let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenTokenHead, u8>>(arc);
         GreenToken { ptr: arc }
+    }
+
+    /// ### Safety:
+    ///  - raw slice must come from leaked GreenToken from text() method
+    #[inline]
+    pub(crate) unsafe fn from_raw_token_text(raw: ptr::NonNull<str>) -> GreenToken {
+        let slice_ptr = raw.as_ptr() as *mut [u8];
+        let ptr = ThinArc::from_raw_slice(slice_ptr);
+        GreenToken { ptr }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn strong_count(&self) -> usize {
+        self.ptr.strong_count()
     }
 }
 

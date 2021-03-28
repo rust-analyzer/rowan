@@ -2,6 +2,7 @@ mod node;
 mod token;
 mod element;
 mod builder;
+mod token_text;
 
 use self::element::GreenElement;
 
@@ -11,6 +12,7 @@ pub use self::{
     builder::{Checkpoint, GreenNodeBuilder, NodeCache},
     node::{Children, GreenNode, GreenNodeData},
     token::{GreenToken, GreenTokenData},
+    token_text::TokenText,
 };
 
 /// SyntaxKind is a type tag for each token or node.

@@ -395,6 +395,26 @@ impl<H, T> ThinArc<H, T> {
 
         ThinArc { ptr: unsafe { ptr::NonNull::new_unchecked(ptr) }, phantom: PhantomData }
     }
+
+    /// ### Safety:
+    ///  - `[T]` must have no interrior mutability.
+    ///  - slice ptr must come from a leaked ThinArc.
+    pub(crate) unsafe fn from_raw_slice(raw: *mut [T]) -> Self {
+        let inner_to_data_offset = offset_of!(ArcInner<HeaderSlice<H, [T; 0]>>, data);
+        let data_to_slice_offset = offset_of!(HeaderSlice<H, [T; 0]>, slice);
+        let slice_offset = inner_to_data_offset + data_to_slice_offset;
+
+        let slice_at = raw as *mut u8;
+        let inner_ptr = slice_at.sub(slice_offset);
+        let ptr: *mut ArcInner<HeaderSlice<H, [T; 0]>> = inner_ptr as _;
+
+        ThinArc { ptr: ptr::NonNull::new_unchecked(ptr), phantom: PhantomData }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn strong_count(&self) -> usize {
+        unsafe { self.ptr.as_ref().count.load(Acquire) }
+    }
 }
 
 impl<H, T> Deref for ThinArc<H, T> {
