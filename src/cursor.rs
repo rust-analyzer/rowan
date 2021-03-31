@@ -73,8 +73,16 @@
 // tokens the underlying green token actually is immutable, so we can, and do
 // return `&str`.
 //
+// Invariants [must not leak outside of the module]:
+//    - Mutability is the property of the whole tree. Intermixing elements that
+//      differ in mutability is not allowed.
+//    - Mutability property is persistent.
+//    - References to the green elements' data are not exposed into public API
+//      when the tree is mutable.
+//    - TBD
 
 use std::{
+    borrow::Cow,
     cell::Cell,
     fmt,
     hash::{Hash, Hasher},
@@ -107,6 +115,7 @@ struct NodeData {
     index: Cell<u32>,
     green: Green,
 
+    /// Invariant: never changes after NodeData is created.
     mutable: bool,
     /// Absolute offset for immutable nodes, unused for mutable nodes.
     offset: TextSize,
@@ -574,8 +583,12 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn green(&self) -> GreenNode {
-        self.green_ref().to_owned()
+    pub fn green(&self) -> Cow<'_, GreenNodeData> {
+        let green_ref = self.green_ref();
+        match self.data().mutable {
+            false => Cow::Borrowed(green_ref),
+            true => Cow::Owned(green_ref.to_owned()),
+        }
     }
     #[inline]
     fn green_ref(&self) -> &GreenNodeData {

@@ -1,5 +1,5 @@
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, Cow},
     fmt,
     iter::{self, FusedIterator},
     mem::{self, ManuallyDrop},
@@ -68,6 +68,13 @@ impl Borrow<GreenNodeData> for GreenNode {
     #[inline]
     fn borrow(&self) -> &GreenNodeData {
         &*self
+    }
+}
+
+impl From<Cow<'_, GreenNodeData>> for GreenNode {
+    #[inline]
+    fn from(cow: Cow<'_, GreenNodeData>) -> Self {
+        cow.into_owned()
     }
 }
 
