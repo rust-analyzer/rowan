@@ -1,8 +1,8 @@
-use std::{fmt, iter, marker::PhantomData, ops::Range};
+use std::{borrow::Cow, fmt, iter, marker::PhantomData, ops::Range};
 
 use crate::{
-    cursor, green::GreenTokenData, Direction, GreenNode, GreenToken, NodeOrToken, SyntaxKind,
-    SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
+    cursor, green::GreenTokenData, Direction, GreenNode, GreenNodeData, GreenToken, NodeOrToken,
+    SyntaxKind, SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
 };
 
 pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -121,7 +121,7 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.text()
     }
 
-    pub fn green(&self) -> GreenNode {
+    pub fn green(&self) -> Cow<'_, GreenNodeData> {
         self.raw.green()
     }
 
