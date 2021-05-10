@@ -227,6 +227,14 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.child_or_token_at_range(range).map(SyntaxElement::from)
     }
 
+    /// Returns an independent copy of the subtree rooted at this node.
+    ///
+    /// The parent of the returned node will be `None`, the start offset will be
+    /// zero, but, otherwise, it'll be equivalent to the source node.
+    pub fn clone_subtree(&self) -> SyntaxNode<L> {
+        SyntaxNode::from(self.raw.clone_subtree())
+    }
+
     pub fn clone_for_update(&self) -> SyntaxNode<L> {
         SyntaxNode::from(self.raw.clone_for_update())
     }

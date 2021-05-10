@@ -539,6 +539,10 @@ impl SyntaxNode {
         }
     }
 
+    pub fn clone_subtree(&self) -> SyntaxNode {
+        SyntaxNode::new_root(self.green().into())
+    }
+
     #[inline]
     fn data(&self) -> &NodeData {
         unsafe { self.ptr.as_ref() }
