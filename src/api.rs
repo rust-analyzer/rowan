@@ -223,6 +223,11 @@ impl<L: Language> SyntaxNode<L> {
         NodeOrToken::from(self.raw.covering_element(range))
     }
 
+    /// Finds a [`SyntaxElement`] which intersects with a given `range`. If
+    /// there are several intersecting elements, any one can be returned.
+    ///
+    /// The method uses binary search internally, so it's complexity is
+    /// `O(log(N))` where `N = self.children_with_tokens().count()`.
     pub fn child_or_token_at_range(&self, range: TextRange) -> Option<SyntaxElement<L>> {
         self.raw.child_or_token_at_range(range).map(SyntaxElement::from)
     }
