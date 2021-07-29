@@ -372,11 +372,11 @@ impl<H, T> ThinArc<H, T> {
             //
             // Note that any panics here (i.e. from the iterator) are safe, since
             // we'll just leak the uninitialized memory.
-            ptr::write(&mut ((*ptr).count), count);
-            ptr::write(&mut ((*ptr).data.header), header);
-            ptr::write(&mut ((*ptr).data.length), num_items);
+            ptr::write(ptr::addr_of_mut!((*ptr).count), count);
+            ptr::write(ptr::addr_of_mut!((*ptr).data.header), header);
+            ptr::write(ptr::addr_of_mut!((*ptr).data.length), num_items);
             if num_items != 0 {
-                let mut current = (*ptr).data.slice.as_mut_ptr();
+                let mut current = ptr::addr_of_mut!((*ptr).data.slice) as *mut T;
                 debug_assert_eq!(current as usize - buffer as usize, slice_offset);
                 for _ in 0..num_items {
                     ptr::write(
