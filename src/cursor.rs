@@ -228,13 +228,11 @@ impl NodeData {
         green: Green,
         mutable: bool,
     ) -> ptr::NonNull<NodeData> {
+        let parent = ManuallyDrop::new(parent);
         let res = NodeData {
             _c: Count::new(),
             rc: Cell::new(1),
-            parent: {
-                let parent = ManuallyDrop::new(parent);
-                Cell::new(parent.as_ref().map(|it| it.ptr))
-            },
+            parent: Cell::new(parent.as_ref().map(|it| it.ptr)),
             index: Cell::new(index),
             green,
 
@@ -264,6 +262,7 @@ impl NodeData {
                     }
 
                     Box::from_raw(res);
+                    ManuallyDrop::into_inner(parent);
                     res = node as *mut _;
                     (*res).inc_rc();
                 }
