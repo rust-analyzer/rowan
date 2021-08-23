@@ -107,8 +107,10 @@ enum Green {
     Token { ptr: ptr::NonNull<GreenTokenData> },
 }
 
+struct _SyntaxElement;
+
 struct NodeData {
-    _c: Count<SyntaxElement>,
+    _c: Count<_SyntaxElement>,
 
     rc: Cell<u32>,
     parent: Cell<Option<ptr::NonNull<NodeData>>>,
