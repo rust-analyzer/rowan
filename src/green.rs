@@ -2,14 +2,16 @@ mod node;
 mod token;
 mod element;
 mod builder;
+mod node_cache;
 
 use self::element::GreenElement;
 
 pub(crate) use self::{element::GreenElementRef, node::GreenChild};
 
 pub use self::{
-    builder::{Checkpoint, GreenNodeBuilder, NodeCache},
+    builder::{Checkpoint, GreenNodeBuilder},
     node::{Children, GreenNode, GreenNodeData},
+    node_cache::NodeCache,
     token::{GreenToken, GreenTokenData},
 };
 
