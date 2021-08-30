@@ -36,10 +36,7 @@ impl<L: Language> fmt::Debug for SyntaxNode<L> {
                         for _ in 0..level {
                             write!(f, "  ")?;
                         }
-                        match element {
-                            NodeOrToken::Node(node) => writeln!(f, "{:?}", node)?,
-                            NodeOrToken::Token(token) => writeln!(f, "{:?}", token)?,
-                        }
+                        writeln!(f, "{:?}", element)?;
                         level += 1;
                     }
                     WalkEvent::Leave(_) => level -= 1,
