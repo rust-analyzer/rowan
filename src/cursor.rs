@@ -1180,15 +1180,15 @@ impl Iterator for SyntaxElementChildren {
 }
 
 pub struct Preorder {
-    root: SyntaxNode,
+    start: SyntaxNode,
     next: Option<WalkEvent<SyntaxNode>>,
     skip_subtree: bool,
 }
 
 impl Preorder {
-    fn new(root: SyntaxNode) -> Preorder {
-        let next = Some(WalkEvent::Enter(root.clone()));
-        Preorder { root, next, skip_subtree: false }
+    fn new(start: SyntaxNode) -> Preorder {
+        let next = Some(WalkEvent::Enter(start.clone()));
+        Preorder { start, next, skip_subtree: false }
     }
 
     pub fn skip_subtree(&mut self) {
@@ -1219,7 +1219,7 @@ impl Iterator for Preorder {
                     None => WalkEvent::Leave(node.clone()),
                 },
                 WalkEvent::Leave(node) => {
-                    if node == &self.root {
+                    if node == &self.start {
                         return None;
                     }
                     match node.next_sibling() {
