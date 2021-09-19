@@ -205,8 +205,8 @@ impl<L: Language> SyntaxNode<L> {
 
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, including tokens.
-    pub fn preorder_with_tokens(&self) -> impl Iterator<Item = WalkEvent<SyntaxElement<L>>> {
-        self.raw.preorder_with_tokens().map(|event| event.map(NodeOrToken::from))
+    pub fn preorder_with_tokens(&self) -> PreorderWithTokens<L> {
+        PreorderWithTokens { raw: self.raw.preorder_with_tokens(), _p: PhantomData }
     }
 
     /// Find a token in the subtree corresponding to this node, which covers the offset.
@@ -416,6 +416,24 @@ impl<L: Language> Iterator for Preorder<L> {
     type Item = WalkEvent<SyntaxNode<L>>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(|it| it.map(SyntaxNode::from))
+    }
+}
+
+pub struct PreorderWithTokens<L: Language> {
+    raw: cursor::PreorderWithTokens,
+    _p: PhantomData<L>,
+}
+
+impl<L: Language> PreorderWithTokens<L> {
+    pub fn skip_subtree(&mut self) {
+        self.raw.skip_subtree()
+    }
+}
+
+impl<L: Language> Iterator for PreorderWithTokens<L> {
+    type Item = WalkEvent<SyntaxElement<L>>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.raw.next().map(|it| it.map(SyntaxElement::from))
     }
 }
 
