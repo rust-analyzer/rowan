@@ -1279,37 +1279,4 @@ impl Iterator for PreorderWithTokens {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::GreenNodeBuilder;
-    use super::*;
-
-    fn build_tree(chunks: &[&str]) -> GreenNode {
-        let mut builder = GreenNodeBuilder::new();
-        builder.start_node(SyntaxKind(62));
-        for &chunk in chunks.iter() {
-            builder.token(SyntaxKind(92), chunk.into())
-        }
-        builder.finish_node();
-        builder.finish()
-    }
-
-    #[test]
-    fn test_node_data_new() {
-        let green = build_tree(&["a"]);
-        let root = SyntaxNode::new_root_mut(green);
-
-        let green = build_tree(&["b"]);
-        let green = GreenNode::into_raw(green);
-        let green = Green::Node { ptr: Cell::new(green) };
-        NodeData::new(
-            Some(root),
-            0,
-            TextSize::from(3),
-            green,
-            true
-        );
-    }
-}
-
 // endregion
