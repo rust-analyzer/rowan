@@ -245,7 +245,8 @@ impl NodeData {
         unsafe {
             if mutable {
                 let res_ptr: *const NodeData = &res;
-                match sll::init((*res_ptr).parent().map(|it| &it.first), res_ptr.as_ref().unwrap()) {
+                match sll::init((*res_ptr).parent().map(|it| &it.first), res_ptr.as_ref().unwrap())
+                {
                     sll::AddToSllResult::AlreadyInSll(node) => {
                         if cfg!(debug_assertions) {
                             assert_eq!((*node).index(), (*res_ptr).index());
@@ -472,8 +473,10 @@ impl NodeData {
             }
 
             match sll::link(&self.first, child) {
-                sll::AddToSllResult::AlreadyInSll(_) => panic!("Child already in sorted linked list"),
-                it => it.add_to_sll(child)
+                sll::AddToSllResult::AlreadyInSll(_) => {
+                    panic!("Child already in sorted linked list")
+                }
+                it => it.add_to_sll(child),
             }
 
             match self.green() {

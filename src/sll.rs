@@ -14,7 +14,7 @@ pub(crate) enum AddToSllResult<'a, E: Elem> {
     EmptyHead(&'a Cell<*const E>),
     SmallerThanHead(&'a Cell<*const E>),
     SmallerThanNotHead(*const E),
-    AlreadyInSll(*const E)
+    AlreadyInSll(*const E),
 }
 
 impl<'a, E: Elem> AddToSllResult<'a, E> {
@@ -44,14 +44,17 @@ impl<'a, E: Elem> AddToSllResult<'a, E> {
                     (*elem_ptr).prev().set(*curr);
                     (*elem_ptr).next().set(next);
                 }
-                AddToSllResult::NoHead | AddToSllResult::AlreadyInSll(_) => ()
+                AddToSllResult::NoHead | AddToSllResult::AlreadyInSll(_) => (),
             }
         }
     }
 }
 
 #[cold]
-pub(crate) fn init<'a, E: Elem>(head: Option<&'a Cell<*const E>>, elem: &E) -> AddToSllResult<'a, E> {
+pub(crate) fn init<'a, E: Elem>(
+    head: Option<&'a Cell<*const E>>,
+    elem: &E,
+) -> AddToSllResult<'a, E> {
     if let Some(head) = head {
         link(head, elem)
     } else {
