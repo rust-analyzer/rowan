@@ -3,21 +3,62 @@
 use std::{cell::Cell, cmp::Ordering, ptr};
 
 use crate::utility_types::Delta;
-
 pub(crate) unsafe trait Elem {
     fn prev(&self) -> &Cell<*const Self>;
     fn next(&self) -> &Cell<*const Self>;
     fn key(&self) -> &Cell<u32>;
 }
 
+pub(crate) enum AddToSllResult<'a, E: Elem> {
+    NoHead,
+    EmptyHead(&'a Cell<*const E>),
+    SmallerThanHead(&'a Cell<*const E>),
+    SmallerThanNotHead(*const E),
+    AlreadyInSll(*const E),
+}
+
+impl<'a, E: Elem> AddToSllResult<'a, E> {
+    pub(crate) fn add_to_sll(&self, elem_ptr: *const E) {
+        unsafe {
+            (*elem_ptr).prev().set(elem_ptr);
+            (*elem_ptr).next().set(elem_ptr);
+
+            match self {
+                // Case 1: empty head, replace it.
+                AddToSllResult::EmptyHead(head) => head.set(elem_ptr),
+
+                // Case 2: we are smaller than the head, replace it.
+                AddToSllResult::SmallerThanHead(head) => {
+                    let old_head = head.get();
+                    let prev = (*old_head).prev().replace(elem_ptr);
+                    (*prev).next().set(elem_ptr);
+                    (*elem_ptr).next().set(old_head);
+                    (*elem_ptr).prev().set(prev);
+                    head.set(elem_ptr);
+                }
+
+                // Case 3: insert in place found by looping
+                AddToSllResult::SmallerThanNotHead(curr) => {
+                    let next = (**curr).next().replace(elem_ptr);
+                    (*next).prev().set(elem_ptr);
+                    (*elem_ptr).prev().set(*curr);
+                    (*elem_ptr).next().set(next);
+                }
+                AddToSllResult::NoHead | AddToSllResult::AlreadyInSll(_) => (),
+            }
+        }
+    }
+}
+
 #[cold]
-pub(crate) fn init<E: Elem>(head: Option<&Cell<*const E>>, elem: &E) -> Result<(), *const E> {
-    elem.prev().set(elem);
-    elem.next().set(elem);
+pub(crate) fn init<'a, E: Elem>(
+    head: Option<&'a Cell<*const E>>,
+    elem: &E,
+) -> AddToSllResult<'a, E> {
     if let Some(head) = head {
         link(head, elem)
     } else {
-        Ok(())
+        AddToSllResult::NoHead
     }
 }
 
@@ -42,25 +83,17 @@ pub(crate) fn unlink<E: Elem>(head: &Cell<*const E>, elem: &E) {
 }
 
 #[cold]
-pub(crate) fn link<E: Elem>(head: &Cell<*const E>, elem: &E) -> Result<(), *const E> {
-    let elem_ptr: *const E = elem;
-
+pub(crate) fn link<'a, E: Elem>(head: &'a Cell<*const E>, elem: &E) -> AddToSllResult<'a, E> {
     unsafe {
         let old_head = head.get();
         // Case 1: empty head, replace it.
         if old_head.is_null() {
-            head.set(elem_ptr);
-            return Ok(());
+            return AddToSllResult::EmptyHead(head);
         }
 
         // Case 2: we are smaller than the head, replace it.
         if elem.key() < (*old_head).key() {
-            let prev = (*old_head).prev().replace(elem_ptr);
-            (*prev).next().set(elem_ptr);
-            elem.next().set(old_head);
-            elem.prev().set(prev);
-            head.set(elem_ptr);
-            return Ok(());
+            return AddToSllResult::SmallerThanHead(head);
         }
 
         // Case 3: loop *backward* until we find insertion place. Because of
@@ -68,14 +101,8 @@ pub(crate) fn link<E: Elem>(head: &Cell<*const E>, elem: &E) -> Result<(), *cons
         let mut curr = (*old_head).prev().get();
         loop {
             match (*curr).key().cmp(elem.key()) {
-                Ordering::Less => {
-                    let next = (*curr).next().replace(elem_ptr);
-                    (*next).prev().set(elem_ptr);
-                    elem.prev().set(curr);
-                    elem.next().set(next);
-                    return Ok(());
-                }
-                Ordering::Equal => return Err(curr),
+                Ordering::Less => return AddToSllResult::SmallerThanNotHead(curr),
+                Ordering::Equal => return AddToSllResult::AlreadyInSll(curr),
                 Ordering::Greater => curr = (*curr).prev().get(),
             }
         }

@@ -243,31 +243,39 @@ impl NodeData {
             prev: Cell::new(ptr::null()),
         };
         unsafe {
-            let mut res = Box::into_raw(Box::new(res));
             if mutable {
-                if let Err(node) = sll::init((*res).parent().map(|it| &it.first), &*res) {
-                    if cfg!(debug_assertions) {
-                        assert_eq!((*node).index(), (*res).index());
-                        match ((*node).green(), (*res).green()) {
-                            (NodeOrToken::Node(lhs), NodeOrToken::Node(rhs)) => {
-                                assert!(ptr::eq(lhs, rhs))
-                            }
-                            (NodeOrToken::Token(lhs), NodeOrToken::Token(rhs)) => {
-                                assert!(ptr::eq(lhs, rhs))
-                            }
-                            it => {
-                                panic!("node/token confusion: {:?}", it)
+                let res_ptr: *const NodeData = &res;
+                match sll::init((*res_ptr).parent().map(|it| &it.first), res_ptr.as_ref().unwrap())
+                {
+                    sll::AddToSllResult::AlreadyInSll(node) => {
+                        if cfg!(debug_assertions) {
+                            assert_eq!((*node).index(), (*res_ptr).index());
+                            match ((*node).green(), (*res_ptr).green()) {
+                                (NodeOrToken::Node(lhs), NodeOrToken::Node(rhs)) => {
+                                    assert!(ptr::eq(lhs, rhs))
+                                }
+                                (NodeOrToken::Token(lhs), NodeOrToken::Token(rhs)) => {
+                                    assert!(ptr::eq(lhs, rhs))
+                                }
+                                it => {
+                                    panic!("node/token confusion: {:?}", it)
+                                }
                             }
                         }
-                    }
 
-                    Box::from_raw(res);
-                    ManuallyDrop::into_inner(parent);
-                    res = node as *mut _;
-                    (*res).inc_rc();
+                        ManuallyDrop::into_inner(parent);
+                        let res = node as *mut NodeData;
+                        (*res).inc_rc();
+                        return ptr::NonNull::new_unchecked(res);
+                    }
+                    it => {
+                        let res = Box::into_raw(Box::new(res));
+                        it.add_to_sll(res);
+                        return ptr::NonNull::new_unchecked(res);
+                    }
                 }
             }
-            ptr::NonNull::new_unchecked(res)
+            ptr::NonNull::new_unchecked(Box::into_raw(Box::new(res)))
         }
     }
 
@@ -463,7 +471,14 @@ impl NodeData {
             if !self.first.get().is_null() {
                 sll::adjust(&*self.first.get(), index as u32, Delta::Add(1));
             }
-            sll::link(&self.first, child).unwrap();
+
+            match sll::link(&self.first, child) {
+                sll::AddToSllResult::AlreadyInSll(_) => {
+                    panic!("Child already in sorted linked list")
+                }
+                it => it.add_to_sll(child),
+            }
+
             match self.green() {
                 NodeOrToken::Node(green) => {
                     // Child is root, so it ownes the green node. Steal it!
