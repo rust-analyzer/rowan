@@ -193,9 +193,9 @@ fn parse(text: &str) -> Parse {
 /// but it contains parent pointers, offsets, and
 /// has identity semantics.
 
-type SyntaxNode = rowan::SyntaxNode<Lang>;
+type SyntaxNode = rowan::AnySyntaxNode<Lang>;
 #[allow(unused)]
-type SyntaxToken = rowan::SyntaxToken<Lang>;
+type SyntaxToken = rowan::AnySyntaxToken<Lang>;
 #[allow(unused)]
 type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
