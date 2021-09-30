@@ -147,6 +147,10 @@ pub struct SyntaxNode {
     ptr: ptr::NonNull<NodeData>,
 }
 
+// impl SyntaxNode {
+//     fn is_mut
+// }
+
 impl Clone for SyntaxNode {
     #[inline]
     fn clone(&self) -> Self {
@@ -564,6 +568,11 @@ impl SyntaxNode {
         unsafe { self.ptr.as_ref() }
     }
 
+    #[inline]
+    pub fn is_mut(&self) -> bool {
+        self.data().mutable
+    }
+
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         match &self.parent() {
@@ -853,6 +862,11 @@ impl SyntaxToken {
         unsafe { self.ptr.as_ref() }
     }
 
+    #[inline]
+    pub fn is_mut(&self) -> bool {
+        self.data().mutable
+    }
+
     pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         let parent = self.parent().unwrap();
@@ -965,6 +979,14 @@ impl SyntaxElement {
             NodeOrToken::Token(token) => {
                 SyntaxToken::new(token, parent, index as u32, offset).into()
             }
+        }
+    }
+
+    #[inline]
+    pub fn is_mut(&self) -> bool {
+        match self {
+            NodeOrToken::Node(it) => it.is_mut(),
+            NodeOrToken::Token(it) => it.is_mut(),
         }
     }
 
@@ -1281,4 +1303,3 @@ impl Iterator for PreorderWithTokens {
         next
     }
 }
-// endregion

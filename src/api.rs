@@ -15,6 +15,7 @@ pub trait Language: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Ha
 pub trait MutToken: Sized + Clone + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
     const IS_MUT: bool;
 
+    #[inline(always)]
     fn is_mut() -> bool {
         Self::IS_MUT
     }
@@ -130,7 +131,7 @@ impl<L: Language, M: MutToken> From<AnySyntaxToken<L, M>> for AnySyntaxElement<L
 
 impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
-        AnySyntaxNode::from(cursor::SyntaxNode::new_root(green))
+        AnySyntaxNode::from_raw_unchecked(cursor::SyntaxNode::new_root(green))
     }
     /// Returns a green tree, equal to the green tree this node
     /// belongs two, except with this node substitute. The complexity
@@ -160,11 +161,11 @@ impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     }
 
     pub fn parent(&self) -> Option<AnySyntaxNode<L, M>> {
-        self.raw.parent().map(Self::from)
+        self.raw.parent().map(Self::from_raw_unchecked)
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = AnySyntaxNode<L, M>> {
-        self.raw.ancestors().map(AnySyntaxNode::from)
+        self.raw.ancestors().map(AnySyntaxNode::from_raw_unchecked)
     }
 
     pub fn children(&self) -> SyntaxNodeChildren<L, M> {
@@ -179,59 +180,59 @@ impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     }
 
     pub fn first_child(&self) -> Option<AnySyntaxNode<L, M>> {
-        self.raw.first_child().map(Self::from)
+        self.raw.first_child().map(Self::from_raw_unchecked)
     }
     pub fn last_child(&self) -> Option<AnySyntaxNode<L, M>> {
-        self.raw.last_child().map(Self::from)
+        self.raw.last_child().map(Self::from_raw_unchecked)
     }
 
     pub fn first_child_or_token(&self) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.first_child_or_token().map(NodeOrToken::from)
+        self.raw.first_child_or_token().map(NodeOrToken::from_raw_unchecked)
     }
     pub fn last_child_or_token(&self) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.last_child_or_token().map(NodeOrToken::from)
+        self.raw.last_child_or_token().map(NodeOrToken::from_raw_unchecked)
     }
 
     pub fn next_sibling(&self) -> Option<AnySyntaxNode<L, M>> {
-        self.raw.next_sibling().map(Self::from)
+        self.raw.next_sibling().map(Self::from_raw_unchecked)
     }
     pub fn prev_sibling(&self) -> Option<AnySyntaxNode<L, M>> {
-        self.raw.prev_sibling().map(Self::from)
+        self.raw.prev_sibling().map(Self::from_raw_unchecked)
     }
 
     pub fn next_sibling_or_token(&self) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.next_sibling_or_token().map(NodeOrToken::from)
+        self.raw.next_sibling_or_token().map(NodeOrToken::from_raw_unchecked)
     }
     pub fn prev_sibling_or_token(&self) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.prev_sibling_or_token().map(NodeOrToken::from)
+        self.raw.prev_sibling_or_token().map(NodeOrToken::from_raw_unchecked)
     }
 
     /// Return the leftmost token in the subtree of this node.
     pub fn first_token(&self) -> Option<AnySyntaxToken<L, M>> {
-        self.raw.first_token().map(AnySyntaxToken::from)
+        self.raw.first_token().map(AnySyntaxToken::from_raw_unchecked)
     }
     /// Return the rightmost token in the subtree of this node.
     pub fn last_token(&self) -> Option<AnySyntaxToken<L, M>> {
-        self.raw.last_token().map(AnySyntaxToken::from)
+        self.raw.last_token().map(AnySyntaxToken::from_raw_unchecked)
     }
 
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = AnySyntaxNode<L, M>> {
-        self.raw.siblings(direction).map(AnySyntaxNode::from)
+        self.raw.siblings(direction).map(AnySyntaxNode::from_raw_unchecked)
     }
 
     pub fn siblings_with_tokens(
         &self,
         direction: Direction,
     ) -> impl Iterator<Item = AnySyntaxElement<L, M>> {
-        self.raw.siblings_with_tokens(direction).map(AnySyntaxElement::from)
+        self.raw.siblings_with_tokens(direction).map(AnySyntaxElement::from_raw_unchecked)
     }
 
     pub fn descendants(&self) -> impl Iterator<Item = AnySyntaxNode<L, M>> {
-        self.raw.descendants().map(AnySyntaxNode::from)
+        self.raw.descendants().map(AnySyntaxNode::from_raw_unchecked)
     }
 
     pub fn descendants_with_tokens(&self) -> impl Iterator<Item = AnySyntaxElement<L, M>> {
-        self.raw.descendants_with_tokens().map(NodeOrToken::from)
+        self.raw.descendants_with_tokens().map(NodeOrToken::from_raw_unchecked)
     }
 
     /// Traverse the subtree rooted at the current node (including the current
@@ -249,7 +250,7 @@ impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     /// Find a token in the subtree corresponding to this node, which covers the offset.
     /// Precondition: offset must be withing node's range.
     pub fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<AnySyntaxToken<L, M>> {
-        self.raw.token_at_offset(offset).map(AnySyntaxToken::from)
+        self.raw.token_at_offset(offset).map(AnySyntaxToken::from_raw_unchecked)
     }
 
     /// Return the deepest node or token in the current subtree that fully
@@ -257,7 +258,7 @@ impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     /// nodes, either one can be returned. Precondition: range must be contained
     /// withing the current node
     pub fn covering_element(&self, range: TextRange) -> AnySyntaxElement<L, M> {
-        NodeOrToken::from(self.raw.covering_element(range))
+        NodeOrToken::from_raw_unchecked(self.raw.covering_element(range))
     }
 
     /// Finds a [`SyntaxElement`] which intersects with a given `range`. If
@@ -266,7 +267,7 @@ impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     /// The method uses binary search internally, so it's complexity is
     /// `O(log(N))` where `N = self.children_with_tokens().count()`.
     pub fn child_or_token_at_range(&self, range: TextRange) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.child_or_token_at_range(range).map(AnySyntaxElement::from)
+        self.raw.child_or_token_at_range(range).map(AnySyntaxElement::from_raw_unchecked)
     }
 
     /// Returns an independent copy of the subtree rooted at this node.
@@ -274,13 +275,13 @@ impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
     /// The parent of the returned node will be `None`, the start offset will be
     /// zero, but, otherwise, it'll be equivalent to the source node.
     pub fn clone_subtree(&self) -> AnySyntaxNode<L, M> {
-        AnySyntaxNode::from(self.raw.clone_subtree())
+        AnySyntaxNode::from_raw_unchecked(self.raw.clone_subtree())
     }
 }
 
 impl<L: Language> SyntaxNode<L> {
     pub fn clone_for_update(&self) -> AnySyntaxNode<L, Mut> {
-        AnySyntaxNode::from(self.raw.clone_for_update())
+        AnySyntaxNode::from_raw_unchecked(self.raw.clone_for_update())
     }
 }
 
@@ -324,34 +325,34 @@ impl<L: Language, M: MutToken> AnySyntaxToken<L, M> {
     }
 
     pub fn parent(&self) -> Option<AnySyntaxNode<L, M>> {
-        self.raw.parent().map(AnySyntaxNode::from)
+        self.raw.parent().map(AnySyntaxNode::from_raw_unchecked)
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = AnySyntaxNode<L, M>> {
-        self.raw.ancestors().map(AnySyntaxNode::from)
+        self.raw.ancestors().map(AnySyntaxNode::from_raw_unchecked)
     }
 
     pub fn next_sibling_or_token(&self) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.next_sibling_or_token().map(NodeOrToken::from)
+        self.raw.next_sibling_or_token().map(NodeOrToken::from_raw_unchecked)
     }
     pub fn prev_sibling_or_token(&self) -> Option<AnySyntaxElement<L, M>> {
-        self.raw.prev_sibling_or_token().map(NodeOrToken::from)
+        self.raw.prev_sibling_or_token().map(NodeOrToken::from_raw_unchecked)
     }
 
     pub fn siblings_with_tokens(
         &self,
         direction: Direction,
     ) -> impl Iterator<Item = AnySyntaxElement<L, M>> {
-        self.raw.siblings_with_tokens(direction).map(AnySyntaxElement::from)
+        self.raw.siblings_with_tokens(direction).map(AnySyntaxElement::from_raw_unchecked)
     }
 
     /// Next token in the tree (i.e, not necessary a sibling).
     pub fn next_token(&self) -> Option<AnySyntaxToken<L, M>> {
-        self.raw.next_token().map(AnySyntaxToken::from)
+        self.raw.next_token().map(AnySyntaxToken::from_raw_unchecked)
     }
     /// Previous token in the tree (i.e, not necessary a sibling).
     pub fn prev_token(&self) -> Option<AnySyntaxToken<L, M>> {
-        self.raw.prev_token().map(AnySyntaxToken::from)
+        self.raw.prev_token().map(AnySyntaxToken::from_raw_unchecked)
     }
 
     pub fn detach(&self) {
@@ -428,7 +429,7 @@ pub struct SyntaxNodeChildren<L: Language, M: MutToken> {
 impl<L: Language, M: MutToken> Iterator for SyntaxNodeChildren<L, M> {
     type Item = AnySyntaxNode<L, M>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(AnySyntaxNode::from)
+        self.raw.next().map(AnySyntaxNode::from_raw_unchecked)
     }
 }
 
@@ -441,7 +442,7 @@ pub struct SyntaxElementChildren<L: Language, M: MutToken> {
 impl<L: Language, M: MutToken> Iterator for SyntaxElementChildren<L, M> {
     type Item = AnySyntaxElement<L, M>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(NodeOrToken::from)
+        self.raw.next().map(AnySyntaxElement::from_raw_unchecked)
     }
 }
 
@@ -459,7 +460,7 @@ impl<L: Language, M: MutToken> Preorder<L, M> {
 impl<L: Language, M: MutToken> Iterator for Preorder<L, M> {
     type Item = WalkEvent<AnySyntaxNode<L, M>>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(|it| it.map(AnySyntaxNode::from))
+        self.raw.next().map(|it| it.map(AnySyntaxNode::from_raw_unchecked))
     }
 }
 
@@ -477,13 +478,24 @@ impl<L: Language, M: MutToken> PreorderWithTokens<L, M> {
 impl<L: Language, M: MutToken> Iterator for PreorderWithTokens<L, M> {
     type Item = WalkEvent<AnySyntaxElement<L, M>>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(|it| it.map(AnySyntaxElement::from))
+        self.raw.next().map(|it| it.map(AnySyntaxElement::from_raw_unchecked))
+    }
+}
+
+impl<L: Language, M: MutToken> AnySyntaxNode<L, M> {
+    fn from_raw_unchecked(raw: cursor::SyntaxNode) -> AnySyntaxNode<L, M> {
+        AnySyntaxNode { raw, _p: (PhantomData, PhantomData) }
+    }
+
+    fn from_raw(raw: cursor::SyntaxNode) -> AnySyntaxNode<L, M> {
+        assert_eq!(M::is_mut(), raw.is_mut());
+        Self::from_raw_unchecked(raw)
     }
 }
 
 impl<L: Language, M: MutToken> From<cursor::SyntaxNode> for AnySyntaxNode<L, M> {
     fn from(raw: cursor::SyntaxNode) -> AnySyntaxNode<L, M> {
-        AnySyntaxNode { raw, _p: (PhantomData, PhantomData) }
+        Self::from_raw(raw)
     }
 }
 
@@ -493,9 +505,20 @@ impl<L: Language, M: MutToken> From<AnySyntaxNode<L, M>> for cursor::SyntaxNode 
     }
 }
 
+impl<L: Language, M: MutToken> AnySyntaxToken<L, M> {
+    fn from_raw_unchecked(raw: cursor::SyntaxToken) -> AnySyntaxToken<L, M> {
+        AnySyntaxToken { raw, _p: (PhantomData, PhantomData) }
+    }
+
+    fn from_raw(raw: cursor::SyntaxToken) -> AnySyntaxToken<L, M> {
+        assert_eq!(M::IS_MUT, raw.is_mut());
+        Self::from_raw_unchecked(raw)
+    }
+}
+
 impl<L: Language, M: MutToken> From<cursor::SyntaxToken> for AnySyntaxToken<L, M> {
     fn from(raw: cursor::SyntaxToken) -> AnySyntaxToken<L, M> {
-        AnySyntaxToken { raw, _p: (PhantomData, PhantomData) }
+        Self::from_raw(raw)
     }
 }
 
@@ -505,12 +528,23 @@ impl<L: Language, M: MutToken> From<AnySyntaxToken<L, M>> for cursor::SyntaxToke
     }
 }
 
+impl<L: Language, M: MutToken> AnySyntaxElement<L, M> {
+    fn from_raw_unchecked(raw: cursor::SyntaxElement) -> AnySyntaxElement<L, M> {
+        match raw {
+            NodeOrToken::Node(it) => NodeOrToken::Node(AnySyntaxNode::from_raw_unchecked(it)),
+            NodeOrToken::Token(it) => NodeOrToken::Token(AnySyntaxToken::from_raw_unchecked(it)),
+        }
+    }
+
+    fn from_raw(raw: cursor::SyntaxElement) -> AnySyntaxElement<L, M> {
+        assert_eq!(M::is_mut(), raw.is_mut());
+        Self::from_raw_unchecked(raw)
+    }
+}
+
 impl<L: Language, M: MutToken> From<cursor::SyntaxElement> for AnySyntaxElement<L, M> {
     fn from(raw: cursor::SyntaxElement) -> AnySyntaxElement<L, M> {
-        match raw {
-            NodeOrToken::Node(it) => NodeOrToken::Node(it.into()),
-            NodeOrToken::Token(it) => NodeOrToken::Token(it.into()),
-        }
+        Self::from_raw(raw)
     }
 }
 
