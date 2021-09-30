@@ -53,9 +53,9 @@ impl rowan::Language for Lang {
     }
 }
 
-type SyntaxNode = rowan::AnySyntaxNode<Lang>;
+type SyntaxNode = rowan::SyntaxNode<Lang>;
 #[allow(unused)]
-type SyntaxToken = rowan::AnySyntaxToken<Lang>;
+type SyntaxToken = rowan::SyntaxToken<Lang>;
 #[allow(unused)]
 type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
