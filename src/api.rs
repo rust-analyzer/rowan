@@ -137,6 +137,10 @@ impl<L: Language> SyntaxNode<L> {
         SyntaxNodeChildren { raw: self.raw.children(), _p: PhantomData }
     }
 
+    pub fn children_matching(&self, matcher: impl Fn(L::Kind) -> bool) -> SyntaxNodeChildrenMatching<L, impl Fn(SyntaxKind) -> bool> {
+        SyntaxNodeChildrenMatching { raw: self.raw.children_matching(move |kind| matcher(L::kind_from_raw(kind))), _p: PhantomData, _p2: PhantomData }
+    }
+
     pub fn children_with_tokens(&self) -> SyntaxElementChildren<L> {
         SyntaxElementChildren { raw: self.raw.children_with_tokens(), _p: PhantomData }
     }
@@ -382,6 +386,20 @@ pub struct SyntaxNodeChildren<L: Language> {
 }
 
 impl<L: Language> Iterator for SyntaxNodeChildren<L> {
+    type Item = SyntaxNode<L>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.raw.next().map(SyntaxNode::from)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SyntaxNodeChildrenMatching<L: Language, F: Fn(SyntaxKind) -> bool> {
+    raw: cursor::SyntaxNodeChildrenMatching<F>,
+    _p: PhantomData<L>,
+    _p2: PhantomData<F>,
+}
+
+impl<L: Language, F: Fn(SyntaxKind) -> bool> Iterator for SyntaxNodeChildrenMatching<L, F> {
     type Item = SyntaxNode<L>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(SyntaxNode::from)
