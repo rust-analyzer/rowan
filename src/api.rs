@@ -137,7 +137,10 @@ impl<'a, L: Language> SyntaxNode<L> {
         SyntaxNodeChildren { raw: self.raw.children(), _p: PhantomData }
     }
 
-    pub fn children_matching(&self, matcher: fn(SyntaxKind) -> bool) -> SyntaxNodeChildrenMatching<L> {
+    pub fn children_matching(
+        &self,
+        matcher: fn(SyntaxKind) -> bool,
+    ) -> SyntaxNodeChildrenMatching<L> {
         SyntaxNodeChildrenMatching { raw: self.raw.children_matching(matcher), _p: PhantomData }
     }
 
@@ -145,8 +148,14 @@ impl<'a, L: Language> SyntaxNode<L> {
         SyntaxElementChildren { raw: self.raw.children_with_tokens(), _p: PhantomData }
     }
 
-    pub fn children_with_tokens_matching(&self, matcher: &'a impl Fn(SyntaxKind) -> bool) -> SyntaxElementChildrenMatching<'a, L> {
-        SyntaxElementChildrenMatching { raw: self.raw.children_with_tokens_matching(matcher), _p: PhantomData }
+    pub fn children_with_tokens_matching(
+        &self,
+        matcher: &'a impl Fn(SyntaxKind) -> bool,
+    ) -> SyntaxElementChildrenMatching<'a, L> {
+        SyntaxElementChildrenMatching {
+            raw: self.raw.children_with_tokens_matching(matcher),
+            _p: PhantomData,
+        }
     }
 
     pub fn first_child(&self) -> Option<SyntaxNode<L>> {
