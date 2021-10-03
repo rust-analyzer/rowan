@@ -94,7 +94,7 @@ impl<L: Language> From<SyntaxToken<L>> for SyntaxElement<L> {
     }
 }
 
-impl<'a, L: Language> SyntaxNode<L> {
+impl<L: Language> SyntaxNode<L> {
     pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))
     }
@@ -148,7 +148,7 @@ impl<'a, L: Language> SyntaxNode<L> {
         SyntaxElementChildren { raw: self.raw.children_with_tokens(), _p: PhantomData }
     }
 
-    pub fn children_with_tokens_matching(
+    pub fn children_with_tokens_matching<'a>(
         &self,
         matcher: &'a impl Fn(SyntaxKind) -> bool,
     ) -> SyntaxElementChildrenMatching<'a, L> {
