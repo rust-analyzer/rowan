@@ -29,7 +29,7 @@ pub use text_size::{TextLen, TextRange, TextSize};
 
 pub use crate::{
     api::{
-        Language, SyntaxElement, SyntaxElementChildren, SyntaxNode, SyntaxNodeChildren, SyntaxToken,
+        Language, SyntaxElement, SyntaxElementChildren, SyntaxNode, SyntaxNodeChildren, SyntaxNodeChildrenMatching, SyntaxToken,
     },
     green::{
         Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenNodeData, GreenToken,
