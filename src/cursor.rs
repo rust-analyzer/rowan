@@ -436,7 +436,7 @@ impl NodeData {
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
         let mut siblings = self.green_siblings().enumerate();
-        let index = self.index() as usize + 1;
+        let index = self.index() as usize;
 
         siblings.nth(index);
         siblings.find_map(|(index, child)| {
@@ -685,25 +685,6 @@ impl SyntaxNode {
         })
     }
 
-    pub fn first_child_matching(
-        &self,
-        matcher: &impl Fn(SyntaxKind) -> bool,
-    ) -> Option<SyntaxNode> {
-        self.green_ref().children().raw.enumerate().find_map(|(index, child)| {
-            if !matcher(child.as_ref().kind()) {
-                return None;
-            }
-            child.as_ref().into_node().map(|green| {
-                SyntaxNode::new_child(
-                    green,
-                    self.clone(),
-                    index as u32,
-                    self.offset() + child.rel_offset(),
-                )
-            })
-        })
-    }
-
     pub fn last_child(&self) -> Option<SyntaxNode> {
         self.green_ref().children().raw.enumerate().rev().find_map(|(index, child)| {
             child.as_ref().into_node().map(|green| {
@@ -720,23 +701,6 @@ impl SyntaxNode {
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
         self.green_ref().children().raw.next().map(|child| {
             SyntaxElement::new(child.as_ref(), self.clone(), 0, self.offset() + child.rel_offset())
-        })
-    }
-
-    pub fn first_child_or_token_matching(
-        &self,
-        matcher: &impl Fn(SyntaxKind) -> bool,
-    ) -> Option<SyntaxElement> {
-        self.green_ref().children().raw.find_map(|child| {
-            if !matcher(child.as_ref().kind()) {
-                return None;
-            }
-            Some(SyntaxElement::new(
-                child.as_ref(),
-                self.clone(),
-                0,
-                self.offset() + child.rel_offset(),
-            ))
         })
     }
 
