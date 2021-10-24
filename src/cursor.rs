@@ -1313,10 +1313,7 @@ impl SyntaxElementChildren {
         SyntaxElementChildren { parent, next: None, next_initialized: false }
     }
 
-    pub fn by_kind<F: Fn(SyntaxKind) -> bool>(
-        self,
-        matcher: F,
-    ) -> SyntaxElementChildrenByKind<F> {
+    pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxElementChildrenByKind<F> {
         if !self.next_initialized {
             SyntaxElementChildrenByKind {
                 next: self.parent.first_child_or_token_matching(&matcher),
