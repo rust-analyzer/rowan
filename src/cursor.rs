@@ -685,6 +685,25 @@ impl SyntaxNode {
         })
     }
 
+    pub fn first_child_matching(
+        &self,
+        matcher: &impl Fn(SyntaxKind) -> bool,
+    ) -> Option<SyntaxNode> {
+        self.green_ref().children().raw.enumerate().find_map(|(index, child)| {
+            if !matcher(child.as_ref().kind()) {
+                return None;
+            }
+            child.as_ref().into_node().map(|green| {
+                SyntaxNode::new_child(
+                    green,
+                    self.clone(),
+                    index as u32,
+                    self.offset() + child.rel_offset(),
+                )
+            })
+        })
+    }
+
     pub fn last_child(&self) -> Option<SyntaxNode> {
         self.green_ref().children().raw.enumerate().rev().find_map(|(index, child)| {
             child.as_ref().into_node().map(|green| {
@@ -701,6 +720,23 @@ impl SyntaxNode {
     pub fn first_child_or_token(&self) -> Option<SyntaxElement> {
         self.green_ref().children().raw.next().map(|child| {
             SyntaxElement::new(child.as_ref(), self.clone(), 0, self.offset() + child.rel_offset())
+        })
+    }
+
+    pub fn first_child_or_token_matching(
+        &self,
+        matcher: &impl Fn(SyntaxKind) -> bool,
+    ) -> Option<SyntaxElement> {
+        self.green_ref().children().raw.enumerate().find_map(|(index, child)| {
+            if !matcher(child.as_ref().kind()) {
+                return None;
+            }
+            Some(SyntaxElement::new(
+                child.as_ref(),
+                self.clone(),
+                index as u32,
+                self.offset() + child.rel_offset(),
+            ))
         })
     }
 
@@ -1207,24 +1243,33 @@ impl From<SyntaxToken> for SyntaxElement {
 
 #[derive(Clone, Debug)]
 pub struct SyntaxNodeChildren {
+    parent: SyntaxNode,
     next: Option<SyntaxNode>,
+    next_initialized: bool
 }
 
 impl SyntaxNodeChildren {
     fn new(parent: SyntaxNode) -> SyntaxNodeChildren {
-        SyntaxNodeChildren { next: parent.first_child() }
+        SyntaxNodeChildren { parent, next: None, next_initialized: false }
     }
 
     pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxNodeChildrenMatching<F> {
-        SyntaxNodeChildrenMatching {
-            next: self.next.and_then(|node| {
-                if matcher(node.kind()) {
-                    Some(node)
-                } else {
-                    node.next_sibling_matching(&matcher)
-                }
-            }),
-            matcher,
+        if !self.next_initialized {
+            SyntaxNodeChildrenMatching {
+                next: self.parent.first_child_matching(&matcher),
+                matcher,
+            }
+        } else {
+            SyntaxNodeChildrenMatching {
+                next: self.next.and_then(|node| {
+                    if matcher(node.kind()) {
+                        Some(node)
+                    } else {
+                        node.next_sibling_matching(&matcher)
+                    }
+                }),
+                matcher,
+            }
         }
     }
 }
@@ -1232,6 +1277,10 @@ impl SyntaxNodeChildren {
 impl Iterator for SyntaxNodeChildren {
     type Item = SyntaxNode;
     fn next(&mut self) -> Option<SyntaxNode> {
+        if !self.next_initialized {
+            self.next = self.parent.first_child();
+            self.next_initialized = true;
+        }
         self.next.take().map(|next| {
             self.next = next.next_sibling();
             next
@@ -1257,27 +1306,36 @@ impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxNodeChildrenMatching<F> {
 
 #[derive(Clone, Debug)]
 pub struct SyntaxElementChildren {
+    parent: SyntaxNode,
     next: Option<SyntaxElement>,
+    next_initialized: bool
 }
 
 impl SyntaxElementChildren {
     fn new(parent: SyntaxNode) -> SyntaxElementChildren {
-        SyntaxElementChildren { next: parent.first_child_or_token() }
+        SyntaxElementChildren { parent, next: None, next_initialized: false }
     }
 
     pub fn by_kind<F: Fn(SyntaxKind) -> bool>(
         self,
         matcher: F,
     ) -> SyntaxElementChildrenMatching<F> {
-        SyntaxElementChildrenMatching {
-            next: self.next.and_then(|node| {
-                if matcher(node.kind()) {
-                    Some(node)
-                } else {
-                    node.next_sibling_or_token_matching(&matcher)
-                }
-            }),
-            matcher,
+        if !self.next_initialized {
+            SyntaxElementChildrenMatching  {
+                next: self.parent.first_child_or_token_matching(&matcher),
+                matcher,
+            }
+        } else {
+            SyntaxElementChildrenMatching {
+                next: self.next.and_then(|node| {
+                    if matcher(node.kind()) {
+                        Some(node)
+                    } else {
+                        node.next_sibling_or_token_matching(&matcher)
+                    }
+                }),
+                matcher,
+            }
         }
     }
 }
@@ -1285,6 +1343,10 @@ impl SyntaxElementChildren {
 impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<SyntaxElement> {
+        if !self.next_initialized {
+            self.next = self.parent.first_child_or_token();
+            self.next_initialized = true;
+        }
         self.next.take().map(|next| {
             self.next = next.next_sibling_or_token();
             next
