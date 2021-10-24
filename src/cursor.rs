@@ -389,7 +389,7 @@ impl NodeData {
         })
     }
 
-    fn next_sibling_matching(&self, matcher: &impl Fn(SyntaxKind) -> bool) -> Option<SyntaxNode> {
+    fn next_sibling_by_kind(&self, matcher: &impl Fn(SyntaxKind) -> bool) -> Option<SyntaxNode> {
         let mut siblings = self.green_siblings().enumerate();
         let index = self.index() as usize;
 
@@ -431,7 +431,7 @@ impl NodeData {
         })
     }
 
-    fn next_sibling_or_token_matching(
+    fn next_sibling_or_token_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
@@ -685,10 +685,7 @@ impl SyntaxNode {
         })
     }
 
-    pub fn first_child_matching(
-        &self,
-        matcher: &impl Fn(SyntaxKind) -> bool,
-    ) -> Option<SyntaxNode> {
+    pub fn first_child_by_kind(&self, matcher: &impl Fn(SyntaxKind) -> bool) -> Option<SyntaxNode> {
         self.green_ref().children().raw.enumerate().find_map(|(index, child)| {
             if !matcher(child.as_ref().kind()) {
                 return None;
@@ -723,7 +720,7 @@ impl SyntaxNode {
         })
     }
 
-    pub fn first_child_or_token_matching(
+    pub fn first_child_or_token_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
@@ -755,11 +752,11 @@ impl SyntaxNode {
         self.data().next_sibling()
     }
 
-    pub fn next_sibling_matching(
+    pub fn next_sibling_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxNode> {
-        self.data().next_sibling_matching(matcher)
+        self.data().next_sibling_by_kind(matcher)
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
@@ -770,11 +767,11 @@ impl SyntaxNode {
         self.data().next_sibling_or_token()
     }
 
-    pub fn next_sibling_or_token_matching(
+    pub fn next_sibling_or_token_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
-        self.data().next_sibling_or_token_matching(matcher)
+        self.data().next_sibling_or_token_by_kind(matcher)
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
@@ -1002,11 +999,11 @@ impl SyntaxToken {
         self.data().next_sibling_or_token()
     }
 
-    pub fn next_sibling_or_token_matching(
+    pub fn next_sibling_or_token_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
-        self.data().next_sibling_or_token_matching(matcher)
+        self.data().next_sibling_or_token_by_kind(matcher)
     }
 
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement> {
@@ -1128,13 +1125,13 @@ impl SyntaxElement {
         }
     }
 
-    pub fn next_sibling_or_token_matching(
+    pub fn next_sibling_or_token_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
         match self {
-            NodeOrToken::Node(it) => it.next_sibling_or_token_matching(matcher),
-            NodeOrToken::Token(it) => it.next_sibling_or_token_matching(matcher),
+            NodeOrToken::Node(it) => it.next_sibling_or_token_by_kind(matcher),
+            NodeOrToken::Token(it) => it.next_sibling_or_token_by_kind(matcher),
         }
     }
 
@@ -1255,14 +1252,14 @@ impl SyntaxNodeChildren {
 
     pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxNodeChildrenByKind<F> {
         if !self.next_initialized {
-            SyntaxNodeChildrenByKind { next: self.parent.first_child_matching(&matcher), matcher }
+            SyntaxNodeChildrenByKind { next: self.parent.first_child_by_kind(&matcher), matcher }
         } else {
             SyntaxNodeChildrenByKind {
                 next: self.next.and_then(|node| {
                     if matcher(node.kind()) {
                         Some(node)
                     } else {
-                        node.next_sibling_matching(&matcher)
+                        node.next_sibling_by_kind(&matcher)
                     }
                 }),
                 matcher,
@@ -1295,7 +1292,7 @@ impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxNodeChildrenByKind<F> {
     type Item = SyntaxNode;
     fn next(&mut self) -> Option<SyntaxNode> {
         self.next.take().map(|next| {
-            self.next = next.next_sibling_matching(&self.matcher);
+            self.next = next.next_sibling_by_kind(&self.matcher);
             next
         })
     }
@@ -1316,7 +1313,7 @@ impl SyntaxElementChildren {
     pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxElementChildrenByKind<F> {
         if !self.next_initialized {
             SyntaxElementChildrenByKind {
-                next: self.parent.first_child_or_token_matching(&matcher),
+                next: self.parent.first_child_or_token_by_kind(&matcher),
                 matcher,
             }
         } else {
@@ -1325,7 +1322,7 @@ impl SyntaxElementChildren {
                     if matcher(node.kind()) {
                         Some(node)
                     } else {
-                        node.next_sibling_or_token_matching(&matcher)
+                        node.next_sibling_or_token_by_kind(&matcher)
                     }
                 }),
                 matcher,
@@ -1358,7 +1355,7 @@ impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxElementChildrenByKind<F> {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<SyntaxElement> {
         self.next.take().map(|next| {
-            self.next = next.next_sibling_or_token_matching(&self.matcher);
+            self.next = next.next_sibling_or_token_by_kind(&self.matcher);
             next
         })
     }

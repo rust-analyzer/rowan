@@ -389,24 +389,30 @@ impl<L: Language> Iterator for SyntaxNodeChildren<L> {
 }
 
 impl<L: Language> SyntaxNodeChildren<L> {
-    pub fn by_kind<F: Clone + Fn(SyntaxKind) -> bool>(
+    pub fn by_kind<'a>(
         self,
-        matcher: F,
-    ) -> SyntaxNodeChildrenByKind<F, L> {
+        matcher: &'a impl Fn(SyntaxKind) -> bool,
+    ) -> SyntaxNodeChildrenByKind<'a, L> {
         SyntaxNodeChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SyntaxNodeChildrenByKind<F: Clone + Fn(SyntaxKind) -> bool, L: Language> {
-    raw: cursor::SyntaxNodeChildrenByKind<F>,
+#[derive(Clone)]
+pub struct SyntaxNodeChildrenByKind<'a, L: Language> {
+    raw: cursor::SyntaxNodeChildrenByKind<&'a dyn Fn(SyntaxKind) -> bool>,
     _p: PhantomData<L>,
 }
 
-impl<F: Clone + Fn(SyntaxKind) -> bool, L: Language> Iterator for SyntaxNodeChildrenByKind<F, L> {
+impl<'a, L: Language> Iterator for SyntaxNodeChildrenByKind<'a, L> {
     type Item = SyntaxNode<L>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(SyntaxNode::from)
+    }
+}
+
+impl<'a, L: Language> fmt::Debug for SyntaxNodeChildrenByKind<'a, L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SyntaxNodeChildrenByKind").finish()
     }
 }
 
@@ -424,26 +430,30 @@ impl<L: Language> Iterator for SyntaxElementChildren<L> {
 }
 
 impl<L: Language> SyntaxElementChildren<L> {
-    pub fn by_kind<F: Clone + Fn(SyntaxKind) -> bool>(
+    pub fn by_kind<'a>(
         self,
-        matcher: F,
-    ) -> SyntaxElementChildrenByKind<F, L> {
+        matcher: &'a impl Fn(SyntaxKind) -> bool,
+    ) -> SyntaxElementChildrenByKind<'a, L> {
         SyntaxElementChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SyntaxElementChildrenByKind<F: Clone + Fn(SyntaxKind) -> bool, L: Language> {
-    raw: cursor::SyntaxElementChildrenByKind<F>,
+#[derive(Clone)]
+pub struct SyntaxElementChildrenByKind<'a, L: Language> {
+    raw: cursor::SyntaxElementChildrenByKind<&'a dyn Fn(SyntaxKind) -> bool>,
     _p: PhantomData<L>,
 }
 
-impl<F: Clone + Fn(SyntaxKind) -> bool, L: Language> Iterator
-    for SyntaxElementChildrenByKind<F, L>
-{
+impl<'a, L: Language> Iterator for SyntaxElementChildrenByKind<'a, L> {
     type Item = SyntaxElement<L>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(NodeOrToken::from)
+    }
+}
+
+impl<'a, L: Language> fmt::Debug for SyntaxElementChildrenByKind<'a, L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SyntaxElementChildrenByKind").finish()
     }
 }
 
