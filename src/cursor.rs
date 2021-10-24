@@ -1245,7 +1245,7 @@ impl From<SyntaxToken> for SyntaxElement {
 pub struct SyntaxNodeChildren {
     parent: SyntaxNode,
     next: Option<SyntaxNode>,
-    next_initialized: bool
+    next_initialized: bool,
 }
 
 impl SyntaxNodeChildren {
@@ -1255,10 +1255,7 @@ impl SyntaxNodeChildren {
 
     pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxNodeChildrenMatching<F> {
         if !self.next_initialized {
-            SyntaxNodeChildrenMatching {
-                next: self.parent.first_child_matching(&matcher),
-                matcher,
-            }
+            SyntaxNodeChildrenMatching { next: self.parent.first_child_matching(&matcher), matcher }
         } else {
             SyntaxNodeChildrenMatching {
                 next: self.next.and_then(|node| {
@@ -1308,7 +1305,7 @@ impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxNodeChildrenMatching<F> {
 pub struct SyntaxElementChildren {
     parent: SyntaxNode,
     next: Option<SyntaxElement>,
-    next_initialized: bool
+    next_initialized: bool,
 }
 
 impl SyntaxElementChildren {
@@ -1321,7 +1318,7 @@ impl SyntaxElementChildren {
         matcher: F,
     ) -> SyntaxElementChildrenMatching<F> {
         if !self.next_initialized {
-            SyntaxElementChildrenMatching  {
+            SyntaxElementChildrenMatching {
                 next: self.parent.first_child_or_token_matching(&matcher),
                 matcher,
             }
