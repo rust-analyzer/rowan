@@ -1253,11 +1253,11 @@ impl SyntaxNodeChildren {
         SyntaxNodeChildren { parent, next: None, next_initialized: false }
     }
 
-    pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxNodeChildrenMatching<F> {
+    pub fn by_kind<F: Fn(SyntaxKind) -> bool>(self, matcher: F) -> SyntaxNodeChildrenByKind<F> {
         if !self.next_initialized {
-            SyntaxNodeChildrenMatching { next: self.parent.first_child_matching(&matcher), matcher }
+            SyntaxNodeChildrenByKind { next: self.parent.first_child_matching(&matcher), matcher }
         } else {
-            SyntaxNodeChildrenMatching {
+            SyntaxNodeChildrenByKind {
                 next: self.next.and_then(|node| {
                     if matcher(node.kind()) {
                         Some(node)
@@ -1286,12 +1286,12 @@ impl Iterator for SyntaxNodeChildren {
 }
 
 #[derive(Clone, Debug)]
-pub struct SyntaxNodeChildrenMatching<F: Fn(SyntaxKind) -> bool> {
+pub struct SyntaxNodeChildrenByKind<F: Fn(SyntaxKind) -> bool> {
     next: Option<SyntaxNode>,
     matcher: F,
 }
 
-impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxNodeChildrenMatching<F> {
+impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxNodeChildrenByKind<F> {
     type Item = SyntaxNode;
     fn next(&mut self) -> Option<SyntaxNode> {
         self.next.take().map(|next| {
@@ -1316,14 +1316,14 @@ impl SyntaxElementChildren {
     pub fn by_kind<F: Fn(SyntaxKind) -> bool>(
         self,
         matcher: F,
-    ) -> SyntaxElementChildrenMatching<F> {
+    ) -> SyntaxElementChildrenByKind<F> {
         if !self.next_initialized {
-            SyntaxElementChildrenMatching {
+            SyntaxElementChildrenByKind {
                 next: self.parent.first_child_or_token_matching(&matcher),
                 matcher,
             }
         } else {
-            SyntaxElementChildrenMatching {
+            SyntaxElementChildrenByKind {
                 next: self.next.and_then(|node| {
                     if matcher(node.kind()) {
                         Some(node)
@@ -1352,12 +1352,12 @@ impl Iterator for SyntaxElementChildren {
 }
 
 #[derive(Clone, Debug)]
-pub struct SyntaxElementChildrenMatching<F: Fn(SyntaxKind) -> bool> {
+pub struct SyntaxElementChildrenByKind<F: Fn(SyntaxKind) -> bool> {
     next: Option<SyntaxElement>,
     matcher: F,
 }
 
-impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxElementChildrenMatching<F> {
+impl<F: Fn(SyntaxKind) -> bool> Iterator for SyntaxElementChildrenByKind<F> {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<SyntaxElement> {
         self.next.take().map(|next| {

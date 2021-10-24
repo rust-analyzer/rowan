@@ -392,18 +392,18 @@ impl<L: Language> SyntaxNodeChildren<L> {
     pub fn by_kind<F: Clone + Fn(SyntaxKind) -> bool>(
         self,
         matcher: F,
-    ) -> SyntaxNodeChildrenMatching<F, L> {
-        SyntaxNodeChildrenMatching { raw: self.raw.by_kind(matcher), _p: PhantomData }
+    ) -> SyntaxNodeChildrenByKind<F, L> {
+        SyntaxNodeChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SyntaxNodeChildrenMatching<F: Clone + Fn(SyntaxKind) -> bool, L: Language> {
-    raw: cursor::SyntaxNodeChildrenMatching<F>,
+pub struct SyntaxNodeChildrenByKind<F: Clone + Fn(SyntaxKind) -> bool, L: Language> {
+    raw: cursor::SyntaxNodeChildrenByKind<F>,
     _p: PhantomData<L>,
 }
 
-impl<F: Clone + Fn(SyntaxKind) -> bool, L: Language> Iterator for SyntaxNodeChildrenMatching<F, L> {
+impl<F: Clone + Fn(SyntaxKind) -> bool, L: Language> Iterator for SyntaxNodeChildrenByKind<F, L> {
     type Item = SyntaxNode<L>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(SyntaxNode::from)
@@ -427,19 +427,19 @@ impl<L: Language> SyntaxElementChildren<L> {
     pub fn by_kind<F: Clone + Fn(SyntaxKind) -> bool>(
         self,
         matcher: F,
-    ) -> SyntaxElementChildrenMatching<F, L> {
-        SyntaxElementChildrenMatching { raw: self.raw.by_kind(matcher), _p: PhantomData }
+    ) -> SyntaxElementChildrenByKind<F, L> {
+        SyntaxElementChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SyntaxElementChildrenMatching<F: Clone + Fn(SyntaxKind) -> bool, L: Language> {
-    raw: cursor::SyntaxElementChildrenMatching<F>,
+pub struct SyntaxElementChildrenByKind<F: Clone + Fn(SyntaxKind) -> bool, L: Language> {
+    raw: cursor::SyntaxElementChildrenByKind<F>,
     _p: PhantomData<L>,
 }
 
 impl<F: Clone + Fn(SyntaxKind) -> bool, L: Language> Iterator
-    for SyntaxElementChildrenMatching<F, L>
+    for SyntaxElementChildrenByKind<F, L>
 {
     type Item = SyntaxElement<L>;
     fn next(&mut self) -> Option<Self::Item> {
