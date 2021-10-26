@@ -83,11 +83,13 @@
 
 use std::{
     borrow::Cow,
-    cell::Cell,
+    cell::{Cell, RefCell},
     fmt,
     hash::{Hash, Hasher},
     iter,
+    marker::PhantomData,
     mem::{self, ManuallyDrop},
+    rc::Rc,
     ops::Range,
     ptr, slice,
 };
@@ -96,6 +98,7 @@ use countme::Count;
 
 use crate::{
     green::{GreenChild, GreenElementRef, GreenNodeData, GreenTokenData, SyntaxKind},
+    pool::{Pool, Chunk},
     sll,
     utility_types::Delta,
     Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize, TokenAtOffset,
@@ -142,6 +145,73 @@ unsafe impl sll::Elem for NodeData {
 }
 
 pub type SyntaxElement = NodeOrToken<SyntaxNode, SyntaxToken>;
+
+#[derive(Clone)]
+enum BoxedOrPooled<T> {
+    Boxed(ptr::NonNull<T>),
+    Pooled {chunk: ptr::NonNull<Chunk<T>>, pool: Rc<RefCell<Pool<T>>>},
+}
+
+impl<T> BoxedOrPooled<T> {
+    unsafe fn free(&mut self) {
+        match self {
+            BoxedOrPooled::Boxed(ptr) => {
+                let _ = Box::from_raw(ptr.as_ptr());
+            }
+            BoxedOrPooled::Pooled { chunk, pool } => {
+                pool.borrow_mut().deallocate(*chunk);
+            }
+        }
+    }
+
+    unsafe fn as_ref(&self) -> &T {
+        match self {
+            BoxedOrPooled::Boxed(ptr) => ptr.as_ref(),
+            BoxedOrPooled::Pooled { chunk, pool: _ } => chunk.as_ref().as_ref(),
+        }
+    }
+
+    unsafe fn as_mut(&mut self) -> &mut T {
+        match self {
+            BoxedOrPooled::Boxed(ptr) => ptr.as_mut(),
+            BoxedOrPooled::Pooled { chunk, pool: _ } => chunk.as_mut().as_mut(),
+        }
+    }
+}
+
+trait AllocatorStrategy<T> {
+    fn allocate(&self, val: T) -> BoxedOrPooled<T>;
+}
+
+struct BoxedAllocator<T> {
+    _p: PhantomData<T>
+}
+
+impl<T> std::default::Default for BoxedAllocator<T> {
+    fn default() -> Self {
+        BoxedAllocator { _p: PhantomData }
+    }
+}
+
+impl<T> AllocatorStrategy<T> for BoxedAllocator<T> {
+    fn allocate(&self, val: T) -> BoxedOrPooled<T> {
+        unsafe { BoxedOrPooled::Boxed(ptr::NonNull::new_unchecked(Box::into_raw(Box::new(val)))) }
+    }
+}
+
+struct TryToPoolAllocator<T> {
+    pool: Rc<RefCell<Pool<T>>>,
+}
+
+impl<T> AllocatorStrategy<T> for TryToPoolAllocator<T> {
+    fn allocate(&self, val: T) -> BoxedOrPooled<T> {
+        if self.pool.borrow().can_allocate() {
+            BoxedOrPooled::Pooled { chunk: self.pool.borrow_mut().allocate(val).unwrap(), pool: self.pool.clone() }
+        } else {
+            BoxedAllocator::default().allocate(val)
+        }
+    }
+}
 
 pub struct SyntaxNode {
     ptr: ptr::NonNull<NodeData>,
