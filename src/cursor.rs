@@ -160,10 +160,12 @@ impl Default for AllocatorStrategy {
 }
 
 impl AllocatorStrategy {
+    #[inline]
     pub fn new_pooled(capacity: usize) -> Self {
         AllocatorStrategy::Pooled(Rc::new(RefCell::new(Pool::new_with_capacity(capacity))))
     }
 
+    #[inline]
     fn allocate(&self, val: NodeData) -> Result<ptr::NonNull<NodeData>, &'static str> {
         match self {
             AllocatorStrategy::Boxed => unsafe { Ok(ptr::NonNull::new_unchecked(Box::into_raw(Box::new(val)))) }
@@ -171,6 +173,7 @@ impl AllocatorStrategy {
         }
     }
 
+    #[inline]
     fn deallocate(&self, val: ptr::NonNull<NodeData>) {
         match self {
             AllocatorStrategy::Boxed => unsafe {
@@ -182,6 +185,7 @@ impl AllocatorStrategy {
         }
     }
 
+    #[inline]
     fn can_allocate(&self) -> bool {
         match self {
             AllocatorStrategy::Boxed => true,
