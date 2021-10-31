@@ -1,6 +1,6 @@
 use std::{ptr, mem::MaybeUninit, default::Default};
 
-pub struct Chunk<T> {
+struct Chunk<T> {
     data: MaybeUninit<T>,
     next: Option<ptr::NonNull<Chunk<T>>>,
 }
@@ -8,18 +8,6 @@ pub struct Chunk<T> {
 impl<T> Default for Chunk<T> {
     fn default() -> Self {
         Self { data: MaybeUninit::uninit(), next: None }
-    }
-}
-
-impl<T> AsRef<T> for Chunk<T> {
-    fn as_ref(&self) -> &T {
-        unsafe { self.data.assume_init_ref() }
-    }
-}
-
-impl<T> AsMut<T> for Chunk<T> {
-    fn as_mut(&mut self) -> &mut T {
-        unsafe { self.data.assume_init_mut() }
     }
 }
 
@@ -33,6 +21,22 @@ pub struct Pool<T> {
 impl<T> Default for Pool<T> {
     fn default() -> Self {
         Self::new_with_capacity(256)
+    }
+}
+
+fn ptr_to_chunk<T>(item: ptr::NonNull<T>) -> ptr::NonNull<Chunk<T>> {
+    unsafe {
+        let base = MaybeUninit::<Chunk<T>>::uninit();
+        let base_ptr = base.as_ptr();
+        let data_addr = ptr::addr_of!((*base_ptr).data);
+        let data_offset = (data_addr as usize) - (base_ptr as usize);
+        ptr::NonNull::new_unchecked(((item.as_ptr() as usize) - data_offset) as *mut Chunk<T>)
+    }
+}
+
+fn chunk_to_ptr<T>(mut chunk: ptr::NonNull<Chunk<T>>) -> ptr::NonNull<T> {
+    unsafe {
+        ptr::NonNull::new_unchecked(chunk.as_mut().data.as_mut_ptr())
     }
 }
 
@@ -57,7 +61,7 @@ impl<T> Pool<T> {
         }
     }
 
-    pub fn allocate(&mut self, item: T) -> Result<ptr::NonNull<Chunk<T>>, &'static str> {
+    pub fn allocate(&mut self, item: T) -> Result<ptr::NonNull<T>, &'static str> {
         if !self.can_allocate() {
             return Err("Pool is empty");
         }
@@ -73,15 +77,17 @@ impl<T> Pool<T> {
             self.free_chunk = self.free_chunk.unwrap().as_ref().next;
         }
 
-        Ok(result)
+        Ok(chunk_to_ptr(result))
     }
 
-    pub fn deallocate(&mut self, mut item: ptr::NonNull<Chunk<T>>) {
+    pub fn deallocate(&mut self, mut item: ptr::NonNull<T>) {
+        let mut chunk_ptr = ptr_to_chunk(item);
+
         unsafe {
-            ptr::drop_in_place(item.as_mut().data.as_mut_ptr());
-            item.as_mut().next = self.free_chunk;
+            ptr::drop_in_place(item.as_mut());
+            chunk_ptr.as_mut().next = self.free_chunk;
         }
-        self.free_chunk = Some(item);
+        self.free_chunk = Some(chunk_ptr);
         self.num_chunks -= 1;
     }
 
@@ -117,7 +123,7 @@ mod tests {
 
         for id in 0..10 {
             unsafe {
-                assert_eq!(allocated[id].as_ref().as_ref().id, id);
+                assert_eq!(allocated[id].as_ref().id, id);
             }
         }
 
@@ -128,5 +134,17 @@ mod tests {
         }
 
         assert!(pool.is_empty());
+    }
+
+    #[test]
+    fn test_chunk_ptr_conversion() {
+        let mut chunk: Chunk<TestStruct> = Chunk::default();
+        chunk.data.write(TestStruct { id: 0 });
+        let chunk_ptr = unsafe { ptr::NonNull::new_unchecked(&mut chunk) };
+        let test_struct = chunk_to_ptr(chunk_ptr);
+        unsafe {
+            assert_eq!(test_struct.as_ref().id, 0);
+            assert_eq!(ptr_to_chunk(test_struct), chunk_ptr);
+        }
     }
 }

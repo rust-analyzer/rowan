@@ -193,6 +193,10 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.descendants().map(SyntaxNode::from)
     }
 
+    pub fn descendants_pooled(&self, capacity: usize) -> impl Iterator<Item = SyntaxNode<L>> {
+        self.raw.descendants_pooled(capacity).map(SyntaxNode::from)
+    }
+
     pub fn descendants_with_tokens(&self) -> impl Iterator<Item = SyntaxElement<L>> {
         self.raw.descendants_with_tokens().map(NodeOrToken::from)
     }
