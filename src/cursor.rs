@@ -259,8 +259,8 @@ unsafe fn free(mut data: ptr::NonNull<NodeData>) {
     loop {
         debug_assert_eq!(data.as_ref().rc.get(), 0);
         debug_assert!(data.as_ref().first.get().is_null());
+        let _to_drop = NodeDataDeallocator { data };
         let node = data.as_ref();
-        let _ = NodeDataDeallocator { data };
         match node.parent.take() {
             Some(parent) => {
                 debug_assert!(parent.as_ref().rc.get() > 0);
