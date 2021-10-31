@@ -89,9 +89,10 @@ use std::{
     iter,
     marker::PhantomData,
     mem::{self, ManuallyDrop},
-    rc::Rc,
     ops::Range,
-    ptr, slice,
+    ptr,
+    rc::Rc,
+    slice,
 };
 
 use countme::Count;
@@ -189,8 +190,8 @@ impl Drop for SyntaxToken {
     }
 }
 
-struct NodeDataDeallocator { 
-    data: ptr::NonNull<NodeData>
+struct NodeDataDeallocator {
+    data: ptr::NonNull<NodeData>,
 }
 
 impl Drop for NodeDataDeallocator {
@@ -291,17 +292,13 @@ impl NodeData {
                         return ptr::NonNull::new_unchecked(res);
                     }
                     it => {
-                        let res = Self::POOL.with(move |pool| { 
-                            pool.borrow_mut().allocate(res)
-                        });
+                        let res = Self::POOL.with(move |pool| pool.borrow_mut().allocate(res));
                         it.add_to_sll(res.as_ptr());
                         return res;
                     }
                 }
             }
-            Self::POOL.with(move |pool| { 
-                pool.borrow_mut().allocate(res)
-            })
+            Self::POOL.with(move |pool| pool.borrow_mut().allocate(res))
         }
     }
 

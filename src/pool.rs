@@ -1,5 +1,11 @@
-use std::{alloc::{self, Layout}, ptr, mem::{self, MaybeUninit}, default::Default, marker::PhantomData};
 use crate::arc::HeaderSlice;
+use std::{
+    alloc::{self, Layout},
+    default::Default,
+    marker::PhantomData,
+    mem::{self, MaybeUninit},
+    ptr,
+};
 
 use memoffset::offset_of;
 
@@ -19,14 +25,16 @@ fn ptr_to_chunk<T>(item: ptr::NonNull<T>) -> ptr::NonNull<Chunk<T>> {
 
 #[inline]
 fn chunk_to_ptr<T>(mut chunk: ptr::NonNull<Chunk<T>>) -> ptr::NonNull<T> {
-    unsafe {
-        ptr::NonNull::new_unchecked(chunk.as_mut().data.as_mut_ptr())
-    }
+    unsafe { ptr::NonNull::new_unchecked(chunk.as_mut().data.as_mut_ptr()) }
 }
 
 impl<T> Default for Chunk<T> {
     fn default() -> Self {
-        Self { data: MaybeUninit::uninit(), next: None, page: PagePtr { ptr: ptr::NonNull::dangling() } }
+        Self {
+            data: MaybeUninit::uninit(),
+            next: None,
+            page: PagePtr { ptr: ptr::NonNull::dangling() },
+        }
     }
 }
 
@@ -41,7 +49,7 @@ struct PageHeader<T> {
 type Page<T> = HeaderSlice<PageHeader<T>, [Chunk<T>; 0]>;
 
 struct PagePtr<T> {
-    ptr: ptr::NonNull<Page<T>>
+    ptr: ptr::NonNull<Page<T>>,
 }
 
 impl<T> Clone for PagePtr<T> {
@@ -50,8 +58,7 @@ impl<T> Clone for PagePtr<T> {
     }
 }
 
-impl<T> Copy for PagePtr<T> {
-}
+impl<T> Copy for PagePtr<T> {}
 
 impl<T> PagePtr<T> {
     fn next_page(&self) -> Option<Self> {
@@ -63,11 +70,15 @@ impl<T> PagePtr<T> {
     }
 
     fn set_next_page(&mut self, next: Option<Self>) {
-        unsafe { self.ptr.as_mut().header.next_page = next; }
+        unsafe {
+            self.ptr.as_mut().header.next_page = next;
+        }
     }
 
     fn set_prev_page(&mut self, prev: Option<Self>) {
-        unsafe { self.ptr.as_mut().header.prev_page = prev; }
+        unsafe {
+            self.ptr.as_mut().header.prev_page = prev;
+        }
     }
 
     fn link_next_page(&mut self, next: Option<Self>) {
@@ -105,7 +116,7 @@ impl<T> PagePtr<T> {
         }
     }
 
-    fn new(capacity: usize, prev_page: Option<PagePtr<T>>, next_page: Option<PagePtr<T>>) -> Self { 
+    fn new(capacity: usize, prev_page: Option<PagePtr<T>>, next_page: Option<PagePtr<T>>) -> Self {
         // Implementation mostly based on arc.rs
         assert!(capacity > 0);
 
@@ -116,7 +127,7 @@ impl<T> PagePtr<T> {
 
         // Round size up to alignment
         let align = mem::align_of::<Page<T>>();
-        let size = usable_size.wrapping_add(align - 1) & !(align -1);
+        let size = usable_size.wrapping_add(align - 1) & !(align - 1);
         assert!(size >= usable_size, "size overflows");
 
         let layout = Layout::from_size_align(size, align).expect("invalid layout");
@@ -143,7 +154,7 @@ impl<T> PagePtr<T> {
             ptr::write(ptr::addr_of_mut!((*ptr).header), header);
             for idx in 0..capacity {
                 let chunk = Chunk {
-                    data: MaybeUninit::uninit(), 
+                    data: MaybeUninit::uninit(),
                     next: if idx == capacity - 1 {
                         None
                     } else {
@@ -255,7 +266,8 @@ impl<T> Pool<T> {
             page.ptr.as_mut().header.num_chunks -= 1;
 
             if was_full_page {
-                if page.prev_page().is_none() { // head of list
+                if page.prev_page().is_none() {
+                    // head of list
                     self.full_pages = page.next_page();
                 }
                 page.remove_from_list();
@@ -263,7 +275,8 @@ impl<T> Pool<T> {
                 page.set_prev_page(None);
                 self.free_pages = Some(page);
             } else if empty_page && self.max_empty_pages <= self.num_empty_pages {
-                if page.prev_page().is_none() { // head of list
+                if page.prev_page().is_none() {
+                    // head of list
                     self.free_pages = page.next_page();
                 }
                 page.free();
