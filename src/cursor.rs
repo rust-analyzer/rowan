@@ -852,6 +852,11 @@ impl SyntaxNode {
     }
 
     #[inline]
+    pub fn preorder_pooled(&self, capacity: usize) -> Preorder {
+        self.preorder_in_allocator(AllocatorStrategy::new_pooled(capacity))
+    }
+
+    #[inline]
     fn preorder_in_allocator(&self, allocator_strategy: AllocatorStrategy) -> Preorder {
         Preorder::new(self.clone(), allocator_strategy)
     }

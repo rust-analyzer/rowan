@@ -207,6 +207,10 @@ impl<L: Language> SyntaxNode<L> {
         Preorder { raw: self.raw.preorder(), _p: PhantomData }
     }
 
+    pub fn preorder_pooled(&self, capacity: usize) -> Preorder<L> {
+        Preorder { raw: self.raw.preorder_pooled(capacity), _p: PhantomData }
+    }
+
     /// Traverse the subtree rooted at the current node (including the current
     /// node) in preorder, including tokens.
     pub fn preorder_with_tokens(&self) -> PreorderWithTokens<L> {
