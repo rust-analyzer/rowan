@@ -193,10 +193,6 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.descendants().map(SyntaxNode::from)
     }
 
-    pub fn descendants_pooled(&self, capacity: usize) -> impl Iterator<Item = SyntaxNode<L>> {
-        self.raw.descendants_pooled(capacity).map(SyntaxNode::from)
-    }
-
     pub fn descendants_with_tokens(&self) -> impl Iterator<Item = SyntaxElement<L>> {
         self.raw.descendants_with_tokens().map(NodeOrToken::from)
     }
@@ -205,10 +201,6 @@ impl<L: Language> SyntaxNode<L> {
     /// node) in preorder, excluding tokens.
     pub fn preorder(&self) -> Preorder<L> {
         Preorder { raw: self.raw.preorder(), _p: PhantomData }
-    }
-
-    pub fn preorder_pooled(&self, capacity: usize) -> Preorder<L> {
-        Preorder { raw: self.raw.preorder_pooled(capacity), _p: PhantomData }
     }
 
     /// Traverse the subtree rooted at the current node (including the current

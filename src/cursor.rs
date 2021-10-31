@@ -120,8 +120,6 @@ struct NodeData {
     index: Cell<u32>,
     green: Green,
 
-    allocator_strategy: AllocatorStrategy,
-
     /// Invariant: never changes after NodeData is created.
     mutable: bool,
     /// Absolute offset for immutable nodes, unused for mutable nodes.
@@ -147,62 +145,6 @@ unsafe impl sll::Elem for NodeData {
 }
 
 pub type SyntaxElement = NodeOrToken<SyntaxNode, SyntaxToken>;
-
-enum AllocatorStrategy {
-    Boxed,
-    Pooled(Rc<RefCell<Pool<NodeData>>>),
-}
-
-impl Default for AllocatorStrategy {
-    fn default() -> Self {
-        AllocatorStrategy::Boxed
-    }
-}
-
-impl AllocatorStrategy {
-    #[inline]
-    pub fn new_pooled(capacity: usize) -> Self {
-        AllocatorStrategy::Pooled(Rc::new(RefCell::new(Pool::new_with_capacity(capacity))))
-    }
-
-    #[inline]
-    fn allocate(&self, val: NodeData) -> Result<ptr::NonNull<NodeData>, &'static str> {
-        match self {
-            AllocatorStrategy::Boxed => unsafe { Ok(ptr::NonNull::new_unchecked(Box::into_raw(Box::new(val)))) }
-            AllocatorStrategy::Pooled(pool) => pool.borrow_mut().allocate(val),
-        }
-    }
-
-    #[inline]
-    fn deallocate(&self, val: ptr::NonNull<NodeData>) {
-        match self {
-            AllocatorStrategy::Boxed => unsafe {
-                let _ = Box::from_raw(val.as_ptr());
-            }
-            AllocatorStrategy::Pooled(pool) => {
-                pool.borrow_mut().deallocate(val);
-            }
-        }
-    }
-
-    #[inline]
-    fn can_allocate(&self) -> bool {
-        match self {
-            AllocatorStrategy::Boxed => true,
-            AllocatorStrategy::Pooled(pool) => pool.borrow().can_allocate()
-        }
-    }
-}
-
-impl Clone for AllocatorStrategy {
-    #[inline]
-    fn clone(&self) -> Self {
-        match self {
-            AllocatorStrategy::Boxed => AllocatorStrategy::Boxed,
-            AllocatorStrategy::Pooled(pool) => AllocatorStrategy::Pooled(pool.clone())
-        }
-    }
-}
 
 pub struct SyntaxNode {
     ptr: ptr::NonNull<NodeData>,
@@ -254,7 +196,9 @@ struct NodeDataDeallocator {
 impl Drop for NodeDataDeallocator {
     fn drop(&mut self) {
         unsafe {
-            self.data.as_ref().allocator_strategy.deallocate(self.data);
+            NodeData::POOL.with(|pool| {
+                pool.borrow_mut().deallocate(self.data);
+            });
         }
     }
 }
@@ -294,6 +238,10 @@ unsafe fn free(mut data: ptr::NonNull<NodeData>) {
 }
 
 impl NodeData {
+    thread_local! {
+        static POOL: RefCell<Pool<NodeData>> = RefCell::new(Pool::default());
+    }
+
     #[inline]
     fn new(
         parent: Option<SyntaxNode>,
@@ -301,14 +249,7 @@ impl NodeData {
         offset: TextSize,
         green: Green,
         mutable: bool,
-        allocator_strategy: &AllocatorStrategy,
     ) -> ptr::NonNull<NodeData> {
-        let allocator_strategy = if allocator_strategy.can_allocate() {
-            allocator_strategy.clone()
-        } else {
-            AllocatorStrategy::Boxed
-        };
- 
         let parent = ManuallyDrop::new(parent);
         let res = NodeData {
             _c: Count::new(),
@@ -316,7 +257,6 @@ impl NodeData {
             parent: Cell::new(parent.as_ref().map(|it| it.ptr)),
             index: Cell::new(index),
             green,
-            allocator_strategy: allocator_strategy.clone(),
 
             mutable,
             offset,
@@ -351,13 +291,17 @@ impl NodeData {
                         return ptr::NonNull::new_unchecked(res);
                     }
                     it => {
-                        let res = allocator_strategy.allocate(res).unwrap();
+                        let res = Self::POOL.with(move |pool| { 
+                            pool.borrow_mut().allocate(res)
+                        });
                         it.add_to_sll(res.as_ptr());
                         return res;
                     }
                 }
             }
-            allocator_strategy.allocate(res).unwrap()
+            Self::POOL.with(move |pool| { 
+                pool.borrow_mut().allocate(res)
+            })
         }
     }
 
@@ -458,10 +402,6 @@ impl NodeData {
     }
 
     fn next_sibling(&self) -> Option<SyntaxNode> {
-        self.next_sibling_in_allocator(&AllocatorStrategy::default())
-    }
-
-    fn next_sibling_in_allocator(&self, allocator_strategy: &AllocatorStrategy) -> Option<SyntaxNode> {
         let mut siblings = self.green_siblings().enumerate();
         let index = self.index() as usize;
 
@@ -470,7 +410,7 @@ impl NodeData {
             child.as_ref().into_node().and_then(|green| {
                 let parent = self.parent_node()?;
                 let offset = parent.offset() + child.rel_offset();
-                Some(SyntaxNode::new_child_in_allocator(green, parent, index as u32, offset, allocator_strategy))
+                Some(SyntaxNode::new_child(green, parent, index as u32, offset))
             })
         })
     }
@@ -611,13 +551,13 @@ impl SyntaxNode {
     pub fn new_root(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, false, &AllocatorStrategy::default()) }
+        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, false) }
     }
 
     pub fn new_root_mut(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, true, &AllocatorStrategy::default()) }
+        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, true) }
     }
 
     fn new_child(
@@ -626,19 +566,9 @@ impl SyntaxNode {
         index: u32,
         offset: TextSize,
     ) -> SyntaxNode {
-        Self::new_child_in_allocator(green, parent, index, offset, &AllocatorStrategy::default())
-    }
-
-    fn new_child_in_allocator(
-        green: &GreenNodeData,
-        parent: SyntaxNode,
-        index: u32,
-        offset: TextSize,
-        allocator_strategy: &AllocatorStrategy,
-    ) -> SyntaxNode {
         let mutable = parent.data().mutable;
         let green = Green::Node { ptr: Cell::new(green.into()) };
-        SyntaxNode { ptr: NodeData::new(Some(parent), index, offset, green, mutable, allocator_strategy) }
+        SyntaxNode { ptr: NodeData::new(Some(parent), index, offset, green, mutable) }
     }
 
     pub fn clone_for_update(&self) -> SyntaxNode {
@@ -733,18 +663,13 @@ impl SyntaxNode {
     }
 
     pub fn first_child(&self) -> Option<SyntaxNode> {
-        self.first_child_in_allocator(&AllocatorStrategy::default())
-    }
-
-    fn first_child_in_allocator(&self, allocator_strategy: &AllocatorStrategy) -> Option<SyntaxNode> {
         self.green_ref().children().raw.enumerate().find_map(|(index, child)| {
             child.as_ref().into_node().map(|green| {
-                SyntaxNode::new_child_in_allocator(
+                SyntaxNode::new_child(
                     green,
                     self.clone(),
                     index as u32,
                     self.offset() + child.rel_offset(),
-                    allocator_strategy
                 )
             })
         })
@@ -781,10 +706,6 @@ impl SyntaxNode {
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
         self.data().next_sibling()
-    }
-
-    fn next_sibling_in_allocator(&self, allocator_strategy: &AllocatorStrategy) -> Option<SyntaxNode> {
-        self.data().next_sibling_in_allocator(allocator_strategy)
     }
 
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
@@ -827,17 +748,7 @@ impl SyntaxNode {
 
     #[inline]
     pub fn descendants(&self) -> impl Iterator<Item = SyntaxNode> {
-        self.descendants_in_allocator(AllocatorStrategy::default())
-    }
-
-    #[inline]
-    pub fn descendants_pooled(&self, capacity: usize) -> impl Iterator<Item = SyntaxNode> {
-        self.descendants_in_allocator(AllocatorStrategy::new_pooled(capacity))
-    }
-
-    #[inline]
-    fn descendants_in_allocator(&self, allocator_strategy: AllocatorStrategy) -> impl Iterator<Item = SyntaxNode> {
-        self.preorder_in_allocator(allocator_strategy).filter_map(|event| match event {
+        self.preorder().filter_map(|event| match event {
             WalkEvent::Enter(node) => Some(node),
             WalkEvent::Leave(_) => None,
         })
@@ -853,17 +764,7 @@ impl SyntaxNode {
 
     #[inline]
     pub fn preorder(&self) -> Preorder {
-        self.preorder_in_allocator(AllocatorStrategy::default())
-    }
-
-    #[inline]
-    pub fn preorder_pooled(&self, capacity: usize) -> Preorder {
-        self.preorder_in_allocator(AllocatorStrategy::new_pooled(capacity))
-    }
-
-    #[inline]
-    fn preorder_in_allocator(&self, allocator_strategy: AllocatorStrategy) -> Preorder {
-        Preorder::new(self.clone(), allocator_strategy)
+        Preorder::new(self.clone())
     }
 
     #[inline]
@@ -971,19 +872,9 @@ impl SyntaxToken {
         index: u32,
         offset: TextSize,
     ) -> SyntaxToken {
-        Self::new_in_allocator(green, parent, index, offset, &AllocatorStrategy::default())
-    }
-
-    fn new_in_allocator(
-        green: &GreenTokenData,
-        parent: SyntaxNode,
-        index: u32,
-        offset: TextSize,
-        allocator_strategy: &AllocatorStrategy
-    ) -> SyntaxToken {
         let mutable = parent.data().mutable;
         let green = Green::Token { ptr: green.into() };
-        SyntaxToken { ptr: NodeData::new(Some(parent), index, offset, green, mutable, allocator_strategy) }
+        SyntaxToken { ptr: NodeData::new(Some(parent), index, offset, green, mutable) }
     }
 
     #[inline]
@@ -1096,22 +987,12 @@ impl SyntaxElement {
         index: u32,
         offset: TextSize,
     ) -> SyntaxElement {
-        Self::new_in_allocator(element, parent, index, offset, &AllocatorStrategy::default())
-    }
-
-    fn new_in_allocator(
-        element: GreenElementRef<'_>,
-        parent: SyntaxNode,
-        index: u32,
-        offset: TextSize,
-        allocator_strategy: &AllocatorStrategy,
-    ) -> SyntaxElement {
         match element {
             NodeOrToken::Node(node) => {
-                SyntaxNode::new_child_in_allocator(node, parent, index as u32, offset, allocator_strategy).into()
+                SyntaxNode::new_child(node, parent, index as u32, offset).into()
             }
             NodeOrToken::Token(token) => {
-                SyntaxToken::new_in_allocator(token, parent, index as u32, offset, allocator_strategy).into()
+                SyntaxToken::new(token, parent, index as u32, offset).into()
             }
         }
     }
@@ -1325,13 +1206,12 @@ pub struct Preorder {
     start: SyntaxNode,
     next: Option<WalkEvent<SyntaxNode>>,
     skip_subtree: bool,
-    allocator_strategy: AllocatorStrategy
 }
 
 impl Preorder {
-    fn new(start: SyntaxNode, allocator_strategy: AllocatorStrategy) -> Preorder {
+    fn new(start: SyntaxNode) -> Preorder {
         let next = Some(WalkEvent::Enter(start.clone()));
-        Preorder { start, next, skip_subtree: false, allocator_strategy }
+        Preorder { start, next, skip_subtree: false }
     }
 
     pub fn skip_subtree(&mut self) {
@@ -1358,7 +1238,7 @@ impl Iterator for Preorder {
         let next = self.next.take();
         self.next = next.as_ref().and_then(|next| {
             Some(match next {
-                WalkEvent::Enter(node) => match node.first_child_in_allocator(&self.allocator_strategy) {
+                WalkEvent::Enter(node) => match node.first_child() {
                     Some(child) => WalkEvent::Enter(child),
                     None => WalkEvent::Leave(node.clone()),
                 },
@@ -1366,7 +1246,7 @@ impl Iterator for Preorder {
                     if node == &self.start {
                         return None;
                     }
-                    match node.next_sibling_in_allocator(&self.allocator_strategy) {
+                    match node.next_sibling() {
                         Some(sibling) => WalkEvent::Enter(sibling),
                         None => WalkEvent::Leave(node.parent()?),
                     }

@@ -12,7 +12,7 @@
 mod green;
 
 #[allow(unsafe_code)]
-mod pool;
+pub mod pool;
 
 #[allow(unsafe_code)]
 pub mod cursor;
