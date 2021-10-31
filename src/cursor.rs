@@ -195,6 +195,7 @@ impl AllocatorStrategy {
 }
 
 impl Clone for AllocatorStrategy {
+    #[inline]
     fn clone(&self) -> Self {
         match self {
             AllocatorStrategy::Boxed => AllocatorStrategy::Boxed,
@@ -251,6 +252,7 @@ struct NodeDataDeallocator {
 }
 
 impl Drop for NodeDataDeallocator {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             self.data.as_ref().allocator_strategy.deallocate(self.data);
