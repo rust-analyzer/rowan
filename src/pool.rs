@@ -24,16 +24,18 @@ impl<T> Default for Pool<T> {
     }
 }
 
+#[inline]
 fn ptr_to_chunk<T>(item: ptr::NonNull<T>) -> ptr::NonNull<Chunk<T>> {
+    let base = MaybeUninit::<Chunk<T>>::uninit();
+    let base_ptr = base.as_ptr();
     unsafe {
-        let base = MaybeUninit::<Chunk<T>>::uninit();
-        let base_ptr = base.as_ptr();
         let data_addr = ptr::addr_of!((*base_ptr).data);
         let data_offset = (data_addr as usize) - (base_ptr as usize);
         ptr::NonNull::new_unchecked(((item.as_ptr() as usize) - data_offset) as *mut Chunk<T>)
     }
 }
 
+#[inline]
 fn chunk_to_ptr<T>(mut chunk: ptr::NonNull<Chunk<T>>) -> ptr::NonNull<T> {
     unsafe {
         ptr::NonNull::new_unchecked(chunk.as_mut().data.as_mut_ptr())
@@ -72,10 +74,7 @@ impl<T> Pool<T> {
 
         self.num_chunks += 1;
         let result = self.free_chunk.unwrap();
-
-        unsafe {
-            self.free_chunk = self.free_chunk.unwrap().as_ref().next;
-        }
+        self.free_chunk = unsafe { self.free_chunk.unwrap().as_ref().next };
 
         Ok(chunk_to_ptr(result))
     }

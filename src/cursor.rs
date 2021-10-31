@@ -296,14 +296,14 @@ impl NodeData {
         offset: TextSize,
         green: Green,
         mutable: bool,
-        allocator_strategy: AllocatorStrategy,
+        allocator_strategy: &AllocatorStrategy,
     ) -> ptr::NonNull<NodeData> {
         let allocator_strategy = if allocator_strategy.can_allocate() {
-            allocator_strategy
+            allocator_strategy.clone()
         } else {
             AllocatorStrategy::Boxed
         };
-
+ 
         let parent = ManuallyDrop::new(parent);
         let res = NodeData {
             _c: Count::new(),
@@ -453,10 +453,10 @@ impl NodeData {
     }
 
     fn next_sibling(&self) -> Option<SyntaxNode> {
-        self.next_sibling_in_allocator(AllocatorStrategy::default())
+        self.next_sibling_in_allocator(&AllocatorStrategy::default())
     }
 
-    fn next_sibling_in_allocator(&self, allocator_strategy: AllocatorStrategy) -> Option<SyntaxNode> {
+    fn next_sibling_in_allocator(&self, allocator_strategy: &AllocatorStrategy) -> Option<SyntaxNode> {
         let mut siblings = self.green_siblings().enumerate();
         let index = self.index() as usize;
 
@@ -465,7 +465,7 @@ impl NodeData {
             child.as_ref().into_node().and_then(|green| {
                 let parent = self.parent_node()?;
                 let offset = parent.offset() + child.rel_offset();
-                Some(SyntaxNode::new_child_in_allocator(green, parent, index as u32, offset, allocator_strategy.clone()))
+                Some(SyntaxNode::new_child_in_allocator(green, parent, index as u32, offset, allocator_strategy))
             })
         })
     }
@@ -606,13 +606,13 @@ impl SyntaxNode {
     pub fn new_root(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, false, AllocatorStrategy::default()) }
+        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, false, &AllocatorStrategy::default()) }
     }
 
     pub fn new_root_mut(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, true, AllocatorStrategy::default()) }
+        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, true, &AllocatorStrategy::default()) }
     }
 
     fn new_child(
@@ -621,7 +621,7 @@ impl SyntaxNode {
         index: u32,
         offset: TextSize,
     ) -> SyntaxNode {
-        Self::new_child_in_allocator(green, parent, index, offset, AllocatorStrategy::default())
+        Self::new_child_in_allocator(green, parent, index, offset, &AllocatorStrategy::default())
     }
 
     fn new_child_in_allocator(
@@ -629,7 +629,7 @@ impl SyntaxNode {
         parent: SyntaxNode,
         index: u32,
         offset: TextSize,
-        allocator_strategy: AllocatorStrategy,
+        allocator_strategy: &AllocatorStrategy,
     ) -> SyntaxNode {
         let mutable = parent.data().mutable;
         let green = Green::Node { ptr: Cell::new(green.into()) };
@@ -728,10 +728,10 @@ impl SyntaxNode {
     }
 
     pub fn first_child(&self) -> Option<SyntaxNode> {
-        self.first_child_in_allocator(AllocatorStrategy::default())
+        self.first_child_in_allocator(&AllocatorStrategy::default())
     }
 
-    fn first_child_in_allocator(&self, allocator_strategy: AllocatorStrategy) -> Option<SyntaxNode> {
+    fn first_child_in_allocator(&self, allocator_strategy: &AllocatorStrategy) -> Option<SyntaxNode> {
         self.green_ref().children().raw.enumerate().find_map(|(index, child)| {
             child.as_ref().into_node().map(|green| {
                 SyntaxNode::new_child_in_allocator(
@@ -739,7 +739,7 @@ impl SyntaxNode {
                     self.clone(),
                     index as u32,
                     self.offset() + child.rel_offset(),
-                    allocator_strategy.clone()
+                    allocator_strategy
                 )
             })
         })
@@ -778,7 +778,7 @@ impl SyntaxNode {
         self.data().next_sibling()
     }
 
-    fn next_sibling_in_allocator(&self, allocator_strategy: AllocatorStrategy) -> Option<SyntaxNode> {
+    fn next_sibling_in_allocator(&self, allocator_strategy: &AllocatorStrategy) -> Option<SyntaxNode> {
         self.data().next_sibling_in_allocator(allocator_strategy)
     }
 
@@ -961,7 +961,7 @@ impl SyntaxToken {
         index: u32,
         offset: TextSize,
     ) -> SyntaxToken {
-        Self::new_in_allocator(green, parent, index, offset, AllocatorStrategy::default())
+        Self::new_in_allocator(green, parent, index, offset, &AllocatorStrategy::default())
     }
 
     fn new_in_allocator(
@@ -969,7 +969,7 @@ impl SyntaxToken {
         parent: SyntaxNode,
         index: u32,
         offset: TextSize,
-        allocator_strategy: AllocatorStrategy
+        allocator_strategy: &AllocatorStrategy
     ) -> SyntaxToken {
         let mutable = parent.data().mutable;
         let green = Green::Token { ptr: green.into() };
@@ -1086,7 +1086,7 @@ impl SyntaxElement {
         index: u32,
         offset: TextSize,
     ) -> SyntaxElement {
-        Self::new_in_allocator(element, parent, index, offset, AllocatorStrategy::default())
+        Self::new_in_allocator(element, parent, index, offset, &AllocatorStrategy::default())
     }
 
     fn new_in_allocator(
@@ -1094,7 +1094,7 @@ impl SyntaxElement {
         parent: SyntaxNode,
         index: u32,
         offset: TextSize,
-        allocator_strategy: AllocatorStrategy,
+        allocator_strategy: &AllocatorStrategy,
     ) -> SyntaxElement {
         match element {
             NodeOrToken::Node(node) => {
@@ -1348,7 +1348,7 @@ impl Iterator for Preorder {
         let next = self.next.take();
         self.next = next.as_ref().and_then(|next| {
             Some(match next {
-                WalkEvent::Enter(node) => match node.first_child_in_allocator(self.allocator_strategy.clone()) {
+                WalkEvent::Enter(node) => match node.first_child_in_allocator(&self.allocator_strategy) {
                     Some(child) => WalkEvent::Enter(child),
                     None => WalkEvent::Leave(node.clone()),
                 },
@@ -1356,7 +1356,7 @@ impl Iterator for Preorder {
                     if node == &self.start {
                         return None;
                     }
-                    match node.next_sibling_in_allocator(self.allocator_strategy.clone()) {
+                    match node.next_sibling_in_allocator(&self.allocator_strategy) {
                         Some(sibling) => WalkEvent::Enter(sibling),
                         None => WalkEvent::Leave(node.parent()?),
                     }
