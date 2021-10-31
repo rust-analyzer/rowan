@@ -252,7 +252,6 @@ struct NodeDataDeallocator {
 }
 
 impl Drop for NodeDataDeallocator {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             self.data.as_ref().allocator_strategy.deallocate(self.data);
