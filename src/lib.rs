@@ -24,6 +24,7 @@ mod sll;
 mod arc;
 #[cfg(feature = "serde1")]
 mod serde_impls;
+pub mod ast;
 
 pub use text_size::{TextLen, TextRange, TextSize};
 
