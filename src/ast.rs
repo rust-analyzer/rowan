@@ -1,13 +1,17 @@
-//! In rowan, syntax trees are transient objects.
+//! Working with abstract syntax trees.
 //!
-//! That means that we create trees when we need them, and tear them down to
-//! save memory. In this architecture, hanging on to a particular syntax node
-//! for a long time is ill-advisable, as that keeps the whole tree resident.
+//! In rowan, syntax trees are transient objects. That means that we create
+//! trees when we need them, and tear them down to save memory. In this
+//! architecture, hanging on to a particular syntax node for a long time is
+//! ill-advisable, as that keeps the whole tree resident.
 //!
 //! Instead, we provide a [`SyntaxNodePtr`] type, which stores information about
-//! *location* of a particular syntax node in a tree. Its a small type which can
-//! be cheaply stored, and which can be resolved to a real [`SyntaxNode`] when
-//! necessary.
+//! the _location_ of a particular syntax node in a tree. It's a small type
+//! which can be cheaply stored, and which can be resolved to a real
+//! [`SyntaxNode`] when necessary.
+//!
+//! We also provide an [`AstNode`] trait for typed AST wrapper APIs over rowan
+//! nodes.
 
 use std::{
     fmt,
@@ -17,8 +21,8 @@ use std::{
 
 use crate::{Language, SyntaxNode, TextRange};
 
-/// The main trait to go from untyped `SyntaxNode` to a typed ast. The
-/// conversion itself has zero runtime cost: ast and syntax nodes have exactly
+/// The main trait to go from untyped [`SyntaxNode`] to a typed AST. The
+/// conversion itself has zero runtime cost: AST and syntax nodes have exactly
 /// the same representation: a pointer to the tree root and a pointer to the
 /// node itself.
 pub trait AstNode {
@@ -49,6 +53,7 @@ pub trait AstNode {
     }
 }
 
+/// A "pointer" to a [`SyntaxNode`], via location in the source code.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxNodePtr<L: Language> {
     kind: L::Kind,
@@ -56,15 +61,18 @@ pub struct SyntaxNodePtr<L: Language> {
 }
 
 impl<L: Language> SyntaxNodePtr<L> {
+    /// Returns a [`SyntaxNodePtr`] for the node.
     pub fn new(node: &SyntaxNode<L>) -> Self {
         Self { kind: node.kind(), range: node.text_range() }
     }
 
-    /// "Dereference" the pointer to get the node it points to.
+    /// "Dereferences" the pointer to get the [`SyntaxNode`] it points to.
     ///
     /// Panics if node is not found, so make sure that `root` syntax tree is
     /// equivalent (is build from the same text) to the tree which was
     /// originally used to get this [`SyntaxNodePtr`].
+    ///
+    /// Also panics if `root` is not actually a root (i.e. it has a parent).
     ///
     /// The complexity is linear in the depth of the tree and logarithmic in
     /// tree width. As most trees are shallow, thinking about this as
@@ -78,6 +86,7 @@ impl<L: Language> SyntaxNodePtr<L> {
         .unwrap_or_else(|| panic!("can't resolve local ptr to SyntaxNode: {:?}", self))
     }
 
+    /// Casts this to an [`AstPtr`] to the given node type if possible.
     pub fn cast<N: AstNode<Language = L>>(self) -> Option<AstPtr<N>> {
         if !N::can_cast(self.kind) {
             return None;
@@ -86,24 +95,29 @@ impl<L: Language> SyntaxNodePtr<L> {
     }
 }
 
-/// Like `SyntaxNodePtr`, but remembers the type of node
+/// Like [`SyntaxNodePtr`], but remembers the type of node.
 pub struct AstPtr<N: AstNode> {
     raw: SyntaxNodePtr<N::Language>,
 }
 
 impl<N: AstNode> AstPtr<N> {
+    /// Returns an [`AstPtr`] for the node.
     pub fn new(node: &N) -> Self {
         Self { raw: SyntaxNodePtr::new(node.syntax()) }
     }
 
+    /// Given the root node containing the node `n` that `self` is a pointer to,
+    /// returns `n`. See [`SyntaxNodePtr::to_node`].
     pub fn to_node(&self, root: &SyntaxNode<N::Language>) -> N {
         N::cast(self.raw.to_node(root)).unwrap()
     }
 
+    /// Returns the underlying [`SyntaxNodePtr`].
     pub fn syntax_node_ptr(&self) -> SyntaxNodePtr<N::Language> {
         self.raw.clone()
     }
 
+    /// Casts this to an [`AstPtr`] to the given node type if possible.
     pub fn cast<U: AstNode<Language = N::Language>>(self) -> Option<AstPtr<U>> {
         if !U::can_cast(self.raw.kind) {
             return None;
