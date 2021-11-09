@@ -61,26 +61,31 @@ impl<T> Clone for PagePtr<T> {
 impl<T> Copy for PagePtr<T> {}
 
 impl<T> PagePtr<T> {
+    #[inline]
     fn next_page(&self) -> Option<Self> {
         unsafe { self.ptr.as_ref().header.next_page }
     }
 
+    #[inline]
     fn prev_page(&self) -> Option<Self> {
         unsafe { self.ptr.as_ref().header.prev_page }
     }
 
+    #[inline]
     fn set_next_page(&mut self, next: Option<Self>) {
         unsafe {
             self.ptr.as_mut().header.next_page = next;
         }
     }
 
+    #[inline]
     fn set_prev_page(&mut self, prev: Option<Self>) {
         unsafe {
             self.ptr.as_mut().header.prev_page = prev;
         }
     }
 
+    #[inline]
     fn link_next_page(&mut self, next: Option<Self>) {
         self.set_next_page(next);
         if let Some(mut ptr) = next {
@@ -88,6 +93,7 @@ impl<T> PagePtr<T> {
         }
     }
 
+    #[inline]
     fn link_prev_page(&mut self, prev: Option<Self>) {
         self.set_prev_page(prev);
         if let Some(mut ptr) = prev {
@@ -170,6 +176,7 @@ impl<T> PagePtr<T> {
         }
     }
 
+    #[inline]
     fn allocate(&mut self, item: T) -> ptr::NonNull<T> {
         let header = unsafe { &mut self.ptr.as_mut().header };
         unsafe {
@@ -197,7 +204,7 @@ pub struct Pool<T> {
 
 impl<T> Default for Pool<T> {
     fn default() -> Self {
-        Self::new(256, 4)
+        Self::new(1024, 4)
     }
 }
 
@@ -229,6 +236,7 @@ impl<T> Pool<T> {
         }
     }
 
+    #[inline]
     pub fn allocate(&mut self, item: T) -> ptr::NonNull<T> {
         if self.free_pages.is_none() {
             self.free_pages = Some(PagePtr::new(self.page_capacity, None, None));
@@ -252,6 +260,7 @@ impl<T> Pool<T> {
         result
     }
 
+    #[inline]
     pub fn deallocate(&mut self, mut item: ptr::NonNull<T>) {
         let mut chunk_ptr = ptr_to_chunk(item);
         let mut page = unsafe { chunk_ptr.as_ref().page };
