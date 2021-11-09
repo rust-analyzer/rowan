@@ -376,11 +376,10 @@ impl NodeData {
     }
 
     fn next_sibling(&self) -> Option<SyntaxNode> {
-        let mut siblings = self.green_siblings().enumerate();
+        let siblings = self.green_siblings().enumerate();
         let index = self.index() as usize;
 
-        siblings.nth(index);
-        siblings.find_map(|(index, child)| {
+        siblings.skip(index + 1).find_map(|(index, child)| {
             child.as_ref().into_node().and_then(|green| {
                 let parent = self.parent_node()?;
                 let offset = parent.offset() + child.rel_offset();
@@ -390,11 +389,10 @@ impl NodeData {
     }
 
     fn next_sibling_by_kind(&self, matcher: &impl Fn(SyntaxKind) -> bool) -> Option<SyntaxNode> {
-        let mut siblings = self.green_siblings().enumerate();
+        let siblings = self.green_siblings().enumerate();
         let index = self.index() as usize;
 
-        siblings.nth(index);
-        siblings.find_map(|(index, child)| {
+        siblings.skip(index + 1).find_map(|(index, child)| {
             if !matcher(child.as_ref().kind()) {
                 return None;
             }
@@ -407,11 +405,10 @@ impl NodeData {
     }
 
     fn prev_sibling(&self) -> Option<SyntaxNode> {
-        let mut rev_siblings = self.green_siblings().enumerate().rev();
+        let rev_siblings = self.green_siblings().enumerate().rev();
         let index = rev_siblings.len() - (self.index() as usize);
 
-        rev_siblings.nth(index);
-        rev_siblings.find_map(|(index, child)| {
+        rev_siblings.skip(index + 1).find_map(|(index, child)| {
             child.as_ref().into_node().and_then(|green| {
                 let parent = self.parent_node()?;
                 let offset = parent.offset() + child.rel_offset();
@@ -435,11 +432,10 @@ impl NodeData {
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
     ) -> Option<SyntaxElement> {
-        let mut siblings = self.green_siblings().enumerate();
+        let siblings = self.green_siblings().enumerate();
         let index = self.index() as usize;
 
-        siblings.nth(index);
-        siblings.find_map(|(index, child)| {
+        siblings.skip(index + 1).find_map(|(index, child)| {
             if !matcher(child.as_ref().kind()) {
                 return None;
             }

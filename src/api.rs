@@ -391,7 +391,7 @@ impl<L: Language> Iterator for SyntaxNodeChildren<L> {
 impl<L: Language> SyntaxNodeChildren<L> {
     pub fn by_kind<'a>(
         self,
-        matcher: &'a impl Fn(SyntaxKind) -> bool,
+        matcher: &'a dyn Fn(SyntaxKind) -> bool,
     ) -> SyntaxNodeChildrenByKind<'a, L> {
         SyntaxNodeChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
     }
@@ -432,7 +432,7 @@ impl<L: Language> Iterator for SyntaxElementChildren<L> {
 impl<L: Language> SyntaxElementChildren<L> {
     pub fn by_kind<'a>(
         self,
-        matcher: &'a impl Fn(SyntaxKind) -> bool,
+        matcher: &'a dyn Fn(SyntaxKind) -> bool,
     ) -> SyntaxElementChildrenByKind<'a, L> {
         SyntaxElementChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
     }
