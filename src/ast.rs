@@ -93,6 +93,11 @@ impl<L: Language> SyntaxNodePtr<L> {
         }
         Some(AstPtr { raw: self })
     }
+
+    /// Returns the kind of syntax node this points to.
+    pub fn kind(&self) -> L::Kind {
+        self.kind
+    }
 }
 
 /// Like [`SyntaxNodePtr`], but remembers the type of node.
