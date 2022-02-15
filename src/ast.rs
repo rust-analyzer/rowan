@@ -17,9 +17,10 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     iter::successors,
+    marker::PhantomData,
 };
 
-use crate::{Language, SyntaxNode, TextRange};
+use crate::{Language, SyntaxNode, SyntaxNodeChildren, TextRange};
 
 /// The main trait to go from untyped [`SyntaxNode`] to a typed AST. The
 /// conversion itself has zero runtime cost: AST and syntax nodes have exactly
@@ -160,5 +161,41 @@ impl<N: AstNode> Hash for AstPtr<N> {
 impl<N: AstNode> From<AstPtr<N>> for SyntaxNodePtr<N::Language> {
     fn from(ptr: AstPtr<N>) -> SyntaxNodePtr<N::Language> {
         ptr.raw
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AstChildren<N: AstNode> {
+    inner: SyntaxNodeChildren<N::Language>,
+    ph: PhantomData<N>,
+}
+
+impl<N: AstNode> AstChildren<N> {
+    fn new(parent: &SyntaxNode<N::Language>) -> Self {
+        AstChildren { inner: parent.children(), ph: PhantomData }
+    }
+}
+
+impl<N: AstNode> Iterator for AstChildren<N> {
+    type Item = N;
+    fn next(&mut self) -> Option<N> {
+        self.inner.find_map(N::cast)
+    }
+}
+
+pub mod support {
+    use super::{AstChildren, AstNode};
+    use crate::{Language, SyntaxNode, SyntaxToken};
+
+    pub fn child<N: AstNode>(parent: &SyntaxNode<N::Language>) -> Option<N> {
+        parent.children().find_map(N::cast)
+    }
+
+    pub fn children<N: AstNode>(parent: &SyntaxNode<N::Language>) -> AstChildren<N> {
+        AstChildren::new(parent)
+    }
+
+    pub fn token<L: Language>(parent: &SyntaxNode<L>, kind: L::Kind) -> Option<SyntaxToken<L>> {
+        parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
     }
 }
