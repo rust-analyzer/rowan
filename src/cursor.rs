@@ -431,9 +431,8 @@ impl NodeData {
             None => return,
         };
 
-        unsafe {
             sll::adjust(self, self.index() + 1, Delta::Sub(1));
-            let parent = parent_ptr.as_ref();
+            let parent = unsafe { parent_ptr.as_ref() };
             sll::unlink(&parent.first, self);
 
             // Add strong ref to green
@@ -449,27 +448,25 @@ impl NodeData {
             match parent.green() {
                 NodeOrToken::Node(green) => {
                     let green = green.remove_child(self.index() as usize);
-                    parent.respine(green)
+                    unsafe { parent.respine(green) }
                 }
                 NodeOrToken::Token(_) => unreachable!(),
             }
 
             if parent.dec_rc() {
-                free(parent_ptr)
+                unsafe { free(parent_ptr) }
             }
-        }
     }
     fn attach_child(&self, index: usize, child: &NodeData) {
         assert!(self.mutable && child.mutable && child.parent().is_none());
         assert!(self.rc.get() > 0 && child.rc.get() > 0);
 
-        unsafe {
             child.index.set(index as u32);
             child.parent.set(Some(self.into()));
             self.inc_rc();
 
             if !self.first.get().is_null() {
-                sll::adjust(&*self.first.get(), index as u32, Delta::Add(1));
+                sll::adjust(unsafe { &*self.first.get() }, index as u32, Delta::Add(1));
             }
 
             match sll::link(&self.first, child) {
@@ -483,16 +480,15 @@ impl NodeData {
                 NodeOrToken::Node(green) => {
                     // Child is root, so it ownes the green node. Steal it!
                     let child_green = match &child.green {
-                        Green::Node { ptr } => GreenNode::from_raw(ptr.get()).into(),
-                        Green::Token { ptr } => GreenToken::from_raw(*ptr).into(),
+                        Green::Node { ptr } => unsafe { GreenNode::from_raw(ptr.get()).into() },
+                        Green::Token { ptr } => unsafe { GreenToken::from_raw(*ptr).into() },
                     };
 
                     let green = green.insert_child(index, child_green);
-                    self.respine(green);
+                    unsafe { self.respine(green) };
                 }
                 NodeOrToken::Token(_) => unreachable!(),
             }
-        }
     }
     unsafe fn respine(&self, mut new_green: GreenNode) {
         let mut node = self;

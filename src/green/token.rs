@@ -44,11 +44,9 @@ impl ToOwned for GreenTokenData {
 
     #[inline]
     fn to_owned(&self) -> GreenToken {
-        unsafe {
-            let green = GreenToken::from_raw(ptr::NonNull::from(self));
+            let green = unsafe { GreenToken::from_raw(ptr::NonNull::from(self)) };
             let green = ManuallyDrop::new(green);
             GreenToken::clone(&green)
-        }
     }
 }
 

@@ -56,11 +56,9 @@ impl ToOwned for GreenNodeData {
 
     #[inline]
     fn to_owned(&self) -> GreenNode {
-        unsafe {
-            let green = GreenNode::from_raw(ptr::NonNull::from(self));
+            let green = unsafe { GreenNode::from_raw(ptr::NonNull::from(self)) };
             let green = ManuallyDrop::new(green);
             GreenNode::clone(&green)
-        }
     }
 }
 
@@ -194,8 +192,8 @@ impl ops::Deref for GreenNode {
 
     #[inline]
     fn deref(&self) -> &GreenNodeData {
+        let repr: &Repr = &self.ptr;
         unsafe {
-            let repr: &Repr = &self.ptr;
             let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
             mem::transmute::<&ReprThin, &GreenNodeData>(repr)
         }
