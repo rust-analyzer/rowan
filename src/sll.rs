@@ -84,12 +84,12 @@ pub(crate) fn unlink<E: Elem>(head: &Cell<*const E>, elem: &E) {
 
 #[cold]
 pub(crate) fn link<'a, E: Elem>(head: &'a Cell<*const E>, elem: &E) -> AddToSllResult<'a, E> {
+    let old_head = head.get();
+    // Case 1: empty head, replace it.
+    if old_head.is_null() {
+        return AddToSllResult::EmptyHead(head);
+    }
     unsafe {
-        let old_head = head.get();
-        // Case 1: empty head, replace it.
-        if old_head.is_null() {
-            return AddToSllResult::EmptyHead(head);
-        }
 
         // Case 2: we are smaller than the head, replace it.
         if elem.key() < (*old_head).key() {
