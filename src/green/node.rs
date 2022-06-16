@@ -56,9 +56,9 @@ impl ToOwned for GreenNodeData {
 
     #[inline]
     fn to_owned(&self) -> GreenNode {
-            let green = unsafe { GreenNode::from_raw(ptr::NonNull::from(self)) };
-            let green = ManuallyDrop::new(green);
-            GreenNode::clone(&green)
+        let green = unsafe { GreenNode::from_raw(ptr::NonNull::from(self)) };
+        let green = ManuallyDrop::new(green);
+        GreenNode::clone(&green)
     }
 }
 

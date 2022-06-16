@@ -90,7 +90,6 @@ pub(crate) fn link<'a, E: Elem>(head: &'a Cell<*const E>, elem: &E) -> AddToSllR
         return AddToSllResult::EmptyHead(head);
     }
     unsafe {
-
         // Case 2: we are smaller than the head, replace it.
         if elem.key() < (*old_head).key() {
             return AddToSllResult::SmallerThanHead(head);
