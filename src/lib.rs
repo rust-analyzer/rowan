@@ -34,7 +34,7 @@ pub use crate::{
     },
     green::{
         Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenNodeData, GreenToken,
-        GreenTokenData, SyntaxKind,
+        GreenTokenData, NodeCache, SyntaxKind,
     },
     syntax_text::SyntaxText,
     utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
