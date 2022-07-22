@@ -95,9 +95,14 @@ impl<L: Language> SyntaxNodePtr<L> {
         Some(AstPtr { raw: self })
     }
 
-    /// Returns the kind of syntax node this points to.
+    /// Returns the kind of the syntax node this points to.
     pub fn kind(&self) -> L::Kind {
         self.kind
+    }
+
+    /// Returns the range of the syntax node this points to.
+    pub fn range(&self) -> TextRange {
+        self.range
     }
 }
 
