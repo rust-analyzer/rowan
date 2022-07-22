@@ -1,6 +1,7 @@
 # Rowan
 
-[![Build Status](https://travis-ci.org/rust-analyzer/rowan.svg?branch=master)](https://travis-ci.org/rust-analyzer/rowan)
+[![Crates.io](https://img.shields.io/crates/v/rowan.svg)](https://crates.io/crates/rowan)
+[![Crates.io](https://img.shields.io/crates/d/rowan.svg)](https://crates.io/crates/rowan)
 
 Rowan is a library for lossless syntax trees, inspired in part by
 Swift's [libsyntax](https://github.com/apple/swift/tree/5e2c815edfd758f9b1309ce07bfc01c4bc20ec23/lib/Syntax).
