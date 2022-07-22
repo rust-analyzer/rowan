@@ -101,7 +101,7 @@ impl<L: Language> SyntaxNodePtr<L> {
     }
 
     /// Returns the range of the syntax node this points to.
-    pub fn range(&self) -> TextRange {
+    pub fn text_range(&self) -> TextRange {
         self.range
     }
 }
