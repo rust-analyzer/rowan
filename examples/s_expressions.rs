@@ -385,41 +385,42 @@ nan
     assert_eq!(res, vec![Some(92), Some(92), None, None, Some(92),])
 }
 
+use logos::Logos;
+
+#[derive(Logos, Debug, PartialEq)]
+#[allow(non_camel_case_types)]
+enum Token {
+    #[token("(")]
+    L_PAREN,
+    #[token(")")]
+    R_PAREN,
+    #[regex(r#"[^\s()]+"#)]
+    WORD,
+    #[regex(r#"\s+"#)]
+    WHITESPACE,
+    #[error]
+    ERROR,
+}
+
 /// Split the input string into a flat list of tokens
 /// (such as L_PAREN, WORD, and WHITESPACE)
 fn lex(text: &str) -> Vec<(SyntaxKind, String)> {
-    fn tok(t: SyntaxKind) -> m_lexer::TokenKind {
-        m_lexer::TokenKind(rowan::SyntaxKind::from(t).0)
-    }
-    fn kind(t: m_lexer::TokenKind) -> SyntaxKind {
-        match t.0 {
-            0 => L_PAREN,
-            1 => R_PAREN,
-            2 => WORD,
-            3 => WHITESPACE,
-            4 => ERROR,
-            _ => unreachable!(),
+    let mut lexer = Token::lexer(text);
+    let mut result = vec![];
+    loop {
+        let l = lexer.next();
+        if let Some(l) = l {
+            let l = match l {
+                Token::L_PAREN => (L_PAREN, lexer.slice().to_string()),
+                Token::R_PAREN => (R_PAREN, lexer.slice().to_string()),
+                Token::WORD => (WORD, lexer.slice().to_string()),
+                Token::WHITESPACE => (WHITESPACE, lexer.slice().to_string()),
+                Token::ERROR => (ERROR, lexer.slice().to_string()),
+            };
+            result.push(l);
+        } else {
+            break;
         }
     }
-
-    let lexer = m_lexer::LexerBuilder::new()
-        .error_token(tok(ERROR))
-        .tokens(&[
-            (tok(L_PAREN), r"\("),
-            (tok(R_PAREN), r"\)"),
-            (tok(WORD), r"[^\s()]+"),
-            (tok(WHITESPACE), r"\s+"),
-        ])
-        .build();
-
-    lexer
-        .tokenize(text)
-        .into_iter()
-        .map(|t| (t.len, kind(t.kind)))
-        .scan(0usize, |start_offset, (len, kind)| {
-            let s: String = text[*start_offset..*start_offset + len].into();
-            *start_offset += len;
-            Some((kind, s))
-        })
-        .collect()
+    result
 }
