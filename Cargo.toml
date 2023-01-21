@@ -14,9 +14,9 @@ members = ["xtask"]
 
 [dependencies]
 rustc-hash = "1.0.1"
-hashbrown = { version = "0.12", features = ["inline-more"], default-features = false }
+hashbrown = { version = "0.13.2", features = ["inline-more"], default-features = false }
 text-size = "1.1.0"
-memoffset = "0.6"
+memoffset = "0.8.0"
 countme = "3.0.0"
 
 serde = { version = "1.0.89", optional = true, default-features = false }
