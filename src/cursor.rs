@@ -544,6 +544,10 @@ impl SyntaxNode {
         SyntaxNode { ptr: NodeData::new(Some(parent), index, offset, green, mutable) }
     }
 
+    pub fn is_mutable(&self) -> bool {
+        self.data().mutable
+    }
+
     pub fn clone_for_update(&self) -> SyntaxNode {
         assert!(!self.data().mutable);
         match self.parent() {
