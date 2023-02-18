@@ -247,6 +247,10 @@ impl<L: Language> SyntaxNode<L> {
         SyntaxNode::from(self.raw.clone_for_update())
     }
 
+    pub fn is_mutable(&self) -> bool {
+        self.raw.is_mutable()
+    }
+
     pub fn detach(&self) {
         self.raw.detach()
     }
