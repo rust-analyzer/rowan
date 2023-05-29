@@ -14,9 +14,11 @@ members = ["xtask"]
 
 [dependencies]
 rustc-hash = "1.0.1"
-hashbrown = { version = "0.12", features = ["inline-more"], default-features = false }
+hashbrown = { version = "0.12", features = [
+    "inline-more",
+], default-features = false }
 text-size = "1.1.0"
-memoffset = "0.8"
+memoffset = "0.9"
 countme = "3.0.0"
 
 serde = { version = "1.0.89", optional = true, default-features = false }
@@ -25,4 +27,4 @@ serde = { version = "1.0.89", optional = true, default-features = false }
 m_lexer = "0.0.4"
 
 [features]
-serde1 = [ "serde", "text-size/serde" ]
+serde1 = ["serde", "text-size/serde"]
