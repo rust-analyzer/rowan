@@ -55,6 +55,11 @@ pub trait AstNode {
 }
 
 /// A "pointer" to a [`SyntaxNode`], via location in the source code.
+///
+/// ## Note
+/// Since the location is source code dependent, this must not be used
+/// with mutable syntax trees. Any changes made in such trees causes
+/// the pointed node's source location to change, invalidating the pointer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxNodePtr<L: Language> {
     kind: L::Kind,
@@ -63,7 +68,10 @@ pub struct SyntaxNodePtr<L: Language> {
 
 impl<L: Language> SyntaxNodePtr<L> {
     /// Returns a [`SyntaxNodePtr`] for the node.
+    ///
+    /// Panics if the provided node is mutable
     pub fn new(node: &SyntaxNode<L>) -> Self {
+        assert!(!node.is_mutable(), "tree is mutable");
         Self { kind: node.kind(), range: node.text_range() }
     }
 
@@ -73,13 +81,15 @@ impl<L: Language> SyntaxNodePtr<L> {
     /// equivalent (is build from the same text) to the tree which was
     /// originally used to get this [`SyntaxNodePtr`].
     ///
-    /// Also panics if `root` is not actually a root (i.e. it has a parent).
+    /// Also panics if `root` is not actually a root (i.e. it has a parent),
+    /// or if `root` is mutable.
     ///
     /// The complexity is linear in the depth of the tree and logarithmic in
     /// tree width. As most trees are shallow, thinking about this as
     /// `O(log(N))` in the size of the tree is not too wrong!
     pub fn to_node(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
         assert!(root.parent().is_none());
+        assert!(!root.is_mutable(), "tree is mutable");
         successors(Some(root.clone()), |node| {
             node.child_or_token_at_range(self.range).and_then(|it| it.into_node())
         })
@@ -107,19 +117,28 @@ impl<L: Language> SyntaxNodePtr<L> {
 }
 
 /// Like [`SyntaxNodePtr`], but remembers the type of node.
+///
+/// ## Note
+/// As with [`SyntaxNodePtr`], this must not be used on mutable
+/// syntax trees, since any mutation can cause the pointed node's
+/// source location to change, invalidating the pointer
 pub struct AstPtr<N: AstNode> {
     raw: SyntaxNodePtr<N::Language>,
 }
 
 impl<N: AstNode> AstPtr<N> {
     /// Returns an [`AstPtr`] for the node.
+    ///
+    /// Panics if the provided node is mutable
     pub fn new(node: &N) -> Self {
+        // The above mentioned panic is handled by SyntaxNodePtr
         Self { raw: SyntaxNodePtr::new(node.syntax()) }
     }
 
     /// Given the root node containing the node `n` that `self` is a pointer to,
-    /// returns `n`. See [`SyntaxNodePtr::to_node`].
+    /// returns `n`. Panics if `root` is mutable. See [`SyntaxNodePtr::to_node`].
     pub fn to_node(&self, root: &SyntaxNode<N::Language>) -> N {
+        // The above mentioned panic is handled by SyntaxNodePtr
         N::cast(self.raw.to_node(root)).unwrap()
     }
 
@@ -202,5 +221,55 @@ pub mod support {
 
     pub fn token<L: Language>(parent: &SyntaxNode<L>, kind: L::Kind) -> Option<SyntaxToken<L>> {
         parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{GreenNodeBuilder, Language, SyntaxKind, SyntaxNode};
+
+    use super::SyntaxNodePtr;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    struct TestLanguage;
+    impl Language for TestLanguage {
+        type Kind = SyntaxKind;
+
+        fn kind_from_raw(raw: SyntaxKind) -> Self::Kind {
+            raw
+        }
+
+        fn kind_to_raw(kind: Self::Kind) -> SyntaxKind {
+            kind
+        }
+    }
+
+    fn build_immut_tree() -> SyntaxNode<TestLanguage> {
+        // Creates a single-node tree
+        let mut builder = GreenNodeBuilder::new();
+        builder.start_node(SyntaxKind(0));
+        builder.finish_node();
+
+        SyntaxNode::<TestLanguage>::new_root(builder.finish())
+    }
+
+    #[test]
+    #[should_panic = "tree is mutable"]
+    fn ensure_mut_panic_on_create() {
+        // Make a mutable version
+        let tree = build_immut_tree().clone_for_update();
+
+        SyntaxNodePtr::new(&tree);
+    }
+
+    #[test]
+    #[should_panic = "tree is mutable"]
+    fn ensure_mut_panic_on_deref() {
+        let tree = build_immut_tree();
+        let tree_mut = tree.clone_for_update();
+
+        // Create on immutable, convert on mutable
+        let syn_ptr = SyntaxNodePtr::new(&tree);
+        syn_ptr.to_node(&tree_mut);
     }
 }
