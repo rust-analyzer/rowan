@@ -70,7 +70,7 @@ impl<L: Language> SyntaxNodePtr<L> {
     /// Like [`Self::try_to_node`] but panics instead of returning `None` on
     /// failure.
     pub fn to_node(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
-        self.try_to_node(root).unwrap()
+        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
     }
 
     /// "Dereferences" the pointer to get the [`SyntaxNode`] it points to.
@@ -125,7 +125,7 @@ impl<N: AstNode> AstPtr<N> {
 
     /// Like `Self::try_to_node` but panics on failure.
     pub fn to_node(&self, root: &SyntaxNode<N::Language>) -> N {
-        self.try_to_node(root).unwrap()
+        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
     }
 
     /// Given the root node containing the node `n` that `self` is a pointer to,
