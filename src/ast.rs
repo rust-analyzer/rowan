@@ -67,24 +67,30 @@ impl<L: Language> SyntaxNodePtr<L> {
         Self { kind: node.kind(), range: node.text_range() }
     }
 
+    /// Like [`Self::try_to_node`] but panics instead of returning `None` on
+    /// failure.
+    pub fn to_node(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
+        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
+    }
+
     /// "Dereferences" the pointer to get the [`SyntaxNode`] it points to.
     ///
-    /// Panics if node is not found, so make sure that `root` syntax tree is
-    /// equivalent (is build from the same text) to the tree which was
-    /// originally used to get this [`SyntaxNodePtr`].
+    /// Returns `None` if the node is not found, so make sure that the `root`
+    /// syntax tree is equivalent to (i.e. is build from the same text from) the
+    /// tree which was originally used to get this [`SyntaxNodePtr`].
     ///
-    /// Also panics if `root` is not actually a root (i.e. it has a parent).
+    /// Also returns `None` if `root` is not actually a root (i.e. it has a
+    /// parent).
     ///
     /// The complexity is linear in the depth of the tree and logarithmic in
     /// tree width. As most trees are shallow, thinking about this as
     /// `O(log(N))` in the size of the tree is not too wrong!
-    pub fn to_node(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
-        assert!(root.parent().is_none());
-        successors(Some(root.clone()), |node| {
-            node.child_or_token_at_range(self.range).and_then(|it| it.into_node())
-        })
-        .find(|it| it.text_range() == self.range && it.kind() == self.kind)
-        .unwrap_or_else(|| panic!("can't resolve local ptr to SyntaxNode: {:?}", self))
+    pub fn try_to_node(&self, root: &SyntaxNode<L>) -> Option<SyntaxNode<L>> {
+        if root.parent().is_some() {
+            return None;
+        }
+        successors(Some(root.clone()), |node| node.child_or_token_at_range(self.range)?.into_node())
+            .find(|it| it.text_range() == self.range && it.kind() == self.kind)
     }
 
     /// Casts this to an [`AstPtr`] to the given node type if possible.
@@ -117,10 +123,15 @@ impl<N: AstNode> AstPtr<N> {
         Self { raw: SyntaxNodePtr::new(node.syntax()) }
     }
 
-    /// Given the root node containing the node `n` that `self` is a pointer to,
-    /// returns `n`. See [`SyntaxNodePtr::to_node`].
+    /// Like `Self::try_to_node` but panics on failure.
     pub fn to_node(&self, root: &SyntaxNode<N::Language>) -> N {
-        N::cast(self.raw.to_node(root)).unwrap()
+        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
+    }
+
+    /// Given the root node containing the node `n` that `self` is a pointer to,
+    /// returns `n` if possible. See [`SyntaxNodePtr::try_to_node`].
+    pub fn try_to_node(&self, root: &SyntaxNode<N::Language>) -> Option<N> {
+        N::cast(self.raw.try_to_node(root)?)
     }
 
     /// Returns the underlying [`SyntaxNodePtr`].
