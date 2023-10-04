@@ -98,6 +98,9 @@ impl<L: Language> SyntaxNode<L> {
     pub fn new_root(green: GreenNode) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root(green))
     }
+    pub fn new_root_mut(green: GreenNode) -> SyntaxNode<L> {
+        SyntaxNode::from(cursor::SyntaxNode::new_root_mut(green))
+    }
     /// Returns a green tree, equal to the green tree this node
     /// belongs two, except with this node substitute. The complexity
     /// of operation is proportional to the depth of the tree
