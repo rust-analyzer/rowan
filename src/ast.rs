@@ -55,7 +55,7 @@ pub trait AstNode {
 }
 
 /// A "pointer" to a [`SyntaxNode`], via location in the source code.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxNodePtr<L: Language> {
     kind: L::Kind,
     range: TextRange,
