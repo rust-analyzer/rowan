@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::{
     cow_mut::CowMut,
     green::{node_cache::NodeCache, GreenElement, GreenNode, SyntaxKind},
@@ -6,7 +8,17 @@ use crate::{
 
 /// A checkpoint for maybe wrapping a node. See `GreenNodeBuilder::checkpoint` for details.
 #[derive(Clone, Copy, Debug)]
-pub struct Checkpoint(usize);
+pub struct Checkpoint(NonZeroUsize);
+
+impl Checkpoint {
+    fn new(inner: usize) -> Self {
+        Self(NonZeroUsize::new(inner + 1).unwrap())
+    }
+
+    fn into_inner(self) -> usize {
+        self.0.get() - 1
+    }
+}
 
 /// A builder for a green tree.
 #[derive(Default, Debug)]
@@ -82,14 +94,14 @@ impl GreenNodeBuilder<'_> {
     /// ```
     #[inline]
     pub fn checkpoint(&self) -> Checkpoint {
-        Checkpoint(self.children.len())
+        Checkpoint::new(self.children.len())
     }
 
     /// Wrap the previous branch marked by `checkpoint` in a new branch and
     /// make it current.
     #[inline]
     pub fn start_node_at(&mut self, checkpoint: Checkpoint, kind: SyntaxKind) {
-        let Checkpoint(checkpoint) = checkpoint;
+        let checkpoint = checkpoint.into_inner();
         assert!(
             checkpoint <= self.children.len(),
             "checkpoint no longer valid, was finish_node called early?"
