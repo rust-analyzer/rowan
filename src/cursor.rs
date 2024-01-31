@@ -83,19 +83,23 @@
 
 use std::{
     borrow::Cow,
-    cell::Cell,
+    cell::{Cell, RefCell},
     fmt,
     hash::{Hash, Hasher},
     iter,
+    marker::PhantomData,
     mem::{self, ManuallyDrop},
     ops::Range,
-    ptr, slice,
+    ptr,
+    rc::Rc,
+    slice,
 };
 
 use countme::Count;
 
 use crate::{
     green::{GreenChild, GreenElementRef, GreenNodeData, GreenTokenData, SyntaxKind},
+    pool::Pool,
     sll,
     utility_types::Delta,
     Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize, TokenAtOffset,
@@ -186,12 +190,27 @@ impl Drop for SyntaxToken {
     }
 }
 
+struct NodeDataDeallocator {
+    data: ptr::NonNull<NodeData>,
+}
+
+impl Drop for NodeDataDeallocator {
+    fn drop(&mut self) {
+        unsafe {
+            NodeData::POOL.with(|pool| {
+                pool.borrow_mut().deallocate(self.data);
+            });
+        }
+    }
+}
+
 #[inline(never)]
 unsafe fn free(mut data: ptr::NonNull<NodeData>) {
     loop {
         debug_assert_eq!(data.as_ref().rc.get(), 0);
         debug_assert!(data.as_ref().first.get().is_null());
-        let node = Box::from_raw(data.as_ptr());
+        let _to_drop = NodeDataDeallocator { data };
+        let node = data.as_ref();
         match node.parent.take() {
             Some(parent) => {
                 debug_assert!(parent.as_ref().rc.get() > 0);
@@ -220,6 +239,10 @@ unsafe fn free(mut data: ptr::NonNull<NodeData>) {
 }
 
 impl NodeData {
+    thread_local! {
+        static POOL: RefCell<Pool<NodeData>> = RefCell::new(Pool::default());
+    }
+
     #[inline]
     fn new(
         parent: Option<SyntaxNode>,
@@ -269,13 +292,13 @@ impl NodeData {
                         return ptr::NonNull::new_unchecked(res);
                     }
                     it => {
-                        let res = Box::into_raw(Box::new(res));
-                        it.add_to_sll(res);
-                        return ptr::NonNull::new_unchecked(res);
+                        let res = Self::POOL.with(move |pool| pool.borrow_mut().allocate(res));
+                        it.add_to_sll(res.as_ptr());
+                        return res;
                     }
                 }
             }
-            ptr::NonNull::new_unchecked(Box::into_raw(Box::new(res)))
+            Self::POOL.with(move |pool| pool.borrow_mut().allocate(res))
         }
     }
 
@@ -388,6 +411,7 @@ impl NodeData {
             })
         })
     }
+
     fn prev_sibling(&self) -> Option<SyntaxNode> {
         let mut rev_siblings = self.green_siblings().enumerate().rev();
         let index = rev_siblings.len().checked_sub(self.index() as usize + 1)?;
@@ -647,6 +671,7 @@ impl SyntaxNode {
             })
         })
     }
+
     pub fn last_child(&self) -> Option<SyntaxNode> {
         self.green_ref().children().raw.enumerate().rev().find_map(|(index, child)| {
             child.as_ref().into_node().map(|green| {
@@ -679,6 +704,7 @@ impl SyntaxNode {
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
         self.data().next_sibling()
     }
+
     pub fn prev_sibling(&self) -> Option<SyntaxNode> {
         self.data().prev_sibling()
     }

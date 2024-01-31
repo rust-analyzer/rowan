@@ -244,7 +244,7 @@ impl<T: ?Sized + Hash> Hash for Arc<T> {
 pub(crate) struct HeaderSlice<H, T: ?Sized> {
     pub(crate) header: H,
     length: usize,
-    slice: T,
+    pub(crate) slice: T,
 }
 
 impl<H, T> HeaderSlice<H, [T]> {
