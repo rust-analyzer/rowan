@@ -6,7 +6,7 @@ repository = "https://github.com/rust-analyzer/rowan"
 license = "MIT OR Apache-2.0"
 description = "Library for generic lossless syntax trees"
 edition = "2021"
-
+rust-version = "1.77.0"
 exclude = [".github/", "bors.toml", "rustfmt.toml"]
 
 [workspace]
@@ -18,7 +18,6 @@ hashbrown = { version = "0.14.3", features = [
     "inline-more",
 ], default-features = false }
 text-size = "1.1.0"
-memoffset = "0.9"
 countme = "3.0.0"
 
 serde = { version = "1.0.89", optional = true, default-features = false }
