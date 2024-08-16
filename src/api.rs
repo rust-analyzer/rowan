@@ -101,9 +101,10 @@ impl<L: Language> SyntaxNode<L> {
     pub fn new_root_mut(green: GreenNode) -> SyntaxNode<L> {
         SyntaxNode::from(cursor::SyntaxNode::new_root_mut(green))
     }
+
     /// Returns a green tree, equal to the green tree this node
-    /// belongs two, except with this node substitute. The complexity
-    /// of operation is proportional to the depth of the tree
+    /// belongs to, except with this node substituted. The complexity
+    /// of the operation is proportional to the depth of the tree.
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         self.raw.replace_with(replacement)
     }
@@ -263,8 +264,8 @@ impl<L: Language> SyntaxNode<L> {
 
 impl<L: Language> SyntaxToken<L> {
     /// Returns a green tree, equal to the green tree this token
-    /// belongs two, except with this token substitute. The complexity
-    /// of operation is proportional to the depth of the tree
+    /// belongs to, except with this token substituted. The complexity
+    /// of the operation is proportional to the depth of the tree.
     pub fn replace_with(&self, new_token: GreenToken) -> GreenNode {
         self.raw.replace_with(new_token)
     }
