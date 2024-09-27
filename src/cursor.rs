@@ -478,7 +478,7 @@ impl NodeData {
 
         match self.green() {
             NodeOrToken::Node(green) => {
-                // Child is root, so it ownes the green node. Steal it!
+                // Child is root, so it owns the green node. Steal it!
                 let child_green = match &child.green {
                     Green::Node { ptr } => unsafe { GreenNode::from_raw(ptr.get()).into() },
                     Green::Token { ptr } => unsafe { GreenToken::from_raw(*ptr).into() },
