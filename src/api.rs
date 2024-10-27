@@ -441,30 +441,11 @@ impl<L: Language> Iterator for SyntaxNodeChildren<L> {
 }
 
 impl<L: Language> SyntaxNodeChildren<L> {
-    pub fn by_kind<'a>(
-        self,
-        matcher: &'a dyn Fn(SyntaxKind) -> bool,
-    ) -> SyntaxNodeChildrenByKind<'a, L> {
-        SyntaxNodeChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
-    }
-}
-
-#[derive(Clone)]
-pub struct SyntaxNodeChildrenByKind<'a, L: Language> {
-    raw: cursor::SyntaxNodeChildrenByKind<&'a dyn Fn(SyntaxKind) -> bool>,
-    _p: PhantomData<L>,
-}
-
-impl<'a, L: Language> Iterator for SyntaxNodeChildrenByKind<'a, L> {
-    type Item = SyntaxNode<L>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(SyntaxNode::from)
-    }
-}
-
-impl<'a, L: Language> fmt::Debug for SyntaxNodeChildrenByKind<'a, L> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SyntaxNodeChildrenByKind").finish()
+    pub fn by_kind(self, matcher: impl Fn(L::Kind) -> bool) -> impl Iterator<Item = SyntaxNode<L>> {
+        self.raw
+            .by_kind(move |raw_kind| matcher(L::kind_from_raw(raw_kind)))
+            .into_iter()
+            .map(SyntaxNode::from)
     }
 }
 
@@ -482,30 +463,11 @@ impl<L: Language> Iterator for SyntaxElementChildren<L> {
 }
 
 impl<L: Language> SyntaxElementChildren<L> {
-    pub fn by_kind<'a>(
+    pub fn by_kind(
         self,
-        matcher: &'a dyn Fn(SyntaxKind) -> bool,
-    ) -> SyntaxElementChildrenByKind<'a, L> {
-        SyntaxElementChildrenByKind { raw: self.raw.by_kind(matcher), _p: PhantomData }
-    }
-}
-
-#[derive(Clone)]
-pub struct SyntaxElementChildrenByKind<'a, L: Language> {
-    raw: cursor::SyntaxElementChildrenByKind<&'a dyn Fn(SyntaxKind) -> bool>,
-    _p: PhantomData<L>,
-}
-
-impl<'a, L: Language> Iterator for SyntaxElementChildrenByKind<'a, L> {
-    type Item = SyntaxElement<L>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next().map(NodeOrToken::from)
-    }
-}
-
-impl<'a, L: Language> fmt::Debug for SyntaxElementChildrenByKind<'a, L> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SyntaxElementChildrenByKind").finish()
+        matcher: impl Fn(L::Kind) -> bool,
+    ) -> impl Iterator<Item = SyntaxElement<L>> {
+        self.raw.by_kind(move |raw_kind| matcher(L::kind_from_raw(raw_kind))).map(NodeOrToken::from)
     }
 }
 
