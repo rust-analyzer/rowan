@@ -597,6 +597,20 @@ impl SyntaxNode {
         unsafe { self.ptr.as_ref() }
     }
 
+    #[inline]
+    fn can_take_ptr(&self) -> bool {
+        self.data().rc.get() == 1 && !self.data().mutable
+    }
+
+    #[inline]
+    fn take_ptr(self) -> ptr::NonNull<NodeData> {
+        assert!(self.can_take_ptr());
+        let ret = self.ptr;
+        // don't change the refcount when self gets dropped
+        std::mem::forget(self);
+        ret
+    }
+
     pub fn replace_with(&self, replacement: GreenNode) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         match &self.parent() {
@@ -742,6 +756,43 @@ impl SyntaxNode {
                 self.offset() + child.rel_offset(),
             )
         })
+    }
+
+    // if possible (i.e. unshared), consume self and advance it to point to the next sibling
+    // this way, we can reuse the previously allocated buffer
+    pub fn to_next_sibling(self) -> Option<SyntaxNode> {
+        if !self.can_take_ptr() {
+            // cannot mutate in-place
+            return self.next_sibling();
+        }
+
+        let mut ptr = self.take_ptr();
+        let data = unsafe { ptr.as_mut() };
+        assert!(data.rc.get() == 1);
+
+        let parent = data.parent_node()?;
+        let parent_offset = parent.offset();
+        let siblings = parent.green_ref().children().raw.enumerate();
+        let index = data.index() as usize;
+
+        siblings
+            .skip(index + 1)
+            .find_map(|(index, child)| {
+                child
+                    .as_ref()
+                    .into_node()
+                    .and_then(|green| Some((green, index as u32, child.rel_offset())))
+            })
+            .and_then(|(green, index, rel_offset)| {
+                data.index.set(index);
+                data.offset = parent_offset + rel_offset;
+                data.green = Green::Node { ptr: Cell::new(green.into()) };
+                Some(SyntaxNode { ptr })
+            })
+            .or_else(|| {
+                unsafe { free(ptr) };
+                None
+            })
     }
 
     pub fn next_sibling(&self) -> Option<SyntaxNode> {
@@ -937,6 +988,20 @@ impl SyntaxToken {
         unsafe { self.ptr.as_ref() }
     }
 
+    #[inline]
+    fn can_take_ptr(&self) -> bool {
+        self.data().rc.get() == 1 && !self.data().mutable
+    }
+
+    #[inline]
+    fn take_ptr(self) -> ptr::NonNull<NodeData> {
+        assert!(self.can_take_ptr());
+        let ret = self.ptr;
+        // don't change the refcount when self gets dropped
+        std::mem::forget(self);
+        ret
+    }
+
     pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
         let parent = self.parent().unwrap();
@@ -1121,6 +1186,59 @@ impl SyntaxElement {
         }
     }
 
+    fn can_take_ptr(&self) -> bool {
+        match self {
+            NodeOrToken::Node(it) => it.can_take_ptr(),
+            NodeOrToken::Token(it) => it.can_take_ptr(),
+        }
+    }
+
+    fn take_ptr(self) -> ptr::NonNull<NodeData> {
+        match self {
+            NodeOrToken::Node(it) => it.take_ptr(),
+            NodeOrToken::Token(it) => it.take_ptr(),
+        }
+    }
+
+    // if possible (i.e. unshared), consume self and advance it to point to the next sibling
+    // this way, we can reuse the previously allocated buffer
+    pub fn to_next_sibling_or_token(self) -> Option<SyntaxElement> {
+        if !self.can_take_ptr() {
+            // cannot mutate in-place
+            return self.next_sibling_or_token();
+        }
+
+        let mut ptr = self.take_ptr();
+        let data = unsafe { ptr.as_mut() };
+
+        let parent = data.parent_node()?;
+        let parent_offset = parent.offset();
+        let siblings = parent.green_ref().children().raw.enumerate();
+        let index = data.index() as usize;
+
+        siblings
+            .skip(index + 1)
+            .find_map(|(index, green)| {
+                data.index.set(index as u32);
+                data.offset = parent_offset + green.rel_offset();
+
+                match green.as_ref() {
+                    NodeOrToken::Node(node) => {
+                        data.green = Green::Node { ptr: Cell::new(node.into()) };
+                        Some(SyntaxElement::Node(SyntaxNode { ptr }))
+                    }
+                    NodeOrToken::Token(token) => {
+                        data.green = Green::Token { ptr: token.into() };
+                        Some(SyntaxElement::Token(SyntaxToken { ptr }))
+                    }
+                }
+            })
+            .or_else(|| {
+                unsafe { free(ptr) };
+                None
+            })
+    }
+
     pub fn next_sibling_or_token_by_kind(
         &self,
         matcher: &impl Fn(SyntaxKind) -> bool,
@@ -1270,11 +1388,11 @@ impl Iterator for SyntaxNodeChildren {
         if !self.next_initialized {
             self.next = self.parent.first_child();
             self.next_initialized = true;
+        } else {
+            self.next = self.next.take().and_then(|next| next.to_next_sibling());
         }
-        self.next.take().map(|next| {
-            self.next = next.next_sibling();
-            next
-        })
+
+        self.next.clone()
     }
 }
 
@@ -1333,11 +1451,11 @@ impl Iterator for SyntaxElementChildren {
         if !self.next_initialized {
             self.next = self.parent.first_child_or_token();
             self.next_initialized = true;
+        } else {
+            self.next = self.next.take().and_then(|next| next.to_next_sibling_or_token());
         }
-        self.next.take().map(|next| {
-            self.next = next.next_sibling_or_token();
-            next
-        })
+
+        self.next.clone()
     }
 }
 
