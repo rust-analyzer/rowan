@@ -148,6 +148,13 @@ impl<L: Language> SyntaxNode<L> {
     pub fn first_child(&self) -> Option<SyntaxNode<L>> {
         self.raw.first_child().map(Self::from)
     }
+
+    pub fn first_child_by_kind(&self, matcher: &impl Fn(L::Kind) -> bool) -> Option<SyntaxNode<L>> {
+        self.raw
+            .first_child_by_kind(&|raw_kind| matcher(L::kind_from_raw(raw_kind)))
+            .map(Self::from)
+    }
+
     pub fn last_child(&self) -> Option<SyntaxNode<L>> {
         self.raw.last_child().map(Self::from)
     }
@@ -155,6 +162,16 @@ impl<L: Language> SyntaxNode<L> {
     pub fn first_child_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.first_child_or_token().map(NodeOrToken::from)
     }
+
+    pub fn first_child_or_token_by_kind(
+        &self,
+        matcher: &impl Fn(L::Kind) -> bool,
+    ) -> Option<SyntaxElement<L>> {
+        self.raw
+            .first_child_or_token_by_kind(&|raw_kind| matcher(L::kind_from_raw(raw_kind)))
+            .map(NodeOrToken::from)
+    }
+
     pub fn last_child_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.last_child_or_token().map(NodeOrToken::from)
     }
@@ -162,6 +179,16 @@ impl<L: Language> SyntaxNode<L> {
     pub fn next_sibling(&self) -> Option<SyntaxNode<L>> {
         self.raw.next_sibling().map(Self::from)
     }
+
+    pub fn next_sibling_by_kind(
+        &self,
+        matcher: &impl Fn(L::Kind) -> bool,
+    ) -> Option<SyntaxNode<L>> {
+        self.raw
+            .next_sibling_by_kind(&|raw_kind| matcher(L::kind_from_raw(raw_kind)))
+            .map(Self::from)
+    }
+
     pub fn prev_sibling(&self) -> Option<SyntaxNode<L>> {
         self.raw.prev_sibling().map(Self::from)
     }
@@ -169,6 +196,16 @@ impl<L: Language> SyntaxNode<L> {
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.next_sibling_or_token().map(NodeOrToken::from)
     }
+
+    pub fn next_sibling_or_token_by_kind(
+        &self,
+        matcher: &impl Fn(L::Kind) -> bool,
+    ) -> Option<SyntaxElement<L>> {
+        self.raw
+            .next_sibling_or_token_by_kind(&|raw_kind| matcher(L::kind_from_raw(raw_kind)))
+            .map(NodeOrToken::from)
+    }
+
     pub fn prev_sibling_or_token(&self) -> Option<SyntaxElement<L>> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
@@ -403,6 +440,15 @@ impl<L: Language> Iterator for SyntaxNodeChildren<L> {
     }
 }
 
+impl<L: Language> SyntaxNodeChildren<L> {
+    pub fn by_kind(self, matcher: impl Fn(L::Kind) -> bool) -> impl Iterator<Item = SyntaxNode<L>> {
+        self.raw
+            .by_kind(move |raw_kind| matcher(L::kind_from_raw(raw_kind)))
+            .into_iter()
+            .map(SyntaxNode::from)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SyntaxElementChildren<L: Language> {
     raw: cursor::SyntaxElementChildren,
@@ -413,6 +459,15 @@ impl<L: Language> Iterator for SyntaxElementChildren<L> {
     type Item = SyntaxElement<L>;
     fn next(&mut self) -> Option<Self::Item> {
         self.raw.next().map(NodeOrToken::from)
+    }
+}
+
+impl<L: Language> SyntaxElementChildren<L> {
+    pub fn by_kind(
+        self,
+        matcher: impl Fn(L::Kind) -> bool,
+    ) -> impl Iterator<Item = SyntaxElement<L>> {
+        self.raw.by_kind(move |raw_kind| matcher(L::kind_from_raw(raw_kind))).map(NodeOrToken::from)
     }
 }
 
