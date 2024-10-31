@@ -790,6 +790,7 @@ impl SyntaxNode {
                 Some(SyntaxNode { ptr })
             })
             .or_else(|| {
+                data.dec_rc();
                 unsafe { free(ptr) };
                 None
             })
@@ -1234,6 +1235,7 @@ impl SyntaxElement {
                 }
             })
             .or_else(|| {
+                data.dec_rc();
                 unsafe { free(ptr) };
                 None
             })
