@@ -293,8 +293,12 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.detach()
     }
 
-    pub fn splice_children(&self, to_delete: Range<usize>, to_insert: Vec<SyntaxElement<L>>) {
-        let to_insert = to_insert.into_iter().map(cursor::SyntaxElement::from).collect::<Vec<_>>();
+    pub fn splice_children<I: IntoIterator<Item = SyntaxElement<L>>>(
+        &self,
+        to_delete: Range<usize>,
+        to_insert: I,
+    ) {
+        let to_insert = to_insert.into_iter().map(cursor::SyntaxElement::from);
         self.raw.splice_children(to_delete, to_insert)
     }
 }
