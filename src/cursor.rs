@@ -942,7 +942,11 @@ impl SyntaxNode {
         })
     }
 
-    pub fn splice_children(&self, to_delete: Range<usize>, to_insert: Vec<SyntaxElement>) {
+    pub fn splice_children<I: IntoIterator<Item = SyntaxElement>>(
+        &self,
+        to_delete: Range<usize>,
+        to_insert: I,
+    ) {
         assert!(self.data().mutable, "immutable tree: {}", self);
         for (i, child) in self.children_with_tokens().enumerate() {
             if to_delete.contains(&i) {
