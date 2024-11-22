@@ -408,7 +408,7 @@ impl NodeData {
         let rev_siblings = self.green_siblings().enumerate().rev();
         let index = rev_siblings.len().checked_sub(self.index() as usize)?;
 
-        rev_siblings.skip(index + 1).find_map(|(index, child)| {
+        rev_siblings.skip(index).find_map(|(index, child)| {
             child.as_ref().into_node().and_then(|green| {
                 let parent = self.parent_node()?;
                 let offset = parent.offset() + child.rel_offset();
