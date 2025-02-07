@@ -23,6 +23,7 @@ pub(super) struct GreenNodeHead {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub(crate) enum GreenChild {
     Node { rel_offset: TextSize, node: GreenNode },
     Token { rel_offset: TextSize, token: GreenToken },
