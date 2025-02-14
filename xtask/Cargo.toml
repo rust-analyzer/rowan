@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 xaction = "0.2"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trick_rust_analyzer_into_highlighting_interpolated_bits)'] }
