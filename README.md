@@ -6,7 +6,7 @@
 Rowan is a library for lossless syntax trees, inspired in part by
 Swift's [libsyntax](https://github.com/apple/swift/tree/5e2c815edfd758f9b1309ce07bfc01c4bc20ec23/lib/Syntax).
 
-A conceptual overview is available in the [rust-analyzer repo](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/syntax.md).
+A conceptual overview is available in the [rust-analyzer repo](https://github.com/rust-lang/rust-analyzer/blob/master/docs/book/src/contributing/syntax.md).
 
 See `examples/s_expressions` for a tutorial, and [rust-analyzer](https://github.com/rust-analyzer/rust-analyzer/) for real-world usage.
 
