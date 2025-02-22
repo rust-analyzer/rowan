@@ -3,10 +3,8 @@ name = "xtask"
 version = "0.0.0"
 publish = false
 authors = ["Aleksey Kladov <aleksey.kladov@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-xaction = "0.2"
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(trick_rust_analyzer_into_highlighting_interpolated_bits)'] }
+anyhow = "1.0.96"
+xshell = "0.2.7"
