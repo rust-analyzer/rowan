@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use xshell::{cmd, Shell};
+use xshell::{Shell, cmd};
 pub type Result<T> = anyhow::Result<T>;
 
 fn main() {
@@ -78,11 +78,7 @@ impl CargoToml {
 
 fn dry_run() -> Option<&'static str> {
     let dry_run = DRY_RUN.load(Ordering::Relaxed);
-    if dry_run {
-        Some("--dry-run")
-    } else {
-        None
-    }
+    if dry_run { Some("--dry-run") } else { None }
 }
 
 pub fn section(name: &'static str) -> Section {
@@ -147,9 +143,9 @@ fn try_main() -> Result<()> {
 }
 
 pub mod git {
-    use xshell::{cmd, Shell};
+    use xshell::{Shell, cmd};
 
-    use super::{dry_run, Result};
+    use super::{Result, dry_run};
 
     pub fn current_branch(sh: &mut Shell) -> Result<String> {
         let res = cmd!(sh, "git branch --show-current").read()?;
