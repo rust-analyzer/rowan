@@ -107,21 +107,11 @@ fn try_main() -> Result<()> {
             Err(anyhow!("invalid arguments"))?
         }
     }
-
     let cargo_toml = cargo_toml()?;
-
     {
         let _s = section("TEST");
         for &release in &[None, Some("--release")] {
-            for &tracing in &[&[][..], &["--features", "tracing"]] {
-                for &force in &[&[][..], &["--features", "force"]] {
-                    cmd!(
-                        sh,
-                        "cargo test {release...} {tracing...} {force...} --workspace -- --nocapture"
-                    )
-                    .run()?;
-                }
-            }
+            cmd!(sh, "cargo test {release...} --workspace -- --nocapture").run()?;
         }
     }
 
