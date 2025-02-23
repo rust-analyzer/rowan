@@ -9,10 +9,10 @@ use std::{
 use countme::Count;
 
 use crate::{
+    GreenToken, NodeOrToken, TextRange, TextSize,
     arc::{Arc, HeaderSlice, ThinArc},
     green::{GreenElement, GreenElementRef, SyntaxKind},
     utility_types::static_assert,
-    GreenToken, NodeOrToken, TextRange, TextSize,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -66,7 +66,7 @@ impl ToOwned for GreenNodeData {
 impl Borrow<GreenNodeData> for GreenNode {
     #[inline]
     fn borrow(&self) -> &GreenNodeData {
-        &*self
+        self
     }
 }
 
@@ -89,14 +89,14 @@ impl fmt::Debug for GreenNodeData {
 
 impl fmt::Debug for GreenNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let data: &GreenNodeData = &*self;
+        let data: &GreenNodeData = self;
         fmt::Debug::fmt(data, f)
     }
 }
 
 impl fmt::Display for GreenNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let data: &GreenNodeData = &*self;
+        let data: &GreenNodeData = self;
         fmt::Display::fmt(data, f)
     }
 }
@@ -159,11 +159,7 @@ impl GreenNodeData {
     pub fn replace_child(&self, index: usize, new_child: GreenElement) -> GreenNode {
         let mut replacement = Some(new_child);
         let children = self.children().enumerate().map(|(i, child)| {
-            if i == index {
-                replacement.take().unwrap()
-            } else {
-                child.to_owned()
-            }
+            if i == index { replacement.take().unwrap() } else { child.to_owned() }
         });
         GreenNode::new(self.kind(), children)
     }
@@ -238,15 +234,17 @@ impl GreenNode {
     #[inline]
     pub(crate) fn into_raw(this: GreenNode) -> ptr::NonNull<GreenNodeData> {
         let green = ManuallyDrop::new(this);
-        let green: &GreenNodeData = &*green;
-        ptr::NonNull::from(&*green)
+        let green: &GreenNodeData = &green;
+        ptr::NonNull::from(green)
     }
 
     #[inline]
     pub(crate) unsafe fn from_raw(ptr: ptr::NonNull<GreenNodeData>) -> GreenNode {
-        let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
-        let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenNodeHead, GreenChild>>(arc);
-        GreenNode { ptr: arc }
+        unsafe {
+            let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
+            let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenNodeHead, GreenChild>>(arc);
+            GreenNode { ptr: arc }
+        }
     }
 }
 
@@ -321,19 +319,19 @@ impl<'a> Iterator for Children<'a> {
     }
 
     #[inline]
-    fn fold<Acc, Fold>(mut self, init: Acc, mut f: Fold) -> Acc
+    fn fold<Acc, Fold>(self, init: Acc, mut f: Fold) -> Acc
     where
         Fold: FnMut(Acc, Self::Item) -> Acc,
     {
         let mut accum = init;
-        while let Some(x) = self.next() {
+        for x in self {
             accum = f(accum, x);
         }
         accum
     }
 }
 
-impl<'a> DoubleEndedIterator for Children<'a> {
+impl DoubleEndedIterator for Children<'_> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.raw.next_back().map(GreenChild::as_ref)

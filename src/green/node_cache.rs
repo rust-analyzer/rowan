@@ -3,8 +3,8 @@ use rustc_hash::FxHasher;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
 
 use crate::{
-    green::GreenElementRef, GreenNode, GreenNodeData, GreenToken, GreenTokenData, NodeOrToken,
-    SyntaxKind,
+    GreenNode, GreenNodeData, GreenToken, GreenTokenData, NodeOrToken, SyntaxKind,
+    green::GreenElementRef,
 };
 
 use super::element::GreenElement;

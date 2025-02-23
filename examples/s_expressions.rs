@@ -15,18 +15,17 @@
 #[allow(non_camel_case_types)]
 #[repr(u16)]
 enum SyntaxKind {
-    L_PAREN = 0, // '('
-    R_PAREN,     // ')'
-    WORD,        // '+', '15'
-    WHITESPACE,  // whitespaces is explicit
-    ERROR,       // as well as errors
+    LeftParenthesis = 0, // '('
+    RightParenthesis,    // ')'
+    Word,                // '+', '15'
+    Whitespace,          // whitespaces is explicit
+    Error,               // as well as errors
 
     // composite nodes
-    LIST, // `(+ 2 3)`
-    ATOM, // `+`, `15`, wraps a WORD token
-    ROOT, // top-level node: a list of s-expressions
+    List, // `(+ 2 3)`
+    Atom, // `+`, `15`, wraps a WORD token
+    Root, // top-level node: a list of s-expressions
 }
-use SyntaxKind::*;
 
 /// Some boilerplate is needed, as rowan settled on using its own
 /// `struct SyntaxKind(u16)` internally, instead of accepting the
@@ -47,7 +46,7 @@ enum Lang {}
 impl rowan::Language for Lang {
     type Kind = SyntaxKind;
     fn kind_from_raw(raw: rowan::SyntaxKind) -> Self::Kind {
-        assert!(raw.0 <= ROOT as u16);
+        assert!(raw.0 <= SyntaxKind::Root as u16);
         unsafe { std::mem::transmute::<u16, SyntaxKind>(raw.0) }
     }
     fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {
@@ -101,13 +100,13 @@ fn parse(text: &str) -> Parse {
     impl Parser {
         fn parse(mut self) -> Parse {
             // Make sure that the root node covers all source
-            self.builder.start_node(ROOT.into());
+            self.builder.start_node(SyntaxKind::Root.into());
             // Parse zero or more S-expressions
             loop {
                 match self.sexp() {
                     SexpRes::Eof => break,
                     SexpRes::RParen => {
-                        self.builder.start_node(ERROR.into());
+                        self.builder.start_node(SyntaxKind::Error.into());
                         self.errors.push("unmatched `)`".to_string());
                         self.bump(); // be sure to chug along in case of error
                         self.builder.finish_node();
@@ -124,9 +123,9 @@ fn parse(text: &str) -> Parse {
             Parse { green_node: self.builder.finish(), errors: self.errors }
         }
         fn list(&mut self) {
-            assert_eq!(self.current(), Some(L_PAREN));
+            assert_eq!(self.current(), Some(SyntaxKind::LeftParenthesis));
             // Start the list node
-            self.builder.start_node(LIST.into());
+            self.builder.start_node(SyntaxKind::List.into());
             self.bump(); // '('
             loop {
                 match self.sexp() {
@@ -151,17 +150,17 @@ fn parse(text: &str) -> Parse {
             // or an eof.
             let t = match self.current() {
                 None => return SexpRes::Eof,
-                Some(R_PAREN) => return SexpRes::RParen,
+                Some(SyntaxKind::RightParenthesis) => return SexpRes::RParen,
                 Some(t) => t,
             };
             match t {
-                L_PAREN => self.list(),
-                WORD => {
-                    self.builder.start_node(ATOM.into());
+                SyntaxKind::LeftParenthesis => self.list(),
+                SyntaxKind::Word => {
+                    self.builder.start_node(SyntaxKind::Atom.into());
                     self.bump();
                     self.builder.finish_node();
                 }
-                ERROR => self.bump(),
+                SyntaxKind::Error => self.bump(),
                 _ => unreachable!(),
             }
             SexpRes::Ok
@@ -176,7 +175,7 @@ fn parse(text: &str) -> Parse {
             self.tokens.last().map(|(kind, _)| *kind)
         }
         fn skip_ws(&mut self) {
-            while self.current() == Some(WHITESPACE) {
+            while self.current() == Some(SyntaxKind::Whitespace) {
                 self.bump()
             }
         }
@@ -192,7 +191,6 @@ fn parse(text: &str) -> Parse {
 /// It is also immutable, like a GreenNode,
 /// but it contains parent pointers, offsets, and
 /// has identity semantics.
-
 type SyntaxNode = rowan::SyntaxNode<Lang>;
 #[allow(unused)]
 type SyntaxToken = rowan::SyntaxToken<Lang>;
@@ -248,26 +246,22 @@ fn test_parser() {
 /// For a real language, you'd want to generate an AST. I find a
 /// combination of `serde`, `ron` and `tera` crates invaluable for that!
 macro_rules! ast_node {
-    ($ast:ident, $kind:ident) => {
+    ($ast:ident, $kind:expr) => {
         #[derive(PartialEq, Eq, Hash)]
         #[repr(transparent)]
         struct $ast(SyntaxNode);
         impl $ast {
             #[allow(unused)]
             fn cast(node: SyntaxNode) -> Option<Self> {
-                if node.kind() == $kind {
-                    Some(Self(node))
-                } else {
-                    None
-                }
+                if node.kind() == $kind { Some(Self(node)) } else { None }
             }
         }
     };
 }
 
-ast_node!(Root, ROOT);
-ast_node!(Atom, ATOM);
-ast_node!(List, LIST);
+ast_node!(Root, SyntaxKind::Root);
+ast_node!(Atom, SyntaxKind::Atom);
+ast_node!(List, SyntaxKind::List);
 
 // Sexp is slightly different, so let's do it by hand.
 #[derive(PartialEq, Eq, Hash)]
@@ -393,22 +387,22 @@ fn lex(text: &str) -> Vec<(SyntaxKind, String)> {
     }
     fn kind(t: m_lexer::TokenKind) -> SyntaxKind {
         match t.0 {
-            0 => L_PAREN,
-            1 => R_PAREN,
-            2 => WORD,
-            3 => WHITESPACE,
-            4 => ERROR,
+            0 => SyntaxKind::LeftParenthesis,
+            1 => SyntaxKind::RightParenthesis,
+            2 => SyntaxKind::Word,
+            3 => SyntaxKind::Whitespace,
+            4 => SyntaxKind::Error,
             _ => unreachable!(),
         }
     }
 
     let lexer = m_lexer::LexerBuilder::new()
-        .error_token(tok(ERROR))
+        .error_token(tok(SyntaxKind::Error))
         .tokens(&[
-            (tok(L_PAREN), r"\("),
-            (tok(R_PAREN), r"\)"),
-            (tok(WORD), r"[^\s()]+"),
-            (tok(WHITESPACE), r"\s+"),
+            (tok(SyntaxKind::LeftParenthesis), r"\("),
+            (tok(SyntaxKind::RightParenthesis), r"\)"),
+            (tok(SyntaxKind::Word), r"[^\s()]+"),
+            (tok(SyntaxKind::Whitespace), r"\s+"),
         ])
         .build();
 
