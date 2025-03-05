@@ -7,7 +7,7 @@
 //!
 //! It's suggested to read the conceptual overview of the design
 //! alongside this tutorial:
-//! https://rust-analyzer.github.io/book/contributing/syntax.html
+//! https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/syntax.md
 
 /// Let's start with defining all kinds of tokens and
 /// composite nodes.
@@ -194,8 +194,10 @@ fn parse(text: &str) -> Parse {
 /// has identity semantics.
 
 type SyntaxNode = rowan::SyntaxNode<Lang>;
+
 #[allow(unused)]
 type SyntaxToken = rowan::SyntaxToken<Lang>;
+
 #[allow(unused)]
 type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
@@ -255,11 +257,7 @@ macro_rules! ast_node {
         impl $ast {
             #[allow(unused)]
             fn cast(node: SyntaxNode) -> Option<Self> {
-                if node.kind() == $kind {
-                    Some(Self(node))
-                } else {
-                    None
-                }
+                if node.kind() == $kind { Some(Self(node)) } else { None }
             }
         }
     };

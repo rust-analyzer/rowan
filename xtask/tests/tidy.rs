@@ -1,6 +1,7 @@
-use xaction::cmd;
+use xshell::{Shell, cmd};
 
 #[test]
 fn test_formatting() {
-    cmd!("cargo fmt --all -- --check").run().unwrap()
+    let sh = Shell::new().unwrap();
+    cmd!(sh, "cargo fmt --all -- --check").run().unwrap()
 }

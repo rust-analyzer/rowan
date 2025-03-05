@@ -1,8 +1,8 @@
 use std::{borrow::Cow, fmt, iter, marker::PhantomData, ops::Range};
 
 use crate::{
-    cursor, green::GreenTokenData, Direction, GreenNode, GreenNodeData, GreenToken, NodeOrToken,
-    SyntaxKind, SyntaxText, TextRange, TextSize, TokenAtOffset, WalkEvent,
+    Direction, GreenNode, GreenNodeData, GreenToken, NodeOrToken, SyntaxKind, SyntaxText,
+    TextRange, TextSize, TokenAtOffset, WalkEvent, cursor, green::GreenTokenData,
 };
 
 pub trait Language: Sized + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
@@ -446,10 +446,7 @@ impl<L: Language> Iterator for SyntaxNodeChildren<L> {
 
 impl<L: Language> SyntaxNodeChildren<L> {
     pub fn by_kind(self, matcher: impl Fn(L::Kind) -> bool) -> impl Iterator<Item = SyntaxNode<L>> {
-        self.raw
-            .by_kind(move |raw_kind| matcher(L::kind_from_raw(raw_kind)))
-            .into_iter()
-            .map(SyntaxNode::from)
+        self.raw.by_kind(move |raw_kind| matcher(L::kind_from_raw(raw_kind))).map(SyntaxNode::from)
     }
 }
 
