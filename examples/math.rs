@@ -32,6 +32,7 @@ enum SyntaxKind {
     OPERATION,
     ROOT,
 }
+
 use SyntaxKind::*;
 
 impl From<SyntaxKind> for rowan::SyntaxKind {

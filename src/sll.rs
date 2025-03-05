@@ -3,6 +3,15 @@
 use std::{cell::Cell, cmp::Ordering, ptr};
 
 use crate::utility_types::Delta;
+
+/// # Safety
+///
+/// Implementors of this trait must ensure that the pointers returned by
+/// `prev` and `next` are valid and properly initialized. The pointers must
+/// point to valid instances of the implementing type or be null pointers.
+/// Additionally, the `key` method must return a valid reference to a `Cell<u32>`.
+///
+/// Failure to uphold these invariants can result in undefined behavior.
 pub(crate) unsafe trait Elem {
     fn prev(&self) -> &Cell<*const Self>;
     fn next(&self) -> &Cell<*const Self>;
@@ -17,7 +26,7 @@ pub(crate) enum AddToSllResult<'a, E: Elem> {
     AlreadyInSll(*const E),
 }
 
-impl<'a, E: Elem> AddToSllResult<'a, E> {
+impl<E: Elem> AddToSllResult<'_, E> {
     pub(crate) fn add_to_sll(&self, elem_ptr: *const E) {
         unsafe {
             (*elem_ptr).prev().set(elem_ptr);
@@ -55,11 +64,7 @@ pub(crate) fn init<'a, E: Elem>(
     head: Option<&'a Cell<*const E>>,
     elem: &E,
 ) -> AddToSllResult<'a, E> {
-    if let Some(head) = head {
-        link(head, elem)
-    } else {
-        AddToSllResult::NoHead
-    }
+    if let Some(head) = head { link(head, elem) } else { AddToSllResult::NoHead }
 }
 
 #[cold]
