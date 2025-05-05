@@ -1,5 +1,6 @@
 # Rowan
 
+[![docs.rs](https://docs.rs/rowan/badge.svg)](https://docs.rs/rowan/)
 [![Crates.io](https://img.shields.io/crates/v/rowan.svg)](https://crates.io/crates/rowan)
 [![Crates.io](https://img.shields.io/crates/d/rowan.svg)](https://crates.io/crates/rowan)
 
