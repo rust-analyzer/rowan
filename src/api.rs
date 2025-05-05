@@ -48,7 +48,13 @@ impl<L: Language> fmt::Debug for SyntaxNode<L> {
             assert_eq!(level, 0);
             Ok(())
         } else {
-            write!(f, "{:?}@{:?}", self.kind(), self.text_range())
+            write!(f, "{:?}@{:?}", self.kind(), self.text_range())?;
+
+            if self.first_child().is_some() {
+                write!(f, " ...")?;
+            }
+
+            Ok(())
         }
     }
 }
