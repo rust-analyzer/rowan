@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
     fmt,
+    hash::{Hash, Hasher},
     mem::{self, ManuallyDrop},
     ops, ptr,
 };
@@ -21,6 +22,7 @@ struct GreenTokenHead {
 
 type Repr = HeaderSlice<GreenTokenHead, [u8]>;
 type ReprThin = HeaderSlice<GreenTokenHead, [u8; 0]>;
+#[derive(Eq)]
 #[repr(transparent)]
 pub struct GreenTokenData {
     data: ReprThin,
@@ -29,6 +31,12 @@ pub struct GreenTokenData {
 impl PartialEq for GreenTokenData {
     fn eq(&self, other: &Self) -> bool {
         self.kind() == other.kind() && self.text() == other.text()
+    }
+}
+
+impl Hash for GreenTokenData {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self.data).hash(state);
     }
 }
 
@@ -150,5 +158,20 @@ impl ops::Deref for GreenToken {
             let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
             mem::transmute::<&ReprThin, &GreenTokenData>(repr)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::hash::{BuildHasher, RandomState};
+
+    use super::*;
+
+    #[test]
+    fn hash_borrow() {
+        let owned = GreenToken::new(SyntaxKind(42), "foobar");
+        let borrowed: &GreenTokenData = owned.borrow();
+        let s = RandomState::new();
+        assert_eq!(s.hash_one(&owned), s.hash_one(borrowed));
     }
 }
