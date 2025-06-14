@@ -12,7 +12,6 @@ use crate::{
     GreenToken, NodeOrToken, TextRange, TextSize,
     arc::{Arc, HeaderSlice, ThinArc},
     green::{GreenElement, GreenElementRef, SyntaxKind},
-    utility_types::static_assert,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -28,8 +27,6 @@ pub(crate) enum GreenChild {
     Node { rel_offset: TextSize, node: GreenNode },
     Token { rel_offset: TextSize, token: GreenToken },
 }
-#[cfg(target_pointer_width = "64")]
-static_assert!(mem::size_of::<GreenChild>() == mem::size_of::<usize>() * 2);
 
 type Repr = HeaderSlice<GreenNodeHead, [GreenChild]>;
 type ReprThin = HeaderSlice<GreenNodeHead, [GreenChild; 0]>;
@@ -356,3 +353,16 @@ impl DoubleEndedIterator for Children<'_> {
 }
 
 impl FusedIterator for Children<'_> {}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn check_green_child_size() {
+        use super::GreenChild;
+        use std::mem;
+
+        assert_eq!(mem::size_of::<GreenChild>(), mem::size_of::<usize>() * 2);
+    }
+}
