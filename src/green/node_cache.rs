@@ -1,6 +1,6 @@
-use hashbrown::hash_map::RawEntryMut;
+use hashbrown::{HashTable, hash_table::Entry};
 use rustc_hash::FxHasher;
-use std::hash::{BuildHasherDefault, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 
 use crate::{
     GreenNode, GreenNodeData, GreenToken, GreenTokenData, NodeOrToken, SyntaxKind,
@@ -8,11 +8,6 @@ use crate::{
 };
 
 use super::element::GreenElement;
-
-type HashMap<K, V> = hashbrown::HashMap<K, V, BuildHasherDefault<FxHasher>>;
-
-#[derive(Debug)]
-struct NoHash<T>(T);
 
 /// Interner for GreenTokens and GreenNodes
 // XXX: the impl is a bit tricky. As usual when writing interners, we want to
@@ -25,18 +20,17 @@ struct NoHash<T>(T);
 // That means that computing the hash naively is wasteful -- we just *know*
 // hashes of children, and we can re-use those.
 //
-// So here we use *raw* API of hashbrown and provide the hashes manually,
+// So here we use `HashTable` of hashbrown and provide the hashes manually,
 // instead of going via a `Hash` impl. Our manual `Hash` and the
 // `#[derive(Hash)]` are actually different! At some point we had a fun bug,
 // where we accidentally mixed the two hashes, which made the cache much less
 // efficient.
 //
-// To fix that, we additionally wrap the data in `NoHash` wrapper, to make sure
-// we don't accidentally use the wrong hash!
+// `HashTable` prevents us to accidentally use the wrong hash!
 #[derive(Default, Debug)]
 pub struct NodeCache {
-    nodes: HashMap<NoHash<GreenNode>, ()>,
-    tokens: HashMap<NoHash<GreenToken>, ()>,
+    nodes: HashTable<GreenNode>,
+    tokens: HashTable<GreenToken>,
 }
 
 fn token_hash(token: &GreenTokenData) -> u64 {
@@ -103,26 +97,30 @@ impl NodeCache {
         // For example, all `#[inline]` in this file share the same green node!
         // For `libsyntax/parse/parser.rs`, measurements show that deduping saves
         // 17% of the memory for green nodes!
-        let entry = self.nodes.raw_entry_mut().from_hash(hash, |node| {
-            node.0.kind() == kind && node.0.children().len() == children_ref.len() && {
-                let lhs = node.0.children();
-                let rhs = children_ref.iter().map(|(_, it)| it.as_deref());
+        let entry = self.nodes.entry(
+            hash,
+            |node| {
+                node.kind() == kind && node.children().len() == children_ref.len() && {
+                    let lhs = node.children();
+                    let rhs = children_ref.iter().map(|(_, it)| it.as_deref());
 
-                let lhs = lhs.map(element_id);
-                let rhs = rhs.map(element_id);
+                    let lhs = lhs.map(element_id);
+                    let rhs = rhs.map(element_id);
 
-                lhs.eq(rhs)
-            }
-        });
+                    lhs.eq(rhs)
+                }
+            },
+            |node| node_hash(node),
+        );
 
         let node = match entry {
-            RawEntryMut::Occupied(entry) => {
+            Entry::Occupied(entry) => {
                 drop(children.drain(first_child..));
-                entry.key().0.clone()
+                entry.get().clone()
             }
-            RawEntryMut::Vacant(entry) => {
+            Entry::Vacant(entry) => {
                 let node = build_node(children);
-                entry.insert_with_hasher(hash, NoHash(node.clone()), (), |n| node_hash(&n.0));
+                entry.insert(node.clone());
                 node
             }
         };
@@ -138,16 +136,17 @@ impl NodeCache {
             h.finish()
         };
 
-        let entry = self
-            .tokens
-            .raw_entry_mut()
-            .from_hash(hash, |token| token.0.kind() == kind && token.0.text() == text);
+        let entry = self.tokens.entry(
+            hash,
+            |token| token.kind() == kind && token.text() == text,
+            |token| token_hash(token),
+        );
 
         let token = match entry {
-            RawEntryMut::Occupied(entry) => entry.key().0.clone(),
-            RawEntryMut::Vacant(entry) => {
+            Entry::Occupied(entry) => entry.get().clone(),
+            Entry::Vacant(entry) => {
                 let token = GreenToken::new(kind, text);
-                entry.insert_with_hasher(hash, NoHash(token.clone()), (), |t| token_hash(&t.0));
+                entry.insert(token.clone());
                 token
             }
         };
