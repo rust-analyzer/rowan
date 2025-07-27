@@ -408,6 +408,7 @@ impl<L: Language> Iterator for SyntaxElementChildren<L> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Preorder<L: Language> {
     raw: cursor::Preorder,
     _p: PhantomData<L>,
@@ -426,6 +427,7 @@ impl<L: Language> Iterator for Preorder<L> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PreorderWithTokens<L: Language> {
     raw: cursor::PreorderWithTokens,
     _p: PhantomData<L>,

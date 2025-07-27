@@ -1173,6 +1173,7 @@ impl Iterator for SyntaxElementChildren {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Preorder {
     start: SyntaxNode,
     next: Option<WalkEvent<SyntaxNode>>,
@@ -1228,6 +1229,7 @@ impl Iterator for Preorder {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PreorderWithTokens {
     start: SyntaxElement,
     next: Option<WalkEvent<SyntaxElement>>,
