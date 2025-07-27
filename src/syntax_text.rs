@@ -105,7 +105,7 @@ impl SyntaxText {
         }
     }
 
-    fn tokens_with_ranges(&self) -> impl Iterator<Item = (SyntaxToken, TextRange)> {
+    fn tokens_with_ranges(&self) -> impl Iterator<Item = (SyntaxToken, TextRange)> + use<> {
         let text_range = self.range;
         self.node.descendants_with_tokens().filter_map(|element| element.into_token()).filter_map(
             move |token| {

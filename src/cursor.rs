@@ -668,7 +668,7 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> + use<> {
         iter::successors(Some(self.clone()), SyntaxNode::parent)
     }
 
@@ -831,7 +831,7 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode> {
+    pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode> + use<> {
         iter::successors(Some(self.clone()), move |node| match direction {
             Direction::Next => node.next_sibling(),
             Direction::Prev => node.prev_sibling(),
@@ -842,7 +842,7 @@ impl SyntaxNode {
     pub fn siblings_with_tokens(
         &self,
         direction: Direction,
-    ) -> impl Iterator<Item = SyntaxElement> {
+    ) -> impl Iterator<Item = SyntaxElement> + use<> {
         let me: SyntaxElement = self.clone().into();
         iter::successors(Some(me), move |el| match direction {
             Direction::Next => el.next_sibling_or_token(),
@@ -851,7 +851,7 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn descendants(&self) -> impl Iterator<Item = SyntaxNode> {
+    pub fn descendants(&self) -> impl Iterator<Item = SyntaxNode> + use<> {
         self.preorder().filter_map(|event| match event {
             WalkEvent::Enter(node) => Some(node),
             WalkEvent::Leave(_) => None,
@@ -859,7 +859,7 @@ impl SyntaxNode {
     }
 
     #[inline]
-    pub fn descendants_with_tokens(&self) -> impl Iterator<Item = SyntaxElement> {
+    pub fn descendants_with_tokens(&self) -> impl Iterator<Item = SyntaxElement> + use<> {
         self.preorder_with_tokens().filter_map(|event| match event {
             WalkEvent::Enter(it) => Some(it),
             WalkEvent::Leave(_) => None,
@@ -1054,7 +1054,7 @@ impl SyntaxToken {
     }
 
     #[inline]
-    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> + use<> {
         std::iter::successors(self.parent(), SyntaxNode::parent)
     }
 
@@ -1077,7 +1077,7 @@ impl SyntaxToken {
     pub fn siblings_with_tokens(
         &self,
         direction: Direction,
-    ) -> impl Iterator<Item = SyntaxElement> {
+    ) -> impl Iterator<Item = SyntaxElement> + use<> {
         let me: SyntaxElement = self.clone().into();
         iter::successors(Some(me), move |el| match direction {
             Direction::Next => el.next_sibling_or_token(),
@@ -1156,7 +1156,7 @@ impl SyntaxElement {
     }
 
     #[inline]
-    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> {
+    pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> + use<> {
         let first = match self {
             NodeOrToken::Node(it) => Some(it.clone()),
             NodeOrToken::Token(it) => it.parent(),
