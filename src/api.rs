@@ -437,6 +437,12 @@ pub struct SyntaxNodeChildren<L: Language> {
     _p: PhantomData<L>,
 }
 
+impl<L: Language> Default for SyntaxNodeChildren<L> {
+    fn default() -> Self {
+        Self { raw: Default::default(), _p: PhantomData }
+    }
+}
+
 impl<L: Language> Iterator for SyntaxNodeChildren<L> {
     type Item = SyntaxNode<L>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -454,6 +460,12 @@ impl<L: Language> SyntaxNodeChildren<L> {
 pub struct SyntaxElementChildren<L: Language> {
     raw: cursor::SyntaxElementChildren,
     _p: PhantomData<L>,
+}
+
+impl<L: Language> Default for SyntaxElementChildren<L> {
+    fn default() -> Self {
+        Self { raw: Default::default(), _p: PhantomData }
+    }
 }
 
 impl<L: Language> Iterator for SyntaxElementChildren<L> {
