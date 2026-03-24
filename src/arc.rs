@@ -1,6 +1,7 @@
 //! Vendored and stripped down version of triomphe
-use std::{
-    alloc::{self, Layout},
+use crate::alloc::alloc::{self, Layout};
+use crate::alloc::boxed::Box;
+use core::{
     cmp::Ordering,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -86,7 +87,7 @@ impl<T: ?Sized> Arc<T> {
     /// allocation
     #[inline]
     pub(crate) fn ptr_eq(this: &Self, other: &Self) -> bool {
-        std::ptr::addr_eq(this.ptr(), other.ptr())
+        ptr::addr_eq(this.ptr(), other.ptr())
     }
 
     pub(crate) fn ptr(&self) -> *mut ArcInner<T> {
@@ -120,7 +121,7 @@ impl<T: ?Sized> Clone for Arc<T> {
         // We abort because such a program is incredibly degenerate, and we
         // don't care to support it.
         if old_size > MAX_REFCOUNT {
-            std::process::abort();
+            panic!("Arc reference count overflow");
         }
 
         unsafe { Arc { p: ptr::NonNull::new_unchecked(self.ptr()), phantom: PhantomData } }

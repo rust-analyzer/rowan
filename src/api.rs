@@ -1,12 +1,13 @@
-use std::{borrow::Cow, fmt, iter, marker::PhantomData, ops::Range};
+use alloc::borrow::Cow;
+use core::{fmt, hash::Hash, iter, marker::PhantomData, ops::Range};
 
 use crate::{
     Direction, GreenNode, GreenNodeData, GreenToken, NodeOrToken, SyntaxKind, SyntaxText,
     TextRange, TextSize, TokenAtOffset, WalkEvent, cursor, green::GreenTokenData,
 };
 
-pub trait Language: Sized + Copy + fmt::Debug + Eq + Ord + std::hash::Hash {
-    type Kind: Sized + Copy + fmt::Debug + Eq + Ord + std::hash::Hash;
+pub trait Language: Sized + Copy + fmt::Debug + Eq + Ord + Hash {
+    type Kind: Sized + Copy + fmt::Debug + Eq + Ord + Hash;
 
     fn kind_from_raw(raw: SyntaxKind) -> Self::Kind;
     fn kind_to_raw(kind: Self::Kind) -> SyntaxKind;
@@ -68,7 +69,7 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
         let text = self.text();
         for idx in 21..25 {
             if text.is_char_boundary(idx) {
-                let text = format!("{} ...", &text[..idx]);
+                let text = alloc::format!("{} ...", &text[..idx]);
                 return write!(f, " {:?}", text);
             }
         }

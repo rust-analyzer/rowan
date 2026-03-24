@@ -1,8 +1,9 @@
-use std::{
-    fmt,
+use core::{
+    fmt, mem,
     ops::{AddAssign, Deref},
 };
-use text_size::TextSize;
+
+use crate::TextSize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeOrToken<N, T> {
@@ -125,7 +126,7 @@ impl<T> Iterator for TokenAtOffset<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
-        match std::mem::replace(self, TokenAtOffset::None) {
+        match mem::replace(self, TokenAtOffset::None) {
             TokenAtOffset::None => None,
             TokenAtOffset::Single(node) => {
                 *self = TokenAtOffset::None;

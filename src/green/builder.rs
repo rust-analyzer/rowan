@@ -1,4 +1,5 @@
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 use crate::{
     NodeOrToken,

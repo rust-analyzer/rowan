@@ -1,15 +1,15 @@
-use std::{
+use alloc::borrow::ToOwned;
+use core::{
     borrow::Borrow,
     fmt,
     mem::{self, ManuallyDrop},
     ops, ptr,
 };
 
-use countme::Count;
-
 use crate::{
     TextSize,
     arc::{Arc, HeaderSlice, ThinArc},
+    countme::Count,
     green::SyntaxKind,
 };
 
@@ -96,7 +96,7 @@ impl GreenTokenData {
     /// Text of this Token.
     #[inline]
     pub fn text(&self) -> &str {
-        unsafe { std::str::from_utf8_unchecked(self.data.slice()) }
+        unsafe { core::str::from_utf8_unchecked(self.data.slice()) }
     }
 
     /// Returns the length of the text covered by this token.

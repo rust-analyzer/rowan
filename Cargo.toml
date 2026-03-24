@@ -13,13 +13,11 @@ exclude = [".github/", "bors.toml", "rustfmt.toml"]
 members = ["xtask"]
 
 [dependencies]
-rustc-hash = "2.1.1"
+rustc-hash = { version = "2.1.1", default-features = false }
 hashbrown = { version = "0.15.2", features = [
 	"inline-more",
 	"raw-entry",
 ], default-features = false }
-text-size = "1.1.1"
-countme = "3.0.1"
 
 serde = { version = "1.0.218", optional = true, default-features = false }
 
@@ -27,4 +25,5 @@ serde = { version = "1.0.218", optional = true, default-features = false }
 m_lexer = "0.0.4"
 
 [features]
-serde1 = ["serde", "text-size/serde"]
+std = ["rustc-hash/std"]
+serde1 = ["dep:serde"]

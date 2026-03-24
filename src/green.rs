@@ -33,10 +33,10 @@ mod tests {
 
     #[test]
     fn test_size_of() {
-        use std::mem::size_of;
+        use core::mem::size_of;
 
-        eprintln!("GreenNode          {}", size_of::<GreenNode>());
-        eprintln!("GreenToken         {}", size_of::<GreenToken>());
-        eprintln!("GreenElement       {}", size_of::<GreenElement>());
+        std::eprintln!("GreenNode          {}", size_of::<GreenNode>());
+        std::eprintln!("GreenToken         {}", size_of::<GreenToken>());
+        std::eprintln!("GreenElement       {}", size_of::<GreenElement>());
     }
 }

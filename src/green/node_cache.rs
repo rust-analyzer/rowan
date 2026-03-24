@@ -1,6 +1,7 @@
+use alloc::vec::Vec;
+use core::hash::{BuildHasherDefault, Hash, Hasher};
 use hashbrown::hash_map::RawEntryMut;
 use rustc_hash::FxHasher;
-use std::hash::{BuildHasherDefault, Hash, Hasher};
 
 use crate::{
     GreenNode, GreenNodeData, GreenToken, GreenTokenData, NodeOrToken, SyntaxKind,

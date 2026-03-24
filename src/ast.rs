@@ -13,7 +13,7 @@
 //! We also provide an [`AstNode`] trait for typed AST wrapper APIs over rowan
 //! nodes.
 
-use std::{
+use core::{
     fmt,
     hash::{Hash, Hasher},
     iter::successors,

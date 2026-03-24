@@ -1,5 +1,5 @@
+use core::fmt;
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
-use std::fmt;
 
 use crate::{
     NodeOrToken,
