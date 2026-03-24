@@ -1,6 +1,6 @@
 //! Sorted Linked List
 
-use std::{cell::Cell, cmp::Ordering, ptr};
+use core::{cell::Cell, cmp::Ordering, ptr};
 
 use crate::utility_types::Delta;
 

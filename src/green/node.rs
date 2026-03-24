@@ -1,16 +1,19 @@
-use std::{
-    borrow::{Borrow, Cow},
+use alloc::{
+    borrow::{Cow, ToOwned},
+    vec::Vec,
+};
+use core::{
+    borrow::Borrow,
     fmt,
     iter::{self, FusedIterator},
     mem::{self, ManuallyDrop},
     ops, ptr, slice,
 };
 
-use countme::Count;
-
 use crate::{
     GreenToken, NodeOrToken, TextRange, TextSize,
     arc::{Arc, HeaderSlice, ThinArc},
+    countme::Count,
     green::{GreenElement, GreenElementRef, SyntaxKind},
 };
 
@@ -247,7 +250,7 @@ impl GreenNode {
 
 impl GreenChild {
     #[inline]
-    pub(crate) fn as_ref(&self) -> GreenElementRef {
+    pub(crate) fn as_ref(&self) -> GreenElementRef<'_> {
         match self {
             GreenChild::Node { node, .. } => NodeOrToken::Node(node),
             GreenChild::Token { token, .. } => NodeOrToken::Token(token),
@@ -361,7 +364,7 @@ mod test {
     #[cfg(target_pointer_width = "64")]
     fn check_green_child_size() {
         use super::GreenChild;
-        use std::mem;
+        use core::mem;
 
         assert_eq!(mem::size_of::<GreenChild>(), mem::size_of::<usize>() * 2);
     }

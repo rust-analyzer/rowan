@@ -81,8 +81,12 @@
 //      when the tree is mutable.
 //    - TBD
 
-use std::{
-    borrow::Cow,
+use alloc::{
+    borrow::{Cow, ToOwned},
+    boxed::Box,
+    string::ToString,
+};
+use core::{
     cell::Cell,
     fmt,
     hash::{Hash, Hasher},
@@ -92,11 +96,10 @@ use std::{
     ptr, slice,
 };
 
-use countme::Count;
-
 use crate::{
     Direction, GreenNode, GreenToken, NodeOrToken, SyntaxText, TextRange, TextSize, TokenAtOffset,
     WalkEvent,
+    countme::Count,
     green::{GreenChild, GreenElementRef, GreenNodeData, GreenTokenData, SyntaxKind},
     sll,
     utility_types::Delta,
@@ -285,7 +288,7 @@ impl NodeData {
     fn inc_rc(&self) {
         let rc = match self.rc.get().checked_add(1) {
             Some(it) => it,
-            None => std::process::abort(),
+            None => panic!("reference count overflow"),
         };
         self.rc.set(rc)
     }
@@ -327,7 +330,7 @@ impl NodeData {
         }
     }
     #[inline]
-    fn green_siblings(&self) -> slice::Iter<GreenChild> {
+    fn green_siblings(&self) -> slice::Iter<'_, GreenChild> {
         match &self.parent().map(|it| &it.green) {
             Some(Green::Node { ptr }) => unsafe { &*ptr.get().as_ptr() }.children().raw,
             Some(Green::Token { .. }) => {
@@ -607,7 +610,7 @@ impl SyntaxNode {
         assert!(self.can_take_ptr());
         let ret = self.ptr;
         // don't change the refcount when self gets dropped
-        std::mem::forget(self);
+        mem::forget(self);
         ret
     }
 
@@ -1000,7 +1003,7 @@ impl SyntaxToken {
         assert!(self.can_take_ptr());
         let ret = self.ptr;
         // don't change the refcount when self gets dropped
-        std::mem::forget(self);
+        mem::forget(self);
         ret
     }
 
@@ -1055,7 +1058,7 @@ impl SyntaxToken {
 
     #[inline]
     pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode> + use<> {
-        std::iter::successors(self.parent(), SyntaxNode::parent)
+        iter::successors(self.parent(), SyntaxNode::parent)
     }
 
     pub fn next_sibling_or_token(&self) -> Option<SyntaxElement> {
