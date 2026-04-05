@@ -145,10 +145,12 @@ impl ops::Deref for GreenToken {
 
     #[inline]
     fn deref(&self) -> &GreenTokenData {
+        // SAFETY: Same pattern as GreenNode::deref — access the thin
+        // data pointer directly to avoid fat→thin reference shrinking.
         unsafe {
-            let repr: &Repr = &self.ptr;
-            let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
-            mem::transmute::<&ReprThin, &GreenTokenData>(repr)
+            let inner = self.ptr.ptr.as_ptr();
+            let data = ptr::addr_of!((*inner).data);
+            &*(data as *const ReprThin as *const GreenTokenData)
         }
     }
 }

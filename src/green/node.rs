@@ -186,10 +186,15 @@ impl ops::Deref for GreenNode {
 
     #[inline]
     fn deref(&self) -> &GreenNodeData {
-        let repr: &Repr = &self.ptr;
+        // SAFETY: GreenNodeData is #[repr(transparent)] over ReprThin,
+        // and ThinArc's inner pointer points to ArcInner<ReprThin>.
+        // We access the data field via raw pointer to avoid creating
+        // an intermediate fat reference that would need to be shrunk
+        // (which Miri flags as UB under stacked/tree borrows).
         unsafe {
-            let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
-            mem::transmute::<&ReprThin, &GreenNodeData>(repr)
+            let inner = self.ptr.ptr.as_ptr();
+            let data = ptr::addr_of!((*inner).data);
+            &*(data as *const ReprThin as *const GreenNodeData)
         }
     }
 }

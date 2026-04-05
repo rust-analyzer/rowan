@@ -252,13 +252,26 @@ impl<H, T> HeaderSlice<H, [T]> {
     }
 }
 
+impl<H, T> HeaderSlice<H, [T; 0]> {
+    /// Get a fat reference to the full HeaderSlice from raw pointer.
+    ///
+    /// # Safety
+    /// `ptr` must point to a valid `HeaderSlice<H, [T; 0]>` that was allocated
+    /// with space for `length` elements of `T` after the header.
+    pub(crate) unsafe fn as_fat_ref<'a>(ptr: *const Self) -> &'a HeaderSlice<H, [T]> {
+        let len = unsafe { (*ptr).length };
+        let fake_slice: *const [T] = ptr::slice_from_raw_parts(ptr as *const T, len);
+        unsafe { &*(fake_slice as *const HeaderSlice<H, [T]>) }
+    }
+}
+
 impl<H, T> Deref for HeaderSlice<H, [T; 0]> {
     type Target = HeaderSlice<H, [T]>;
 
     fn deref(&self) -> &Self::Target {
-        let len = self.length;
-        let fake_slice: *const [T] = ptr::slice_from_raw_parts(self as *const _ as *const T, len);
-        unsafe { &*(fake_slice as *const HeaderSlice<H, [T]>) }
+        // Use raw pointer to avoid creating a reference with provenance
+        // limited to the thin [T; 0] type when the allocation is larger.
+        unsafe { Self::as_fat_ref(self as *const Self) }
     }
 }
 
@@ -279,7 +292,7 @@ impl<H, T> Deref for HeaderSlice<H, [T; 0]> {
 /// via `HeaderSlice`.
 #[repr(transparent)]
 pub(crate) struct ThinArc<H, T> {
-    ptr: ptr::NonNull<ArcInner<HeaderSlice<H, [T; 0]>>>,
+    pub(crate) ptr: ptr::NonNull<ArcInner<HeaderSlice<H, [T; 0]>>>,
     phantom: PhantomData<(H, T)>,
 }
 
