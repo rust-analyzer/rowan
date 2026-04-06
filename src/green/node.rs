@@ -237,7 +237,11 @@ impl GreenNode {
         // ManuallyDrop wrapper goes out of scope.
         let thin_ptr = green.ptr.ptr.as_ptr();
         let thick = thin_to_thick(thin_ptr);
-        unsafe { ptr::NonNull::new_unchecked(ptr::addr_of!((*thick).data) as *mut Repr as *mut GreenNodeData) }
+        unsafe {
+            ptr::NonNull::new_unchecked(
+                ptr::addr_of!((*thick).data) as *mut Repr as *mut GreenNodeData
+            )
+        }
     }
 
     #[inline]
@@ -255,7 +259,7 @@ impl GreenNode {
 
 impl GreenChild {
     #[inline]
-    pub(crate) fn as_ref(&self) -> GreenElementRef {
+    pub(crate) fn as_ref(&self) -> GreenElementRef<'_> {
         match self {
             GreenChild::Node { node, .. } => NodeOrToken::Node(node),
             GreenChild::Token { token, .. } => NodeOrToken::Token(token),

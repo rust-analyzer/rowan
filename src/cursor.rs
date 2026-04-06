@@ -374,7 +374,7 @@ impl NodeData {
         }
     }
     #[inline]
-    fn green_siblings(&self) -> slice::Iter<GreenChild> {
+    fn green_siblings(&self) -> slice::Iter<'_, GreenChild> {
         match &self.parent().map(|it| &it.green) {
             Some(Green::Node { ptr }) => unsafe { &*ptr.as_ptr().read().as_ptr() }.children().raw,
             Some(Green::Token { .. }) => {
@@ -558,7 +558,9 @@ impl NodeData {
             NodeOrToken::Node(green) => {
                 // Child is root, so it owns the green node. Steal it!
                 let child_green = match &child.green {
-                    Green::Node { ptr } => unsafe { GreenNode::from_raw(ptr.as_ptr().read()).into() },
+                    Green::Node { ptr } => unsafe {
+                        GreenNode::from_raw(ptr.as_ptr().read()).into()
+                    },
                     Green::Token { ptr } => unsafe { GreenToken::from_raw(*ptr).into() },
                 };
 
@@ -600,13 +602,17 @@ impl SyntaxNode {
     pub fn new_root(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: std::cell::UnsafeCell::new(NodeData::new(None, 0, 0.into(), green, false)) }
+        SyntaxNode {
+            ptr: std::cell::UnsafeCell::new(NodeData::new(None, 0, 0.into(), green, false)),
+        }
     }
 
     pub fn new_root_mut(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: std::cell::UnsafeCell::new(NodeData::new(None, 0, 0.into(), green, true)) }
+        SyntaxNode {
+            ptr: std::cell::UnsafeCell::new(NodeData::new(None, 0, 0.into(), green, true)),
+        }
     }
 
     fn new_child(
@@ -617,7 +623,15 @@ impl SyntaxNode {
     ) -> SyntaxNode {
         let mutable = parent.data().mutable;
         let green = Green::Node { ptr: Cell::new(green.into()) };
-        SyntaxNode { ptr: std::cell::UnsafeCell::new(NodeData::new(Some(parent), index, offset, green, mutable)) }
+        SyntaxNode {
+            ptr: std::cell::UnsafeCell::new(NodeData::new(
+                Some(parent),
+                index,
+                offset,
+                green,
+                mutable,
+            )),
+        }
     }
 
     pub fn is_mutable(&self) -> bool {
@@ -1028,7 +1042,15 @@ impl SyntaxToken {
     ) -> SyntaxToken {
         let mutable = parent.data().mutable;
         let green = Green::Token { ptr: green.into() };
-        SyntaxToken { ptr: std::cell::UnsafeCell::new(NodeData::new(Some(parent), index, offset, green, mutable)) }
+        SyntaxToken {
+            ptr: std::cell::UnsafeCell::new(NodeData::new(
+                Some(parent),
+                index,
+                offset,
+                green,
+                mutable,
+            )),
+        }
     }
 
     #[inline]
@@ -1268,11 +1290,15 @@ impl SyntaxElement {
                 match green.as_ref() {
                     NodeOrToken::Node(node) => {
                         data.green = Green::Node { ptr: Cell::new(node.into()) };
-                        Some(SyntaxElement::Node(SyntaxNode { ptr: std::cell::UnsafeCell::new(ptr) }))
+                        Some(SyntaxElement::Node(SyntaxNode {
+                            ptr: std::cell::UnsafeCell::new(ptr),
+                        }))
                     }
                     NodeOrToken::Token(token) => {
                         data.green = Green::Token { ptr: token.into() };
-                        Some(SyntaxElement::Token(SyntaxToken { ptr: std::cell::UnsafeCell::new(ptr) }))
+                        Some(SyntaxElement::Token(SyntaxToken {
+                            ptr: std::cell::UnsafeCell::new(ptr),
+                        }))
                     }
                 }
             })
