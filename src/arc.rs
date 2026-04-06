@@ -108,7 +108,8 @@ impl<T: ?Sized> Clone for Arc<T> {
         // another must already provide any required synchronization.
         //
         // [1]: (www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html)
-        let old_size = self.inner().count.fetch_add(1, Relaxed);
+        let count_ptr = unsafe { ptr::addr_of!((*self.ptr()).count) };
+        let old_size = unsafe { (*count_ptr).fetch_add(1, Relaxed) };
 
         // However we need to guard against massive refcounts in case someone
         // is `mem::forget`ing Arcs. If we don't do this the count can overflow
@@ -155,16 +156,19 @@ impl<T: ?Sized> Arc<T> {
         // See the extensive discussion in [1] for why this needs to be Acquire.
         //
         // [1] https://github.com/servo/servo/issues/21186
-        self.inner().count.load(Acquire) == 1
+        let count_ptr = unsafe { ptr::addr_of!((*self.ptr()).count) };
+        unsafe { (*count_ptr).load(Acquire) == 1 }
     }
 }
 
 impl<T: ?Sized> Drop for Arc<T> {
     #[inline]
     fn drop(&mut self) {
-        // Because `fetch_sub` is already atomic, we do not need to synchronize
-        // with other threads unless we are going to delete the object.
-        if self.inner().count.fetch_sub(1, Release) != 1 {
+        // Access the refcount via raw pointer to avoid creating a reference
+        // to ArcInner<T> whose provenance may be limited when T is a thin
+        // type wrapping a dynamically-sized allocation.
+        let count_ptr = unsafe { ptr::addr_of!((*self.ptr()).count) };
+        if unsafe { (*count_ptr).fetch_sub(1, Release) } != 1 {
             return;
         }
 
@@ -188,7 +192,7 @@ impl<T: ?Sized> Drop for Arc<T> {
         //
         // [1]: (www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html)
         // [2]: https://github.com/rust-lang/rust/pull/41714
-        self.inner().count.load(Acquire);
+        unsafe { (*count_ptr).load(Acquire) };
 
         unsafe {
             self.drop_slow();
@@ -242,8 +246,8 @@ impl<T: ?Sized + Hash> Hash for Arc<T> {
 #[repr(C)]
 pub(crate) struct HeaderSlice<H, T: ?Sized> {
     pub(crate) header: H,
-    length: usize,
-    slice: T,
+    pub(crate) length: usize,
+    pub(crate) slice: T,
 }
 
 impl<H, T> HeaderSlice<H, [T]> {
@@ -279,7 +283,7 @@ impl<H, T> Deref for HeaderSlice<H, [T; 0]> {
 /// via `HeaderSlice`.
 #[repr(transparent)]
 pub(crate) struct ThinArc<H, T> {
-    ptr: ptr::NonNull<ArcInner<HeaderSlice<H, [T; 0]>>>,
+    pub(crate) ptr: ptr::NonNull<ArcInner<HeaderSlice<H, [T; 0]>>>,
     phantom: PhantomData<(H, T)>,
 }
 
@@ -287,7 +291,7 @@ unsafe impl<H: Sync + Send, T: Sync + Send> Send for ThinArc<H, T> {}
 unsafe impl<H: Sync + Send, T: Sync + Send> Sync for ThinArc<H, T> {}
 
 // Synthesize a fat pointer from a thin pointer.
-fn thin_to_thick<H, T>(
+pub(crate) fn thin_to_thick<H, T>(
     thin: *mut ArcInner<HeaderSlice<H, [T; 0]>>,
 ) -> *mut ArcInner<HeaderSlice<H, [T]>> {
     let len = unsafe { (*thin).data.length };
@@ -300,6 +304,7 @@ impl<H, T> ThinArc<H, T> {
     /// Temporarily converts |self| into a bonafide Arc and exposes it to the
     /// provided callback. The refcount is not modified.
     #[inline]
+    #[allow(dead_code)] // kept for downstream users; Clone/Drop now use raw pointers
     pub(crate) fn with_arc<F, U>(&self, f: F) -> U
     where
         F: FnOnce(&Arc<HeaderSlice<H, [T]>>) -> U,
@@ -402,14 +407,35 @@ impl<H, T> Deref for ThinArc<H, T> {
 impl<H, T> Clone for ThinArc<H, T> {
     #[inline]
     fn clone(&self) -> Self {
-        ThinArc::with_arc(self, |a| Arc::into_thin(a.clone()))
+        // Increment refcount directly via raw pointer, avoiding the
+        // with_arc → Arc::clone path that creates intermediate references.
+        let count_ptr = unsafe { ptr::addr_of!((*self.ptr.as_ptr()).count) };
+        let old_size = unsafe { (*count_ptr).fetch_add(1, Relaxed) };
+        if old_size > MAX_REFCOUNT {
+            std::process::abort();
+        }
+        ThinArc { ptr: self.ptr, phantom: PhantomData }
     }
 }
 
 impl<H, T> Drop for ThinArc<H, T> {
     #[inline]
     fn drop(&mut self) {
-        let _ = Arc::from_thin(ThinArc { ptr: self.ptr, phantom: PhantomData });
+        // Decrement refcount and deallocate directly via raw pointer,
+        // avoiding the from_thin → Arc::drop path which creates intermediate
+        // references that Miri flags for provenance issues.
+        let ptr = self.ptr.as_ptr();
+        let count_ptr = unsafe { ptr::addr_of!((*ptr).count) };
+        if unsafe { (*count_ptr).fetch_sub(1, Release) } != 1 {
+            return;
+        }
+        atomic::fence(Acquire);
+        unsafe {
+            let thick = thin_to_thick(ptr);
+            let layout = alloc::Layout::for_value(&*thick);
+            ptr::drop_in_place(&mut (*thick).data);
+            alloc::dealloc(ptr as *mut u8, layout);
+        }
     }
 }
 

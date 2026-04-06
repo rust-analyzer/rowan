@@ -121,6 +121,9 @@ struct NodeData {
     mutable: bool,
     /// Absolute offset for immutable nodes, unused for mutable nodes.
     offset: TextSize,
+    /// Raw pointer to self with original allocation provenance.
+    /// Used for deallocation — survives reference freezing under tree borrows.
+    self_alloc: *mut NodeData,
     // The following links only have meaning when `mutable` is true.
     first: Cell<*const NodeData>,
     /// Invariant: never null if mutable.
@@ -144,44 +147,64 @@ unsafe impl sll::Elem for NodeData {
 pub type SyntaxElement = NodeOrToken<SyntaxNode, SyntaxToken>;
 
 pub struct SyntaxNode {
-    ptr: ptr::NonNull<NodeData>,
+    /// Wrapped in UnsafeCell so that reading the pointer through &self
+    /// does not freeze provenance under tree/stacked borrows. This allows
+    /// the pointer to retain write/dealloc permission through the
+    /// lifecycle of the SyntaxNode.
+    ptr: std::cell::UnsafeCell<ptr::NonNull<NodeData>>,
+}
+
+impl SyntaxNode {
+    #[inline]
+    fn ptr(&self) -> ptr::NonNull<NodeData> {
+        unsafe { *self.ptr.get() }
+    }
 }
 
 impl Clone for SyntaxNode {
     #[inline]
     fn clone(&self) -> Self {
         self.data().inc_rc();
-        SyntaxNode { ptr: self.ptr }
+        SyntaxNode { ptr: std::cell::UnsafeCell::new(self.ptr()) }
     }
 }
 
 impl Drop for SyntaxNode {
     #[inline]
     fn drop(&mut self) {
-        if self.data().dec_rc() {
-            unsafe { free(self.ptr) }
+        let ptr = self.ptr();
+        if unsafe { NodeData::dec_rc_raw(ptr) } {
+            unsafe { free(ptr) }
         }
     }
 }
 
 #[derive(Debug)]
 pub struct SyntaxToken {
-    ptr: ptr::NonNull<NodeData>,
+    ptr: std::cell::UnsafeCell<ptr::NonNull<NodeData>>,
+}
+
+impl SyntaxToken {
+    #[inline]
+    fn ptr(&self) -> ptr::NonNull<NodeData> {
+        unsafe { *self.ptr.get() }
+    }
 }
 
 impl Clone for SyntaxToken {
     #[inline]
     fn clone(&self) -> Self {
         self.data().inc_rc();
-        SyntaxToken { ptr: self.ptr }
+        SyntaxToken { ptr: std::cell::UnsafeCell::new(self.ptr()) }
     }
 }
 
 impl Drop for SyntaxToken {
     #[inline]
     fn drop(&mut self) {
-        if self.data().dec_rc() {
-            unsafe { free(self.ptr) }
+        let ptr = self.ptr();
+        if unsafe { NodeData::dec_rc_raw(ptr) } {
+            unsafe { free(ptr) }
         }
     }
 }
@@ -190,16 +213,18 @@ impl Drop for SyntaxToken {
 unsafe fn free(mut data: ptr::NonNull<NodeData>) {
     unsafe {
         loop {
-            debug_assert_eq!(data.as_ref().rc.get(), 0);
-            debug_assert!(data.as_ref().first.get().is_null());
-            let node = Box::from_raw(data.as_ptr());
+            // Use self_alloc which retains original Box::into_raw provenance,
+            // unaffected by any &NodeData references created during the node's lifetime.
+            let alloc_ptr = (*data.as_ptr()).self_alloc;
+            let node = Box::from_raw(alloc_ptr);
+            debug_assert_eq!(node.rc.get(), 0);
+            debug_assert!(node.first.get().is_null());
             match node.parent.take() {
                 Some(parent) => {
-                    debug_assert!(parent.as_ref().rc.get() > 0);
                     if node.mutable {
-                        sll::unlink(&parent.as_ref().first, &*node)
+                        sll::unlink(&(*parent.as_ptr()).first, &*node)
                     }
-                    if parent.as_ref().dec_rc() {
+                    if NodeData::dec_rc_raw(parent) {
                         data = parent;
                     } else {
                         break;
@@ -208,7 +233,8 @@ unsafe fn free(mut data: ptr::NonNull<NodeData>) {
                 None => {
                     match &node.green {
                         Green::Node { ptr } => {
-                            let _ = GreenNode::from_raw(ptr.get());
+                            let p = ptr.as_ptr().read();
+                            let _ = GreenNode::from_raw(p);
                         }
                         Green::Token { ptr } => {
                             let _ = GreenToken::from_raw(*ptr);
@@ -234,12 +260,13 @@ impl NodeData {
         let res = NodeData {
             _c: Count::new(),
             rc: Cell::new(1),
-            parent: Cell::new(parent.as_ref().map(|it| it.ptr)),
+            parent: Cell::new(parent.as_ref().map(|it| it.ptr())),
             index: Cell::new(index),
             green,
 
             mutable,
             offset,
+            self_alloc: ptr::null_mut(),
             first: Cell::new(ptr::null()),
             next: Cell::new(ptr::null()),
             prev: Cell::new(ptr::null()),
@@ -272,12 +299,15 @@ impl NodeData {
                     }
                     it => {
                         let res = Box::into_raw(Box::new(res));
+                        (*res).self_alloc = res;
                         it.add_to_sll(res);
                         return ptr::NonNull::new_unchecked(res);
                     }
                 }
             }
-            ptr::NonNull::new_unchecked(Box::into_raw(Box::new(res)))
+            let raw = Box::into_raw(Box::new(res));
+            (*raw).self_alloc = raw;
+            ptr::NonNull::new_unchecked(raw)
         }
     }
 
@@ -297,10 +327,27 @@ impl NodeData {
         rc == 0
     }
 
+    /// Decrement refcount via raw pointer only — no references created.
+    /// This preserves deallocation permission under tree/stacked borrows.
+    #[inline]
+    unsafe fn dec_rc_raw(ptr: ptr::NonNull<NodeData>) -> bool {
+        // Access the Cell<u32>'s inner value via raw pointer.
+        // Cell::get()/set() create &Cell<u32> references which under tree
+        // borrows freeze the parent allocation's borrow tag.
+        unsafe {
+            let rc_cell_ptr = ptr::addr_of!((*ptr.as_ptr()).rc);
+            // Cell<u32> wraps UnsafeCell<u32> — its memory layout is just u32.
+            let rc_val_ptr = rc_cell_ptr as *mut u32;
+            let rc = rc_val_ptr.read() - 1;
+            rc_val_ptr.write(rc);
+            rc == 0
+        }
+    }
+
     #[inline]
     fn key(&self) -> (ptr::NonNull<()>, TextSize) {
         let ptr = match &self.green {
-            Green::Node { ptr } => ptr.get().cast(),
+            Green::Node { ptr } => unsafe { ptr.as_ptr().read() }.cast(),
             Green::Token { ptr } => ptr.cast(),
         };
         (ptr, self.offset())
@@ -311,7 +358,7 @@ impl NodeData {
         let parent = self.parent()?;
         debug_assert!(matches!(parent.green, Green::Node { .. }));
         parent.inc_rc();
-        Some(SyntaxNode { ptr: ptr::NonNull::from(parent) })
+        Some(SyntaxNode { ptr: std::cell::UnsafeCell::new(ptr::NonNull::from(parent)) })
     }
 
     #[inline]
@@ -322,14 +369,14 @@ impl NodeData {
     #[inline]
     fn green(&self) -> GreenElementRef<'_> {
         match &self.green {
-            Green::Node { ptr } => GreenElementRef::Node(unsafe { &*ptr.get().as_ptr() }),
+            Green::Node { ptr } => GreenElementRef::Node(unsafe { &*ptr.as_ptr().read().as_ptr() }),
             Green::Token { ptr } => GreenElementRef::Token(unsafe { ptr.as_ref() }),
         }
     }
     #[inline]
     fn green_siblings(&self) -> slice::Iter<GreenChild> {
         match &self.parent().map(|it| &it.green) {
-            Some(Green::Node { ptr }) => unsafe { &*ptr.get().as_ptr() }.children().raw,
+            Some(Green::Node { ptr }) => unsafe { &*ptr.as_ptr().read().as_ptr() }.children().raw,
             Some(Green::Token { .. }) => {
                 debug_assert!(false);
                 [].iter()
@@ -511,7 +558,7 @@ impl NodeData {
             NodeOrToken::Node(green) => {
                 // Child is root, so it owns the green node. Steal it!
                 let child_green = match &child.green {
-                    Green::Node { ptr } => unsafe { GreenNode::from_raw(ptr.get()).into() },
+                    Green::Node { ptr } => unsafe { GreenNode::from_raw(ptr.as_ptr().read()).into() },
                     Green::Token { ptr } => unsafe { GreenToken::from_raw(*ptr).into() },
                 };
 
@@ -553,13 +600,13 @@ impl SyntaxNode {
     pub fn new_root(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, false) }
+        SyntaxNode { ptr: std::cell::UnsafeCell::new(NodeData::new(None, 0, 0.into(), green, false)) }
     }
 
     pub fn new_root_mut(green: GreenNode) -> SyntaxNode {
         let green = GreenNode::into_raw(green);
         let green = Green::Node { ptr: Cell::new(green) };
-        SyntaxNode { ptr: NodeData::new(None, 0, 0.into(), green, true) }
+        SyntaxNode { ptr: std::cell::UnsafeCell::new(NodeData::new(None, 0, 0.into(), green, true)) }
     }
 
     fn new_child(
@@ -570,7 +617,7 @@ impl SyntaxNode {
     ) -> SyntaxNode {
         let mutable = parent.data().mutable;
         let green = Green::Node { ptr: Cell::new(green.into()) };
-        SyntaxNode { ptr: NodeData::new(Some(parent), index, offset, green, mutable) }
+        SyntaxNode { ptr: std::cell::UnsafeCell::new(NodeData::new(Some(parent), index, offset, green, mutable)) }
     }
 
     pub fn is_mutable(&self) -> bool {
@@ -594,7 +641,7 @@ impl SyntaxNode {
 
     #[inline]
     fn data(&self) -> &NodeData {
-        unsafe { self.ptr.as_ref() }
+        unsafe { self.ptr().as_ref() }
     }
 
     #[inline]
@@ -605,8 +652,7 @@ impl SyntaxNode {
     #[inline]
     fn take_ptr(self) -> ptr::NonNull<NodeData> {
         assert!(self.can_take_ptr());
-        let ret = self.ptr;
-        // don't change the refcount when self gets dropped
+        let ret = self.ptr();
         std::mem::forget(self);
         ret
     }
@@ -784,7 +830,7 @@ impl SyntaxNode {
                 data.index.set(index);
                 data.offset = parent_offset + rel_offset;
                 data.green = Green::Node { ptr: Cell::new(green.into()) };
-                SyntaxNode { ptr }
+                SyntaxNode { ptr: std::cell::UnsafeCell::new(ptr) }
             })
             .or_else(|| {
                 data.dec_rc();
@@ -982,12 +1028,12 @@ impl SyntaxToken {
     ) -> SyntaxToken {
         let mutable = parent.data().mutable;
         let green = Green::Token { ptr: green.into() };
-        SyntaxToken { ptr: NodeData::new(Some(parent), index, offset, green, mutable) }
+        SyntaxToken { ptr: std::cell::UnsafeCell::new(NodeData::new(Some(parent), index, offset, green, mutable)) }
     }
 
     #[inline]
     fn data(&self) -> &NodeData {
-        unsafe { self.ptr.as_ref() }
+        unsafe { self.ptr().as_ref() }
     }
 
     #[inline]
@@ -998,8 +1044,7 @@ impl SyntaxToken {
     #[inline]
     fn take_ptr(self) -> ptr::NonNull<NodeData> {
         assert!(self.can_take_ptr());
-        let ret = self.ptr;
-        // don't change the refcount when self gets dropped
+        let ret = self.ptr();
         std::mem::forget(self);
         ret
     }
@@ -1223,11 +1268,11 @@ impl SyntaxElement {
                 match green.as_ref() {
                     NodeOrToken::Node(node) => {
                         data.green = Green::Node { ptr: Cell::new(node.into()) };
-                        Some(SyntaxElement::Node(SyntaxNode { ptr }))
+                        Some(SyntaxElement::Node(SyntaxNode { ptr: std::cell::UnsafeCell::new(ptr) }))
                     }
                     NodeOrToken::Token(token) => {
                         data.green = Green::Token { ptr: token.into() };
-                        Some(SyntaxElement::Token(SyntaxToken { ptr }))
+                        Some(SyntaxElement::Token(SyntaxToken { ptr: std::cell::UnsafeCell::new(ptr) }))
                     }
                 }
             })

@@ -10,7 +10,7 @@ use countme::Count;
 
 use crate::{
     GreenToken, NodeOrToken, TextRange, TextSize,
-    arc::{Arc, HeaderSlice, ThinArc},
+    arc::{Arc, HeaderSlice, ThinArc, thin_to_thick},
     green::{GreenElement, GreenElementRef, SyntaxKind},
 };
 
@@ -32,7 +32,7 @@ type Repr = HeaderSlice<GreenNodeHead, [GreenChild]>;
 type ReprThin = HeaderSlice<GreenNodeHead, [GreenChild; 0]>;
 #[repr(transparent)]
 pub struct GreenNodeData {
-    data: ReprThin,
+    data: Repr, // unsized — provenance covers the full slice
 }
 
 impl PartialEq for GreenNodeData {
@@ -186,11 +186,11 @@ impl ops::Deref for GreenNode {
 
     #[inline]
     fn deref(&self) -> &GreenNodeData {
+        // SAFETY: GreenNodeData is #[repr(transparent)] over Repr (fat HeaderSlice).
+        // ThinArc::deref() returns &HeaderSlice<H, [T]> with full allocation provenance
+        // via thin_to_thick(). We transmute to &GreenNodeData which has the same layout.
         let repr: &Repr = &self.ptr;
-        unsafe {
-            let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
-            mem::transmute::<&ReprThin, &GreenNodeData>(repr)
-        }
+        unsafe { mem::transmute::<&Repr, &GreenNodeData>(repr) }
     }
 }
 
@@ -231,14 +231,22 @@ impl GreenNode {
     #[inline]
     pub(crate) fn into_raw(this: GreenNode) -> ptr::NonNull<GreenNodeData> {
         let green = ManuallyDrop::new(this);
-        let green: &GreenNodeData = &green;
-        ptr::NonNull::from(green)
+        // Extract the raw pointer directly from ThinArc to preserve full
+        // allocation provenance. Going through Deref → &GreenNodeData would
+        // create a reference whose provenance is invalidated when the
+        // ManuallyDrop wrapper goes out of scope.
+        let thin_ptr = green.ptr.ptr.as_ptr();
+        let thick = thin_to_thick(thin_ptr);
+        unsafe { ptr::NonNull::new_unchecked(ptr::addr_of!((*thick).data) as *mut Repr as *mut GreenNodeData) }
     }
 
     #[inline]
     pub(crate) unsafe fn from_raw(ptr: ptr::NonNull<GreenNodeData>) -> GreenNode {
         unsafe {
-            let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
+            // Cast the fat pointer to thin: just reinterpret the data pointer
+            // (dropping the length metadata, which is stored in the HeaderSlice).
+            let thin_ptr = ptr.as_ptr() as *const Repr as *const ReprThin;
+            let arc = Arc::from_raw(thin_ptr);
             let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenNodeHead, GreenChild>>(arc);
             GreenNode { ptr: arc }
         }

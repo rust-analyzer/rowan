@@ -19,7 +19,6 @@ struct GreenTokenHead {
     _c: Count<GreenToken>,
 }
 
-type Repr = HeaderSlice<GreenTokenHead, [u8]>;
 type ReprThin = HeaderSlice<GreenTokenHead, [u8; 0]>;
 #[repr(transparent)]
 pub struct GreenTokenData {
@@ -96,7 +95,15 @@ impl GreenTokenData {
     /// Text of this Token.
     #[inline]
     pub fn text(&self) -> &str {
-        unsafe { std::str::from_utf8_unchecked(self.data.slice()) }
+        // Access the byte slice via raw pointer arithmetic to avoid going through
+        // Deref on HeaderSlice<H, [u8; 0]> which creates a reference with provenance
+        // limited to the thin type.
+        unsafe {
+            let len = self.data.length;
+            let slice_start = ptr::addr_of!(self.data.slice) as *const u8;
+            let bytes = std::slice::from_raw_parts(slice_start, len);
+            std::str::from_utf8_unchecked(bytes)
+        }
     }
 
     /// Returns the length of the text covered by this token.
@@ -117,8 +124,12 @@ impl GreenToken {
     #[inline]
     pub(crate) fn into_raw(this: GreenToken) -> ptr::NonNull<GreenTokenData> {
         let green = ManuallyDrop::new(this);
-        let green: &GreenTokenData = &green;
-        ptr::NonNull::from(green)
+        // Extract pointer directly from ThinArc to preserve full allocation provenance.
+        let inner = green.ptr.ptr.as_ptr();
+        unsafe {
+            let data = ptr::addr_of!((*inner).data);
+            ptr::NonNull::new_unchecked(data as *mut ReprThin as *mut GreenTokenData)
+        }
     }
 
     /// # Safety
@@ -146,9 +157,8 @@ impl ops::Deref for GreenToken {
     #[inline]
     fn deref(&self) -> &GreenTokenData {
         unsafe {
-            let repr: &Repr = &self.ptr;
-            let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
-            mem::transmute::<&ReprThin, &GreenTokenData>(repr)
+            let inner = self.ptr.ptr.as_ptr();
+            &*(ptr::addr_of!((*inner).data) as *const ReprThin as *const GreenTokenData)
         }
     }
 }
