@@ -256,11 +256,24 @@ impl NodeData {
         green: Green,
         mutable: bool,
     ) -> ptr::NonNull<NodeData> {
+        // Extract parent's self_alloc by consuming the Option temporarily.
+        // We take() the value, read self_alloc through UnsafeCell (no &SyntaxNode),
+        // then put it back. This avoids creating &SyntaxNode which would freeze provenance.
+        let (parent, parent_alloc) = match parent {
+            Some(p) => {
+                let alloc = unsafe {
+                    let node_data_ptr = (*p.ptr.get()).as_ptr();
+                    ptr::NonNull::new_unchecked((*node_data_ptr).self_alloc)
+                };
+                (Some(p), Some(alloc))
+            }
+            None => (None, None),
+        };
         let parent = ManuallyDrop::new(parent);
         let res = NodeData {
             _c: Count::new(),
             rc: Cell::new(1),
-            parent: Cell::new(parent.as_ref().map(|it| it.ptr())),
+            parent: Cell::new(parent_alloc),
             index: Cell::new(index),
             green,
 
