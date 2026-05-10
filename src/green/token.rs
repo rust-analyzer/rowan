@@ -9,7 +9,7 @@ use countme::Count;
 
 use crate::{
     TextSize,
-    arc::{Arc, HeaderSlice, ThinArc},
+    arc::{Arc, HeaderSlice, ThinArc, thin_to_thick},
     green::SyntaxKind,
 };
 
@@ -19,10 +19,11 @@ struct GreenTokenHead {
     _c: Count<GreenToken>,
 }
 
+type Repr = HeaderSlice<GreenTokenHead, [u8]>;
 type ReprThin = HeaderSlice<GreenTokenHead, [u8; 0]>;
 #[repr(transparent)]
 pub struct GreenTokenData {
-    data: ReprThin,
+    data: Repr, // unsized — provenance covers the full slice
 }
 
 impl PartialEq for GreenTokenData {
@@ -95,15 +96,7 @@ impl GreenTokenData {
     /// Text of this Token.
     #[inline]
     pub fn text(&self) -> &str {
-        // Access the byte slice via raw pointer arithmetic to avoid going through
-        // Deref on HeaderSlice<H, [u8; 0]> which creates a reference with provenance
-        // limited to the thin type.
-        unsafe {
-            let len = self.data.length;
-            let slice_start = ptr::addr_of!(self.data.slice) as *const u8;
-            let bytes = std::slice::from_raw_parts(slice_start, len);
-            std::str::from_utf8_unchecked(bytes)
-        }
+        unsafe { std::str::from_utf8_unchecked(self.data.slice()) }
     }
 
     /// Returns the length of the text covered by this token.
@@ -124,11 +117,15 @@ impl GreenToken {
     #[inline]
     pub(crate) fn into_raw(this: GreenToken) -> ptr::NonNull<GreenTokenData> {
         let green = ManuallyDrop::new(this);
-        // Extract pointer directly from ThinArc to preserve full allocation provenance.
-        let inner = green.ptr.ptr.as_ptr();
+        // Extract a fat pointer directly from the ThinArc to preserve full
+        // allocation provenance (the slice tail extends past the thin
+        // header, and a narrow `&GreenTokenData` would not cover it).
+        let thin_ptr = green.ptr.ptr.as_ptr();
+        let thick = thin_to_thick(thin_ptr);
         unsafe {
-            let data = ptr::addr_of!((*inner).data);
-            ptr::NonNull::new_unchecked(data as *mut ReprThin as *mut GreenTokenData)
+            ptr::NonNull::new_unchecked(
+                ptr::addr_of!((*thick).data) as *mut Repr as *mut GreenTokenData
+            )
         }
     }
 
@@ -143,11 +140,15 @@ impl GreenToken {
     /// Failure to uphold these invariants can lead to undefined behavior.
     #[inline]
     pub(crate) unsafe fn from_raw(ptr: ptr::NonNull<GreenTokenData>) -> GreenToken {
-        let arc = unsafe {
-            let arc = Arc::from_raw(&ptr.as_ref().data as *const ReprThin);
-            mem::transmute::<Arc<ReprThin>, ThinArc<GreenTokenHead, u8>>(arc)
-        };
-        GreenToken { ptr: arc }
+        unsafe {
+            // Reinterpret the (fat) pointer to GreenTokenData as a thin
+            // pointer to ReprThin: drop the slice metadata, since
+            // ThinArc carries length in the allocation header.
+            let thin_ptr = ptr.as_ptr() as *const Repr as *const ReprThin;
+            let arc = Arc::from_raw(thin_ptr);
+            let arc = mem::transmute::<Arc<ReprThin>, ThinArc<GreenTokenHead, u8>>(arc);
+            GreenToken { ptr: arc }
+        }
     }
 }
 
@@ -156,9 +157,11 @@ impl ops::Deref for GreenToken {
 
     #[inline]
     fn deref(&self) -> &GreenTokenData {
-        unsafe {
-            let inner = self.ptr.ptr.as_ptr();
-            &*(ptr::addr_of!((*inner).data) as *const ReprThin as *const GreenTokenData)
-        }
+        // SAFETY: GreenTokenData is #[repr(transparent)] over Repr (fat HeaderSlice).
+        // ThinArc::deref() returns &HeaderSlice<H, [T]> with full allocation
+        // provenance via thin_to_thick(). We transmute to &GreenTokenData,
+        // which has the same layout.
+        let repr: &Repr = &self.ptr;
+        unsafe { mem::transmute::<&Repr, &GreenTokenData>(repr) }
     }
 }
