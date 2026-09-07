@@ -43,6 +43,8 @@ fn token_hash(token: &GreenTokenData) -> u64 {
     let mut h = FxHasher::default();
     token.kind().hash(&mut h);
     token.text().hash(&mut h);
+    token.leading_trivia().hash(&mut h);
+    token.trailing_trivia().hash(&mut h);
     h.finish()
 }
 
@@ -131,22 +133,48 @@ impl NodeCache {
     }
 
     pub(crate) fn token(&mut self, kind: SyntaxKind, text: &str) -> (u64, GreenToken) {
+        self.token_with_green_trivia(kind, text, Vec::new(), Vec::new())
+    }
+
+    pub(crate) fn token_with_trivia<'a, 'b>(
+        &mut self,
+        kind: SyntaxKind,
+        text: &str,
+        leading: impl IntoIterator<Item = (SyntaxKind, &'a str)>,
+        trailing: impl IntoIterator<Item = (SyntaxKind, &'b str)>,
+    ) -> (u64, GreenToken) {
+        let leading = leading.into_iter().map(|(kind, text)| self.token(kind, text).1).collect();
+        let trailing = trailing.into_iter().map(|(kind, text)| self.token(kind, text).1).collect();
+        self.token_with_green_trivia(kind, text, leading, trailing)
+    }
+
+    fn token_with_green_trivia(
+        &mut self,
+        kind: SyntaxKind,
+        text: &str,
+        leading: Vec<GreenToken>,
+        trailing: Vec<GreenToken>,
+    ) -> (u64, GreenToken) {
         let hash = {
             let mut h = FxHasher::default();
             kind.hash(&mut h);
             text.hash(&mut h);
+            leading.hash(&mut h);
+            trailing.hash(&mut h);
             h.finish()
         };
 
-        let entry = self
-            .tokens
-            .raw_entry_mut()
-            .from_hash(hash, |token| token.0.kind() == kind && token.0.text() == text);
+        let entry = self.tokens.raw_entry_mut().from_hash(hash, |token| {
+            token.0.kind() == kind
+                && token.0.text() == text
+                && token.0.leading_trivia() == leading
+                && token.0.trailing_trivia() == trailing
+        });
 
         let token = match entry {
             RawEntryMut::Occupied(entry) => entry.key().0.clone(),
             RawEntryMut::Vacant(entry) => {
-                let token = GreenToken::new(kind, text);
+                let token = GreenToken::with_trivia(kind, text, leading, trailing);
                 entry.insert_with_hasher(hash, NoHash(token.clone()), (), |t| token_hash(&t.0));
                 token
             }

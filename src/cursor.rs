@@ -139,20 +139,12 @@ unsafe fn free(mut data: ptr::NonNull<NodeData>) {
 impl NodeData {
     #[inline]
     fn new(
-        parent: Option<SyntaxNode>,
+        parent: Option<ptr::NonNull<NodeData>>,
         index: u32,
         offset: TextSize,
         green: Green,
     ) -> ptr::NonNull<NodeData> {
-        let parent = ManuallyDrop::new(parent);
-        let res = NodeData {
-            _c: Count::new(),
-            rc: Cell::new(1),
-            parent: parent.as_ref().map(|it| it.ptr),
-            index,
-            green,
-            offset,
-        };
+        let res = NodeData { _c: Count::new(), rc: Cell::new(1), parent, index, green, offset };
         unsafe { ptr::NonNull::new_unchecked(Box::into_raw(Box::new(res))) }
     }
 
@@ -183,10 +175,24 @@ impl NodeData {
 
     #[inline]
     fn parent_node(&self) -> Option<SyntaxNode> {
-        let parent = self.parent()?;
-        debug_assert!(matches!(parent.green, Green::Node { .. }));
+        let mut parent = self.parent()?;
+        while !matches!(parent.green, Green::Node { .. }) {
+            parent = parent.parent()?;
+        }
         parent.inc_rc();
         Some(SyntaxNode { ptr: ptr::NonNull::from(parent) })
+    }
+
+    #[inline]
+    fn parent_token(&self) -> Option<SyntaxToken> {
+        let parent = self.parent()?;
+        match parent.green {
+            Green::Token { .. } => {
+                parent.inc_rc();
+                Some(SyntaxToken { ptr: ptr::NonNull::from(parent) })
+            }
+            Green::Node { .. } => None,
+        }
     }
 
     #[inline]
@@ -205,10 +211,7 @@ impl NodeData {
     fn green_siblings(&self) -> slice::Iter<'_, GreenChild> {
         match &self.parent().map(|it| &it.green) {
             Some(Green::Node { ptr }) => unsafe { &*ptr.as_ptr() }.children().raw,
-            Some(Green::Token { .. }) => {
-                debug_assert!(false);
-                [].iter()
-            }
+            Some(Green::Token { .. }) => [].iter(),
             None => [].iter(),
         }
     }
@@ -296,8 +299,9 @@ impl SyntaxNode {
         index: u32,
         offset: TextSize,
     ) -> SyntaxNode {
+        let parent = ManuallyDrop::new(parent);
         let green = Green::Node { ptr: green.into() };
-        SyntaxNode { ptr: NodeData::new(Some(parent), index, offset, green) }
+        SyntaxNode { ptr: NodeData::new(Some(parent.ptr), index, offset, green) }
     }
 
     pub fn clone_subtree(&self) -> SyntaxNode {
@@ -505,7 +509,7 @@ impl SyntaxNode {
         }
 
         let mut children = self.children_with_tokens().filter(|child| {
-            let child_range = child.text_range();
+            let child_range = child.text_range_including_trivia();
             !child_range.is_empty()
                 && (child_range.start() <= offset && offset <= child_range.end())
         });
@@ -547,9 +551,17 @@ impl SyntaxNode {
 
     pub fn child_or_token_at_range(&self, range: TextRange) -> Option<SyntaxElement> {
         let rel_range = range - self.offset();
-        self.green_ref().child_at_range(rel_range).map(|(index, rel_offset, green)| {
-            SyntaxElement::new(green, self.clone(), index as u32, self.offset() + rel_offset)
-        })
+        let (index, rel_offset, green) = self.green_ref().child_at_range(rel_range)?;
+        let child =
+            SyntaxElement::new(green, self.clone(), index as u32, self.offset() + rel_offset);
+        match child {
+            NodeOrToken::Token(token) if !token.text_range().contains_range(range) => token
+                .leading_trivia()
+                .chain(token.trailing_trivia())
+                .find(|it| it.text_range().contains_range(range))
+                .map(SyntaxElement::from),
+            child => Some(child),
+        }
     }
 }
 
@@ -560,8 +572,20 @@ impl SyntaxToken {
         index: u32,
         offset: TextSize,
     ) -> SyntaxToken {
+        let parent = ManuallyDrop::new(parent);
         let green = Green::Token { ptr: green.into() };
-        SyntaxToken { ptr: NodeData::new(Some(parent), index, offset, green) }
+        SyntaxToken { ptr: NodeData::new(Some(parent.ptr), index, offset, green) }
+    }
+
+    fn new_trivia(
+        green: &GreenTokenData,
+        parent: SyntaxToken,
+        index: u32,
+        offset: TextSize,
+    ) -> SyntaxToken {
+        let parent = ManuallyDrop::new(parent);
+        let green = Green::Token { ptr: green.into() };
+        SyntaxToken { ptr: NodeData::new(Some(parent.ptr), index, offset, green) }
     }
 
     #[inline]
@@ -571,6 +595,19 @@ impl SyntaxToken {
 
     pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
+        if let Some(owner) = self.data().parent_token() {
+            let index = self.data().index() as usize;
+            let green = owner.green();
+            let mut leading = green.leading_trivia().to_vec();
+            let mut trailing = green.trailing_trivia().to_vec();
+            if self.is_leading_trivia(&owner) {
+                leading[index] = replacement;
+            } else {
+                trailing[index] = replacement;
+            }
+            let new_owner = GreenToken::with_trivia(green.kind(), green.text(), leading, trailing);
+            return owner.replace_with(new_owner);
+        }
         let parent = self.parent().unwrap();
         let me: u32 = self.data().index();
 
@@ -585,7 +622,12 @@ impl SyntaxToken {
 
     #[inline]
     pub fn text_range(&self) -> TextRange {
-        self.data().text_range()
+        self.green().text_range() + self.data().offset()
+    }
+
+    #[inline]
+    pub fn text_range_including_trivia(&self) -> TextRange {
+        TextRange::at(self.data().offset(), self.green().text_len_including_trivia())
     }
 
     #[inline]
@@ -606,6 +648,10 @@ impl SyntaxToken {
                 ""
             }
         }
+    }
+
+    pub fn text_including_trivia(&self) -> String {
+        self.with_trivia().map(|token| token.text().to_owned()).collect()
     }
 
     #[inline]
@@ -648,6 +694,37 @@ impl SyntaxToken {
     }
 
     pub fn next_token(&self) -> Option<SyntaxToken> {
+        if let Some(parent) = self.data().parent_token() {
+            let index = self.index() + 1;
+            return if self.is_leading_trivia(&parent) {
+                parent.leading_trivia().nth(index).or(Some(parent))
+            } else {
+                parent.trailing_trivia().nth(index).or_else(|| {
+                    parent.next_non_trivia_token().map(SyntaxToken::first_token_including_trivia)
+                })
+            };
+        }
+        self.trailing_trivia()
+            .next()
+            .or_else(|| self.next_non_trivia_token().map(SyntaxToken::first_token_including_trivia))
+    }
+    pub fn prev_token(&self) -> Option<SyntaxToken> {
+        if let Some(parent) = self.data().parent_token() {
+            let index = self.index().checked_sub(1);
+            return if self.is_leading_trivia(&parent) {
+                index.and_then(|it| parent.leading_trivia().nth(it)).or_else(|| {
+                    parent.prev_non_trivia_token().map(SyntaxToken::last_token_including_trivia)
+                })
+            } else {
+                index.and_then(|it| parent.trailing_trivia().nth(it)).or(Some(parent))
+            };
+        }
+        self.leading_trivia()
+            .next_back()
+            .or_else(|| self.prev_non_trivia_token().map(SyntaxToken::last_token_including_trivia))
+    }
+
+    fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
         match self.next_sibling_or_token() {
             Some(element) => element.first_token(),
             None => self
@@ -656,7 +733,7 @@ impl SyntaxToken {
                 .and_then(|element| element.first_token()),
         }
     }
-    pub fn prev_token(&self) -> Option<SyntaxToken> {
+    fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
         match self.prev_sibling_or_token() {
             Some(element) => element.last_token(),
             None => self
@@ -664,6 +741,71 @@ impl SyntaxToken {
                 .find_map(|it| it.prev_sibling_or_token())
                 .and_then(|element| element.last_token()),
         }
+    }
+
+    fn first_token_including_trivia(self) -> SyntaxToken {
+        let first = self.leading_trivia().next();
+        first.unwrap_or(self)
+    }
+    fn last_token_including_trivia(self) -> SyntaxToken {
+        let last = self.trailing_trivia().next_back();
+        last.unwrap_or(self)
+    }
+
+    fn is_leading_trivia(&self, parent: &SyntaxToken) -> bool {
+        self.data().offset() < parent.text_range().start()
+    }
+
+    pub(crate) fn with_trivia(&self) -> impl Iterator<Item = SyntaxToken> {
+        self.leading_trivia().chain(iter::once(self.clone())).chain(self.trailing_trivia())
+    }
+
+    fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
+        let mut tokens = self.with_trivia().filter(|token| {
+            let range = token.text_range();
+            !range.is_empty() && range.start() <= offset && offset <= range.end()
+        });
+        let Some(left) = tokens.next() else {
+            return TokenAtOffset::None;
+        };
+        match tokens.next() {
+            Some(right) => TokenAtOffset::Between(left, right),
+            None => TokenAtOffset::Single(left),
+        }
+    }
+
+    pub fn leading_trivia(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
+        self.trivia(true)
+    }
+
+    pub fn trailing_trivia(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
+        self.trivia(false)
+    }
+
+    fn trivia(
+        &self,
+        leading: bool,
+    ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
+        let green = self.green();
+        let (start, len) = if leading {
+            (self.data().offset(), green.leading_trivia().len())
+        } else {
+            (self.text_range().end(), green.trailing_trivia().len())
+        };
+        let token = self.clone();
+        (0..len).map(move |index| {
+            let trivia = if leading {
+                token.green().leading_trivia()
+            } else {
+                token.green().trailing_trivia()
+            };
+            let offset = start + trivia[..index].iter().map(|it| it.text_len()).sum::<TextSize>();
+            SyntaxToken::new_trivia(&trivia[index], token.clone(), index as u32, offset)
+        })
     }
 }
 
@@ -689,6 +831,14 @@ impl SyntaxElement {
         match self {
             NodeOrToken::Node(it) => it.text_range(),
             NodeOrToken::Token(it) => it.text_range(),
+        }
+    }
+
+    #[inline]
+    fn text_range_including_trivia(&self) -> TextRange {
+        match self {
+            NodeOrToken::Node(it) => it.text_range(),
+            NodeOrToken::Token(it) => it.text_range_including_trivia(),
         }
     }
 
@@ -760,9 +910,10 @@ impl SyntaxElement {
     }
 
     fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
-        assert!(self.text_range().start() <= offset && offset <= self.text_range().end());
+        let range = self.text_range_including_trivia();
+        assert!(range.start() <= offset && offset <= range.end());
         match self {
-            NodeOrToken::Token(token) => TokenAtOffset::Single(token.clone()),
+            NodeOrToken::Token(token) => token.token_at_offset(offset),
             NodeOrToken::Node(node) => node.token_at_offset(offset),
         }
     }
@@ -798,12 +949,7 @@ impl fmt::Debug for SyntaxNode {
 
 impl fmt::Display for SyntaxNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.preorder_with_tokens()
-            .filter_map(|event| match event {
-                WalkEvent::Enter(NodeOrToken::Token(token)) => Some(token),
-                _ => None,
-            })
-            .try_for_each(|it| fmt::Display::fmt(&it, f))
+        self.text().fmt(f)
     }
 }
 
@@ -826,7 +972,7 @@ impl Hash for SyntaxToken {
 
 impl fmt::Display for SyntaxToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.text(), f)
+        fmt::Display::fmt(&self.text_including_trivia(), f)
     }
 }
 

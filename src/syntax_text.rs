@@ -105,13 +105,15 @@ impl SyntaxText {
 
     fn tokens_with_ranges(&self) -> impl Iterator<Item = (SyntaxToken, TextRange)> {
         let text_range = self.range;
-        self.node.descendants_with_tokens().filter_map(|element| element.into_token()).filter_map(
-            move |token| {
+        self.node
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .flat_map(|token| token.with_trivia())
+            .filter_map(move |token| {
                 let token_range = token.text_range();
                 let range = text_range.intersect(token_range)?;
                 Some((token, range - token_range.start()))
-            },
-        )
+            })
     }
 }
 

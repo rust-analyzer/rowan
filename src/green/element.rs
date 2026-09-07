@@ -77,4 +77,12 @@ impl GreenElementRef<'_> {
             NodeOrToken::Token(it) => it.text_len(),
         }
     }
+
+    #[inline]
+    pub(crate) fn text_len_including_trivia(self) -> TextSize {
+        match self {
+            NodeOrToken::Node(it) => it.text_len(),
+            NodeOrToken::Token(it) => it.text_len_including_trivia(),
+        }
+    }
 }

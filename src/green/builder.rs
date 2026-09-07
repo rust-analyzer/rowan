@@ -39,6 +39,18 @@ impl GreenNodeBuilder<'_> {
         self.children.push((hash, token.into()));
     }
 
+    #[inline]
+    pub fn token_with_trivia<'a, 'b>(
+        &mut self,
+        kind: SyntaxKind,
+        text: &str,
+        leading: impl IntoIterator<Item = (SyntaxKind, &'a str)>,
+        trailing: impl IntoIterator<Item = (SyntaxKind, &'b str)>,
+    ) {
+        let (hash, token) = self.cache.token_with_trivia(kind, text, leading, trailing);
+        self.children.push((hash, token.into()));
+    }
+
     /// Start new node and make it current.
     #[inline]
     pub fn start_node(&mut self, kind: SyntaxKind) {

@@ -206,7 +206,7 @@ impl GreenNode {
         let mut text_len: TextSize = 0.into();
         let children = children.into_iter().map(|el| {
             let rel_offset = text_len;
-            text_len += el.text_len();
+            text_len += el.as_deref().text_len_including_trivia();
             match el {
                 NodeOrToken::Node(node) => GreenChild::Node { rel_offset, node },
                 NodeOrToken::Token(token) => GreenChild::Token { rel_offset, token },
@@ -262,7 +262,7 @@ impl GreenChild {
     }
     #[inline]
     fn rel_range(&self) -> TextRange {
-        let len = self.as_ref().text_len();
+        let len = self.as_ref().text_len_including_trivia();
         TextRange::at(self.rel_offset(), len)
     }
 }
