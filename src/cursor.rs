@@ -539,6 +539,14 @@ impl SyntaxNode {
         self.data().prev_non_trivia_token()
     }
 
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        self.first_non_trivia_token().map(|it| it.trivia_before()).into_iter().flatten()
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        self.last_non_trivia_token().map(|it| it.trivia_after()).into_iter().flatten()
+    }
+
     #[inline]
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode> {
         iter::successors(Some(self.clone()), move |node| match direction {
@@ -821,6 +829,16 @@ impl SyntaxToken {
         self.data().prev_non_trivia_token()
     }
 
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        let prev = self.prev_non_trivia_token().map(|it| it.trailing_trivia());
+        prev.into_iter().flatten().chain(self.leading_trivia())
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        let next = self.next_non_trivia_token().map(|it| it.leading_trivia());
+        self.trailing_trivia().chain(next.into_iter().flatten())
+    }
+
     fn first_token_including_trivia(self) -> SyntaxToken {
         let first = self.leading_trivia().next();
         first.unwrap_or(self)
@@ -1024,6 +1042,14 @@ impl SyntaxElement {
             NodeOrToken::Node(_) => false,
             NodeOrToken::Token(it) => it.is_trivia(),
         }
+    }
+
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        self.first_non_trivia_token().map(|it| it.trivia_before()).into_iter().flatten()
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        self.last_non_trivia_token().map(|it| it.trivia_after()).into_iter().flatten()
     }
 
     fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {

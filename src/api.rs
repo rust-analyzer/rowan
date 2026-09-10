@@ -216,6 +216,14 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.prev_non_trivia_token().map(SyntaxToken::from)
     }
 
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_before().map(SyntaxToken::from)
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_after().map(SyntaxToken::from)
+    }
+
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode<L>> {
         self.raw.siblings(direction).map(SyntaxNode::from)
     }
@@ -380,6 +388,14 @@ impl<L: Language> SyntaxToken<L> {
     pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.prev_non_trivia_token().map(SyntaxToken::from)
     }
+
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_before().map(SyntaxToken::from)
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_after().map(SyntaxToken::from)
+    }
 }
 
 impl<L: Language> SyntaxElement<L> {
@@ -486,6 +502,14 @@ impl<L: Language> SyntaxElement<L> {
             NodeOrToken::Node(_) => false,
             NodeOrToken::Token(it) => it.is_trivia(),
         }
+    }
+
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.first_non_trivia_token().map(|it| it.trivia_before()).into_iter().flatten()
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.last_non_trivia_token().map(|it| it.trivia_after()).into_iter().flatten()
     }
 }
 
