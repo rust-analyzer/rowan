@@ -184,13 +184,20 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
 
-    /// Return the leftmost token in the subtree of this node.
     pub fn first_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.first_token().map(SyntaxToken::from)
     }
-    /// Return the rightmost token in the subtree of this node.
+
     pub fn last_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.last_token().map(SyntaxToken::from)
+    }
+
+    pub fn first_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.first_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn last_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.last_non_trivia_token().map(SyntaxToken::from)
     }
 
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode<L>> {
@@ -352,6 +359,20 @@ impl<L: Language> SyntaxElement<L> {
         match self {
             NodeOrToken::Node(it) => it.text_range(),
             NodeOrToken::Token(it) => it.text_range(),
+        }
+    }
+
+    pub fn first_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.first_non_trivia_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
+        }
+    }
+
+    pub fn last_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.last_non_trivia_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
         }
     }
 

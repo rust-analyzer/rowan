@@ -441,10 +441,26 @@ impl SyntaxNode {
     }
 
     pub fn first_token(&self) -> Option<SyntaxToken> {
-        self.first_child_or_token()?.first_token()
+        self.first_non_trivia_token().map(SyntaxToken::first_token_including_trivia)
     }
+
     pub fn last_token(&self) -> Option<SyntaxToken> {
-        self.last_child_or_token()?.last_token()
+        self.last_non_trivia_token().map(SyntaxToken::last_token_including_trivia)
+    }
+
+    pub fn first_non_trivia_token(&self) -> Option<SyntaxToken> {
+        self.children_with_tokens().find_map(|child| child.first_non_trivia_token())
+    }
+
+    pub fn last_non_trivia_token(&self) -> Option<SyntaxToken> {
+        let mut child = self.last_child_or_token();
+        while let Some(element) = child {
+            if let Some(token) = element.last_non_trivia_token() {
+                return Some(token);
+            }
+            child = element.prev_sibling_or_token();
+        }
+        None
     }
 
     #[inline]
@@ -726,20 +742,20 @@ impl SyntaxToken {
 
     fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
         match self.next_sibling_or_token() {
-            Some(element) => element.first_token(),
+            Some(element) => element.first_non_trivia_token(),
             None => self
                 .ancestors()
                 .find_map(|it| it.next_sibling_or_token())
-                .and_then(|element| element.first_token()),
+                .and_then(|element| element.first_non_trivia_token()),
         }
     }
     fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
         match self.prev_sibling_or_token() {
-            Some(element) => element.last_token(),
+            Some(element) => element.last_non_trivia_token(),
             None => self
                 .ancestors()
                 .find_map(|it| it.prev_sibling_or_token())
-                .and_then(|element| element.last_token()),
+                .and_then(|element| element.last_non_trivia_token()),
         }
     }
 
@@ -886,12 +902,27 @@ impl SyntaxElement {
     pub fn first_token(&self) -> Option<SyntaxToken> {
         match self {
             NodeOrToken::Node(it) => it.first_token(),
-            NodeOrToken::Token(it) => Some(it.clone()),
+            NodeOrToken::Token(it) => Some(it.clone().first_token_including_trivia()),
         }
     }
+
     pub fn last_token(&self) -> Option<SyntaxToken> {
         match self {
             NodeOrToken::Node(it) => it.last_token(),
+            NodeOrToken::Token(it) => Some(it.clone().last_token_including_trivia()),
+        }
+    }
+
+    pub fn first_non_trivia_token(&self) -> Option<SyntaxToken> {
+        match self {
+            NodeOrToken::Node(it) => it.first_non_trivia_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
+        }
+    }
+
+    pub fn last_non_trivia_token(&self) -> Option<SyntaxToken> {
+        match self {
+            NodeOrToken::Node(it) => it.last_non_trivia_token(),
             NodeOrToken::Token(it) => Some(it.clone()),
         }
     }
