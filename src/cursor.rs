@@ -674,19 +674,7 @@ impl SyntaxToken {
 
     pub fn replace_with(&self, replacement: GreenToken) -> GreenNode {
         assert_eq!(self.kind(), replacement.kind());
-        if let Some(owner) = self.data().parent_token() {
-            let index = self.data().index() as usize;
-            let green = owner.green();
-            let mut leading = green.leading_trivia().to_vec();
-            let mut trailing = green.trailing_trivia().to_vec();
-            if self.is_leading_trivia(&owner) {
-                leading[index] = replacement;
-            } else {
-                trailing[index] = replacement;
-            }
-            let new_owner = GreenToken::with_trivia(green.kind(), green.text(), leading, trailing);
-            return owner.replace_with(new_owner);
-        }
+        assert!(!self.is_trivia(), "cannot replace a trivia view; replace its owning token");
         let parent = self.parent().unwrap();
         let me: u32 = self.data().index();
 
@@ -827,10 +815,6 @@ impl SyntaxToken {
     fn last_token_including_trivia(self) -> SyntaxToken {
         let last = self.trailing_trivia().next_back();
         last.unwrap_or(self)
-    }
-
-    fn is_leading_trivia(&self, parent: &SyntaxToken) -> bool {
-        self.data().offset() < parent.text_range().start()
     }
 
     pub(crate) fn with_trivia(&self) -> impl Iterator<Item = SyntaxToken> {
