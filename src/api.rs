@@ -70,18 +70,18 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
             write!(f, " {:?}", format!("{} ...", &text[..idx]))?;
         }
         write!(f, " [")?;
-        for (idx, piece) in self.leading_trivia().enumerate() {
+        for (idx, trivia) in self.leading_trivia().enumerate() {
             if idx > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{:?}({:?})", piece.kind(), piece.text())?;
+            write!(f, "{:?}({:?})", trivia.kind(), trivia.text())?;
         }
         write!(f, "] [")?;
-        for (idx, piece) in self.trailing_trivia().enumerate() {
+        for (idx, trivia) in self.trailing_trivia().enumerate() {
             if idx > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{:?}({:?})", piece.kind(), piece.text())?;
+            write!(f, "{:?}({:?})", trivia.kind(), trivia.text())?;
         }
         write!(f, "]")
     }

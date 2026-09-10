@@ -744,7 +744,7 @@ impl SyntaxToken {
     }
 
     pub fn text_including_trivia(&self) -> String {
-        self.with_trivia().map(|token| token.text().to_owned()).collect()
+        self.tokens_including_trivia().map(|trivia| trivia.text().to_owned()).collect()
     }
 
     #[inline]
@@ -848,12 +848,12 @@ impl SyntaxToken {
         last.unwrap_or(self)
     }
 
-    pub(crate) fn with_trivia(&self) -> impl Iterator<Item = SyntaxToken> {
+    pub(crate) fn tokens_including_trivia(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
         self.leading_trivia().chain(iter::once(self.clone())).chain(self.trailing_trivia())
     }
 
     fn token_at_offset(&self, offset: TextSize) -> TokenAtOffset<SyntaxToken> {
-        let mut tokens = self.with_trivia().filter(|token| {
+        let mut tokens = self.tokens_including_trivia().filter(|token| {
             let range = token.text_range();
             !range.is_empty() && range.start() <= offset && offset <= range.end()
         });
@@ -869,34 +869,24 @@ impl SyntaxToken {
     pub fn leading_trivia(
         &self,
     ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
-        self.trivia(true)
+        let owner = self.clone();
+        let start = self.data().offset();
+        (0..self.green().leading_trivia().len()).map(move |index| {
+            let trivia = owner.green().leading_trivia();
+            let offset = start + trivia[..index].iter().map(|it| it.text_len()).sum::<TextSize>();
+            SyntaxToken::new_trivia(&trivia[index], owner.clone(), index as u32, offset)
+        })
     }
 
     pub fn trailing_trivia(
         &self,
     ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
-        self.trivia(false)
-    }
-
-    fn trivia(
-        &self,
-        leading: bool,
-    ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
-        let green = self.green();
-        let (start, len) = if leading {
-            (self.data().offset(), green.leading_trivia().len())
-        } else {
-            (self.text_range().end(), green.trailing_trivia().len())
-        };
-        let token = self.clone();
-        (0..len).map(move |index| {
-            let trivia = if leading {
-                token.green().leading_trivia()
-            } else {
-                token.green().trailing_trivia()
-            };
+        let owner = self.clone();
+        let start = self.text_range().end();
+        (0..self.green().trailing_trivia().len()).map(move |index| {
+            let trivia = owner.green().trailing_trivia();
             let offset = start + trivia[..index].iter().map(|it| it.text_len()).sum::<TextSize>();
-            SyntaxToken::new_trivia(&trivia[index], token.clone(), index as u32, offset)
+            SyntaxToken::new_trivia(&trivia[index], owner.clone(), index as u32, offset)
         })
     }
 }
