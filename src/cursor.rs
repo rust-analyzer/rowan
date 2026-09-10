@@ -397,6 +397,15 @@ impl SyntaxNode {
         self.data().text_range()
     }
 
+    pub fn text_range_without_outer_trivia(&self) -> TextRange {
+        match (self.first_non_trivia_token(), self.last_non_trivia_token()) {
+            (Some(first), Some(last)) => {
+                TextRange::new(first.text_range().start(), last.text_range().end())
+            }
+            _ => TextRange::empty(self.offset()),
+        }
+    }
+
     #[inline]
     pub fn index(&self) -> usize {
         self.data().index() as usize
@@ -405,6 +414,10 @@ impl SyntaxNode {
     #[inline]
     pub fn text(&self) -> SyntaxText {
         SyntaxText::new(self.clone())
+    }
+
+    pub fn text_without_outer_trivia(&self) -> SyntaxText {
+        self.text().slice(self.text_range_without_outer_trivia() - self.text_range().start())
     }
 
     #[inline]
@@ -896,10 +909,18 @@ impl SyntaxElement {
     }
 
     #[inline]
-    fn text_range_including_trivia(&self) -> TextRange {
+    pub fn text_range_including_trivia(&self) -> TextRange {
         match self {
             NodeOrToken::Node(it) => it.text_range(),
             NodeOrToken::Token(it) => it.text_range_including_trivia(),
+        }
+    }
+
+    #[inline]
+    pub fn text_range_without_outer_trivia(&self) -> TextRange {
+        match self {
+            NodeOrToken::Node(it) => it.text_range_without_outer_trivia(),
+            NodeOrToken::Token(it) => it.text_range(),
         }
     }
 
