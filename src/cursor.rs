@@ -201,6 +201,14 @@ impl NodeData {
     }
 
     #[inline]
+    fn in_leading_trivia(&self) -> Option<bool> {
+        let parent = self.parent()?;
+        let Green::Token { ptr } = parent.green else { return None };
+        let start = parent.offset() + unsafe { ptr.as_ref() }.leading_trivia_len();
+        Some(self.offset() < start)
+    }
+
+    #[inline]
     fn green(&self) -> GreenElementRef<'_> {
         match &self.green {
             Green::Node { ptr } => GreenElementRef::Node(unsafe { &*ptr.as_ptr() }),
@@ -283,6 +291,54 @@ impl NodeData {
             let offset = parent.offset() + child.rel_offset();
             Some(SyntaxElement::new(child.as_ref(), parent, index as u32, offset))
         })
+    }
+
+    fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
+        if let Some(leading) = self.in_leading_trivia() {
+            let owner = self.parent_token()?;
+            return if leading { Some(owner) } else { owner.data().next_non_trivia_token() };
+        }
+        let mut parent = self.parent_node();
+        let mut element = self.next_sibling_or_token();
+        loop {
+            match element {
+                Some(current) => {
+                    if let Some(token) = current.first_non_trivia_token() {
+                        return Some(token);
+                    }
+                    element = current.next_sibling_or_token();
+                }
+                None => {
+                    let node = parent?;
+                    element = node.next_sibling_or_token();
+                    parent = node.parent();
+                }
+            }
+        }
+    }
+
+    fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
+        if let Some(leading) = self.in_leading_trivia() {
+            let owner = self.parent_token()?;
+            return if leading { owner.data().prev_non_trivia_token() } else { Some(owner) };
+        }
+        let mut parent = self.parent_node();
+        let mut element = self.prev_sibling_or_token();
+        loop {
+            match element {
+                Some(current) => {
+                    if let Some(token) = current.last_non_trivia_token() {
+                        return Some(token);
+                    }
+                    element = current.prev_sibling_or_token();
+                }
+                None => {
+                    let node = parent?;
+                    element = node.prev_sibling_or_token();
+                    parent = node.parent();
+                }
+            }
+        }
     }
 }
 
@@ -461,6 +517,13 @@ impl SyntaxNode {
             child = element.prev_sibling_or_token();
         }
         None
+    }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
+        self.data().next_non_trivia_token()
+    }
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
+        self.data().prev_non_trivia_token()
     }
 
     #[inline]
@@ -710,13 +773,15 @@ impl SyntaxToken {
     }
 
     pub fn next_token(&self) -> Option<SyntaxToken> {
-        if let Some(parent) = self.data().parent_token() {
-            let index = self.index() + 1;
-            return if self.is_leading_trivia(&parent) {
-                parent.leading_trivia().nth(index).or(Some(parent))
+        if let (Some(leading), Some(owner)) =
+            (self.data().in_leading_trivia(), self.data().parent_token())
+        {
+            let index = self.data().index() as usize;
+            return if leading {
+                owner.leading_trivia().nth(index + 1).or(Some(owner))
             } else {
-                parent.trailing_trivia().nth(index).or_else(|| {
-                    parent.next_non_trivia_token().map(SyntaxToken::first_token_including_trivia)
+                owner.trailing_trivia().nth(index + 1).or_else(|| {
+                    owner.next_non_trivia_token().map(SyntaxToken::first_token_including_trivia)
                 })
             };
         }
@@ -725,14 +790,16 @@ impl SyntaxToken {
             .or_else(|| self.next_non_trivia_token().map(SyntaxToken::first_token_including_trivia))
     }
     pub fn prev_token(&self) -> Option<SyntaxToken> {
-        if let Some(parent) = self.data().parent_token() {
-            let index = self.index().checked_sub(1);
-            return if self.is_leading_trivia(&parent) {
-                index.and_then(|it| parent.leading_trivia().nth(it)).or_else(|| {
-                    parent.prev_non_trivia_token().map(SyntaxToken::last_token_including_trivia)
+        if let (Some(leading), Some(owner)) =
+            (self.data().in_leading_trivia(), self.data().parent_token())
+        {
+            let index = (self.data().index() as usize).checked_sub(1);
+            return if leading {
+                index.and_then(|it| owner.leading_trivia().nth(it)).or_else(|| {
+                    owner.prev_non_trivia_token().map(SyntaxToken::last_token_including_trivia)
                 })
             } else {
-                index.and_then(|it| parent.trailing_trivia().nth(it)).or(Some(parent))
+                index.and_then(|it| owner.trailing_trivia().nth(it)).or(Some(owner))
             };
         }
         self.leading_trivia()
@@ -740,23 +807,12 @@ impl SyntaxToken {
             .or_else(|| self.prev_non_trivia_token().map(SyntaxToken::last_token_including_trivia))
     }
 
-    fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
-        match self.next_sibling_or_token() {
-            Some(element) => element.first_non_trivia_token(),
-            None => self
-                .ancestors()
-                .find_map(|it| it.next_sibling_or_token())
-                .and_then(|element| element.first_non_trivia_token()),
-        }
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
+        self.data().next_non_trivia_token()
     }
-    fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
-        match self.prev_sibling_or_token() {
-            Some(element) => element.last_non_trivia_token(),
-            None => self
-                .ancestors()
-                .find_map(|it| it.prev_sibling_or_token())
-                .and_then(|element| element.last_non_trivia_token()),
-        }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
+        self.data().prev_non_trivia_token()
     }
 
     fn first_token_including_trivia(self) -> SyntaxToken {
@@ -937,6 +993,19 @@ impl SyntaxElement {
         match self {
             NodeOrToken::Node(it) => it.prev_sibling_or_token(),
             NodeOrToken::Token(it) => it.prev_sibling_or_token(),
+        }
+    }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken> {
+        match self {
+            NodeOrToken::Node(it) => it.next_non_trivia_token(),
+            NodeOrToken::Token(it) => it.next_non_trivia_token(),
+        }
+    }
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken> {
+        match self {
+            NodeOrToken::Node(it) => it.prev_non_trivia_token(),
+            NodeOrToken::Token(it) => it.prev_non_trivia_token(),
         }
     }
 

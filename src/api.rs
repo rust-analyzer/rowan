@@ -200,6 +200,14 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.last_non_trivia_token().map(SyntaxToken::from)
     }
 
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.next_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.prev_non_trivia_token().map(SyntaxToken::from)
+    }
+
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode<L>> {
         self.raw.siblings(direction).map(SyntaxNode::from)
     }
@@ -352,6 +360,14 @@ impl<L: Language> SyntaxToken<L> {
     pub fn prev_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.prev_token().map(SyntaxToken::from)
     }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.next_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.prev_non_trivia_token().map(SyntaxToken::from)
+    }
 }
 
 impl<L: Language> SyntaxElement<L> {
@@ -422,6 +438,20 @@ impl<L: Language> SyntaxElement<L> {
         match self {
             NodeOrToken::Node(it) => it.prev_sibling_or_token(),
             NodeOrToken::Token(it) => it.prev_sibling_or_token(),
+        }
+    }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.next_non_trivia_token(),
+            NodeOrToken::Token(it) => it.next_non_trivia_token(),
+        }
+    }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.prev_non_trivia_token(),
+            NodeOrToken::Token(it) => it.prev_non_trivia_token(),
         }
     }
 }
