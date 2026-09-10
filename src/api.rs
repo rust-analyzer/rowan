@@ -291,8 +291,12 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.text_range_including_trivia()
     }
 
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> Option<usize> {
         self.raw.index()
+    }
+
+    pub fn is_trivia(&self) -> bool {
+        self.raw.is_trivia()
     }
 
     pub fn text(&self) -> &str {
@@ -392,9 +396,9 @@ impl<L: Language> SyntaxElement<L> {
         }
     }
 
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> Option<usize> {
         match self {
-            NodeOrToken::Node(it) => it.index(),
+            NodeOrToken::Node(it) => Some(it.index()),
             NodeOrToken::Token(it) => it.index(),
         }
     }
@@ -452,6 +456,13 @@ impl<L: Language> SyntaxElement<L> {
         match self {
             NodeOrToken::Node(it) => it.prev_non_trivia_token(),
             NodeOrToken::Token(it) => it.prev_non_trivia_token(),
+        }
+    }
+
+    pub fn is_trivia(&self) -> bool {
+        match self {
+            NodeOrToken::Node(_) => false,
+            NodeOrToken::Token(it) => it.is_trivia(),
         }
     }
 }

@@ -695,6 +695,11 @@ impl SyntaxToken {
     }
 
     #[inline]
+    pub fn is_trivia(&self) -> bool {
+        self.data().parent().is_some_and(|parent| matches!(parent.green, Green::Token { .. }))
+    }
+
+    #[inline]
     pub fn kind(&self) -> SyntaxKind {
         self.data().kind()
     }
@@ -710,8 +715,8 @@ impl SyntaxToken {
     }
 
     #[inline]
-    pub fn index(&self) -> usize {
-        self.data().index() as usize
+    pub fn index(&self) -> Option<usize> {
+        (!self.is_trivia()).then(|| self.data().index() as usize)
     }
 
     #[inline]
@@ -915,9 +920,9 @@ impl SyntaxElement {
     }
 
     #[inline]
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> Option<usize> {
         match self {
-            NodeOrToken::Node(it) => it.index(),
+            NodeOrToken::Node(it) => Some(it.index()),
             NodeOrToken::Token(it) => it.index(),
         }
     }
@@ -1006,6 +1011,13 @@ impl SyntaxElement {
         match self {
             NodeOrToken::Node(it) => it.prev_non_trivia_token(),
             NodeOrToken::Token(it) => it.prev_non_trivia_token(),
+        }
+    }
+
+    pub fn is_trivia(&self) -> bool {
+        match self {
+            NodeOrToken::Node(_) => false,
+            NodeOrToken::Token(it) => it.is_trivia(),
         }
     }
 
