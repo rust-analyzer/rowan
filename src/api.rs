@@ -346,6 +346,10 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.parent().map(SyntaxNode::from)
     }
 
+    pub fn owning_node(&self) -> Option<SyntaxNode<L>> {
+        self.raw.owning_node().map(SyntaxNode::from)
+    }
+
     /// Iterator over all the ancestors of this token excluding itself.
     #[deprecated = "use `SyntaxToken::parent_ancestors` instead"]
     pub fn ancestors(&self) -> impl Iterator<Item = SyntaxNode<L>> {

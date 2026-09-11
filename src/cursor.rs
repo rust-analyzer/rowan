@@ -762,6 +762,19 @@ impl SyntaxToken {
         std::iter::successors(self.parent(), SyntaxNode::parent)
     }
 
+    pub fn owning_node(&self) -> Option<SyntaxNode> {
+        if !self.is_trivia() {
+            return self.parent();
+        }
+        match (self.prev_non_trivia_token(), self.next_non_trivia_token()) {
+            (Some(prev), Some(next)) => {
+                prev.ancestors().find(|it| it.text_range().contains_range(next.text_range()))
+            }
+            (Some(other), None) | (None, Some(other)) => other.ancestors().last(),
+            (None, None) => None,
+        }
+    }
+
     #[inline]
     pub fn tree_top(&self) -> SyntaxNode {
         self.ancestors().last().unwrap()
