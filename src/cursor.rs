@@ -843,11 +843,13 @@ impl SyntaxToken {
     }
 
     pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        debug_assert!(!self.is_trivia(), "trivia_before is defined for non-trivia tokens");
         let prev = self.prev_non_trivia_token().map(|it| it.trailing_trivia());
         prev.into_iter().flatten().chain(self.leading_trivia())
     }
 
     pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken> {
+        debug_assert!(!self.is_trivia(), "trivia_after is defined for non-trivia tokens");
         let next = self.next_non_trivia_token().map(|it| it.leading_trivia());
         self.trailing_trivia().chain(next.into_iter().flatten())
     }
