@@ -69,19 +69,22 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
             let idx = (21..25).find(|&idx| text.is_char_boundary(idx)).unwrap();
             write!(f, " {:?}", format!("{} ...", &text[..idx]))?;
         }
+        if self.leading_trivia().len() == 0 && self.trailing_trivia().len() == 0 {
+            return Ok(());
+        }
         write!(f, " [")?;
-        for (idx, piece) in self.leading_trivia().enumerate() {
+        for (idx, trivia) in self.leading_trivia().enumerate() {
             if idx > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{:?}({:?})", piece.kind(), piece.text())?;
+            write!(f, "{:?}({:?})", trivia.kind(), trivia.text())?;
         }
         write!(f, "] [")?;
-        for (idx, piece) in self.trailing_trivia().enumerate() {
+        for (idx, trivia) in self.trailing_trivia().enumerate() {
             if idx > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{:?}({:?})", piece.kind(), piece.text())?;
+            write!(f, "{:?}({:?})", trivia.kind(), trivia.text())?;
         }
         write!(f, "]")
     }
@@ -124,12 +127,20 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.text_range()
     }
 
+    pub fn text_range_without_outer_trivia(&self) -> TextRange {
+        self.raw.text_range_without_outer_trivia()
+    }
+
     pub fn index(&self) -> usize {
         self.raw.index()
     }
 
     pub fn text(&self) -> SyntaxText {
         self.raw.text()
+    }
+
+    pub fn text_without_outer_trivia(&self) -> SyntaxText {
+        self.raw.text_without_outer_trivia()
     }
 
     pub fn green(&self) -> &GreenNodeData {
@@ -184,13 +195,36 @@ impl<L: Language> SyntaxNode<L> {
         self.raw.prev_sibling_or_token().map(NodeOrToken::from)
     }
 
-    /// Return the leftmost token in the subtree of this node.
     pub fn first_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.first_token().map(SyntaxToken::from)
     }
-    /// Return the rightmost token in the subtree of this node.
+
     pub fn last_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.last_token().map(SyntaxToken::from)
+    }
+
+    pub fn first_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.first_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn last_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.last_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.next_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.prev_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_before().map(SyntaxToken::from)
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_after().map(SyntaxToken::from)
     }
 
     pub fn siblings(&self, direction: Direction) -> impl Iterator<Item = SyntaxNode<L>> {
@@ -276,8 +310,12 @@ impl<L: Language> SyntaxToken<L> {
         self.raw.text_range_including_trivia()
     }
 
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> Option<usize> {
         self.raw.index()
+    }
+
+    pub fn is_trivia(&self) -> bool {
+        self.raw.is_trivia()
     }
 
     pub fn text(&self) -> &str {
@@ -306,6 +344,10 @@ impl<L: Language> SyntaxToken<L> {
 
     pub fn parent(&self) -> Option<SyntaxNode<L>> {
         self.raw.parent().map(SyntaxNode::from)
+    }
+
+    pub fn owning_node(&self) -> Option<SyntaxNode<L>> {
+        self.raw.owning_node().map(SyntaxNode::from)
     }
 
     /// Iterator over all the ancestors of this token excluding itself.
@@ -345,6 +387,22 @@ impl<L: Language> SyntaxToken<L> {
     pub fn prev_token(&self) -> Option<SyntaxToken<L>> {
         self.raw.prev_token().map(SyntaxToken::from)
     }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.next_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        self.raw.prev_non_trivia_token().map(SyntaxToken::from)
+    }
+
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_before().map(SyntaxToken::from)
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.raw.trivia_after().map(SyntaxToken::from)
+    }
 }
 
 impl<L: Language> SyntaxElement<L> {
@@ -355,9 +413,37 @@ impl<L: Language> SyntaxElement<L> {
         }
     }
 
-    pub fn index(&self) -> usize {
+    pub fn text_range_including_trivia(&self) -> TextRange {
         match self {
-            NodeOrToken::Node(it) => it.index(),
+            NodeOrToken::Node(it) => it.text_range(),
+            NodeOrToken::Token(it) => it.text_range_including_trivia(),
+        }
+    }
+
+    pub fn text_range_without_outer_trivia(&self) -> TextRange {
+        match self {
+            NodeOrToken::Node(it) => it.text_range_without_outer_trivia(),
+            NodeOrToken::Token(it) => it.text_range(),
+        }
+    }
+
+    pub fn first_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.first_non_trivia_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
+        }
+    }
+
+    pub fn last_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.last_non_trivia_token(),
+            NodeOrToken::Token(it) => Some(it.clone()),
+        }
+    }
+
+    pub fn index(&self) -> Option<usize> {
+        match self {
+            NodeOrToken::Node(it) => Some(it.index()),
             NodeOrToken::Token(it) => it.index(),
         }
     }
@@ -402,6 +488,35 @@ impl<L: Language> SyntaxElement<L> {
             NodeOrToken::Node(it) => it.prev_sibling_or_token(),
             NodeOrToken::Token(it) => it.prev_sibling_or_token(),
         }
+    }
+
+    pub fn next_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.next_non_trivia_token(),
+            NodeOrToken::Token(it) => it.next_non_trivia_token(),
+        }
+    }
+
+    pub fn prev_non_trivia_token(&self) -> Option<SyntaxToken<L>> {
+        match self {
+            NodeOrToken::Node(it) => it.prev_non_trivia_token(),
+            NodeOrToken::Token(it) => it.prev_non_trivia_token(),
+        }
+    }
+
+    pub fn is_trivia(&self) -> bool {
+        match self {
+            NodeOrToken::Node(_) => false,
+            NodeOrToken::Token(it) => it.is_trivia(),
+        }
+    }
+
+    pub fn trivia_before(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.first_non_trivia_token().map(|it| it.trivia_before()).into_iter().flatten()
+    }
+
+    pub fn trivia_after(&self) -> impl DoubleEndedIterator<Item = SyntaxToken<L>> {
+        self.last_non_trivia_token().map(|it| it.trivia_after()).into_iter().flatten()
     }
 }
 

@@ -108,7 +108,7 @@ impl SyntaxText {
         self.node
             .descendants_with_tokens()
             .filter_map(|element| element.into_token())
-            .flat_map(|token| token.with_trivia())
+            .flat_map(|token| token.tokens_including_trivia())
             .filter_map(move |token| {
                 let token_range = token.text_range();
                 let range = text_range.intersect(token_range)?;
