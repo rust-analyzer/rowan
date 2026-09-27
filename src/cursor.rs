@@ -204,8 +204,7 @@ impl NodeData {
     fn in_leading_trivia(&self) -> Option<bool> {
         let parent = self.parent()?;
         let Green::Token { ptr } = parent.green else { return None };
-        let start = parent.offset() + unsafe { ptr.as_ref() }.leading_trivia_len();
-        Some(self.offset() < start)
+        Some((self.index() as usize) < unsafe { ptr.as_ref() }.leading_trivia().len())
     }
 
     #[inline]
@@ -807,7 +806,8 @@ impl SyntaxToken {
             return if leading {
                 owner.leading_trivia().nth(index + 1).or(Some(owner))
             } else {
-                owner.trailing_trivia().nth(index + 1).or_else(|| {
+                let leading = owner.green().leading_trivia().len();
+                owner.trailing_trivia().nth(index + 1 - leading).or_else(|| {
                     owner.next_non_trivia_token().map(SyntaxToken::first_token_including_trivia)
                 })
             };
@@ -826,7 +826,10 @@ impl SyntaxToken {
                     owner.prev_non_trivia_token().map(SyntaxToken::last_token_including_trivia)
                 })
             } else {
-                index.and_then(|it| owner.trailing_trivia().nth(it)).or(Some(owner))
+                let leading = owner.green().leading_trivia().len();
+                index
+                    .and_then(|it| owner.trailing_trivia().nth(it.checked_sub(leading)?))
+                    .or(Some(owner))
             };
         }
         self.leading_trivia()
@@ -898,10 +901,11 @@ impl SyntaxToken {
     ) -> impl DoubleEndedIterator<Item = SyntaxToken> + ExactSizeIterator {
         let owner = self.clone();
         let start = self.text_range().end();
+        let leading = self.green().leading_trivia().len();
         (0..self.green().trailing_trivia().len()).map(move |index| {
             let trivia = owner.green().trailing_trivia();
             let offset = start + trivia[..index].iter().map(|it| it.text_len()).sum::<TextSize>();
-            SyntaxToken::new_trivia(&trivia[index], owner.clone(), index as u32, offset)
+            SyntaxToken::new_trivia(&trivia[index], owner.clone(), (leading + index) as u32, offset)
         })
     }
 }
