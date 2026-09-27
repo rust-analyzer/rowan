@@ -69,18 +69,18 @@ impl<L: Language> fmt::Debug for SyntaxToken<L> {
             let idx = (21..25).find(|&idx| text.is_char_boundary(idx)).unwrap();
             write!(f, " {:?}", format!("{} ...", &text[..idx]))?;
         }
-        if self.leading_trivia().len() == 0 && self.trailing_trivia().len() == 0 {
+        if self.leading_trivia().chain(self.trailing_trivia()).all(|it| it.text().is_empty()) {
             return Ok(());
         }
         write!(f, " [")?;
-        for (idx, trivia) in self.leading_trivia().enumerate() {
+        for (idx, trivia) in self.leading_trivia().filter(|it| !it.text().is_empty()).enumerate() {
             if idx > 0 {
                 write!(f, ", ")?;
             }
             write!(f, "{:?}({:?})", trivia.kind(), trivia.text())?;
         }
         write!(f, "] [")?;
-        for (idx, trivia) in self.trailing_trivia().enumerate() {
+        for (idx, trivia) in self.trailing_trivia().filter(|it| !it.text().is_empty()).enumerate() {
             if idx > 0 {
                 write!(f, ", ")?;
             }
