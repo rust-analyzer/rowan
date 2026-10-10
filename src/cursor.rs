@@ -654,11 +654,20 @@ impl SyntaxNode {
         let child =
             SyntaxElement::new(green, self.clone(), index as u32, self.offset() + rel_offset);
         match child {
-            NodeOrToken::Token(token) if !token.text_range().contains_range(range) => token
-                .leading_trivia()
-                .chain(token.trailing_trivia())
-                .find(|it| it.text_range().contains_range(range))
-                .map(SyntaxElement::from),
+            NodeOrToken::Token(token) => {
+                // Prefer the token over trivia, and non empty over zero width.
+                let mut covering = iter::once(token.clone())
+                    .chain(token.leading_trivia())
+                    .chain(token.trailing_trivia())
+                    .filter(|it| it.text_range().contains_range(range));
+                let first = covering.next()?;
+                let res = if first.text_range().is_empty() {
+                    covering.find(|it| !it.text_range().is_empty()).unwrap_or(first)
+                } else {
+                    first
+                };
+                Some(res.into())
+            }
             child => Some(child),
         }
     }
