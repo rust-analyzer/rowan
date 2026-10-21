@@ -137,15 +137,20 @@ impl GreenNodeData {
         &self,
         rel_range: TextRange,
     ) -> Option<(usize, TextSize, GreenElementRef<'_>)> {
-        let idx = self
-            .slice()
-            .binary_search_by(|it| {
-                let child_range = it.rel_range();
-                TextRange::ordering(child_range, rel_range)
-            })
-            // XXX: this handles empty ranges
-            .unwrap_or_else(|it| it.saturating_sub(1));
-        let child = &self.slice().get(idx).filter(|it| it.rel_range().contains_range(rel_range))?;
+        let slice = self.slice();
+        let idx = match slice.binary_search_by(|it| {
+            let child_range = it.rel_range();
+            TextRange::ordering(child_range, rel_range)
+        }) {
+            Ok(idx) => idx,
+            // Empty range on a boundary, skip zero width tokens and prefer left.
+            Err(idx) => slice[..idx]
+                .iter()
+                .rposition(|it| !it.is_zero_width_token())
+                .or((idx < slice.len()).then_some(idx))
+                .unwrap_or(idx.saturating_sub(1)),
+        };
+        let child = &slice.get(idx).filter(|it| it.rel_range().contains_range(rel_range))?;
         Some((idx, child.rel_offset(), child.as_ref()))
     }
 
@@ -264,6 +269,10 @@ impl GreenChild {
     fn rel_range(&self) -> TextRange {
         let len = self.as_ref().text_len_including_trivia();
         TextRange::at(self.rel_offset(), len)
+    }
+    #[inline]
+    fn is_zero_width_token(&self) -> bool {
+        matches!(self, GreenChild::Token { token, .. } if token.text_len_including_trivia() == 0.into())
     }
 }
 
