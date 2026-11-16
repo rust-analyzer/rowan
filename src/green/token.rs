@@ -18,8 +18,8 @@ struct GreenTokenHead {
     kind: SyntaxKind,
     leading_len: TextSize,
     trailing_len: TextSize,
-    leading: Box<[GreenToken]>,
-    trailing: Box<[GreenToken]>,
+    trivias: Box<[GreenToken]>,
+    trivia_point: u32,
     _c: Count<GreenToken>,
 }
 
@@ -130,12 +130,12 @@ impl GreenTokenData {
 
     #[inline]
     pub fn leading_trivia(&self) -> &[GreenToken] {
-        &self.data.header.leading
+        &self.data.header.trivias[..self.data.header.trivia_point as usize]
     }
 
     #[inline]
     pub fn trailing_trivia(&self) -> &[GreenToken] {
-        &self.data.header.trailing
+        &self.data.header.trivias[self.data.header.trivia_point as usize..]
     }
 
     #[inline]
@@ -174,12 +174,20 @@ impl GreenToken {
                 .all(|it| { it.leading_trivia().is_empty() && it.trailing_trivia().is_empty() }),
             "trivia tokens cannot themselves carry trivia"
         );
+        let trivia_point = leading.len().try_into().expect("leading trivias overflow by u32");
+        let leading_len = leading.iter().map(|it| it.text_len()).sum();
+        let trailing_len = trailing.iter().map(|it| it.text_len()).sum();
+
+        let mut trivias = leading;
+        trivias.reserve_exact(trailing.len());
+        trivias.append(&mut { trailing });
+
         let head = GreenTokenHead {
             kind,
-            leading_len: leading.iter().map(|it| it.text_len()).sum(),
-            trailing_len: trailing.iter().map(|it| it.text_len()).sum(),
-            leading: leading.into_boxed_slice(),
-            trailing: trailing.into_boxed_slice(),
+            leading_len,
+            trailing_len,
+            trivia_point,
+            trivias: trivias.into_boxed_slice(),
             _c: Count::new(),
         };
         let ptr = ThinArc::from_header_and_iter(head, text.bytes());
