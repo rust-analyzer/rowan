@@ -1386,6 +1386,16 @@ impl SyntaxNodeChildren {
 impl Iterator for SyntaxNodeChildren {
     type Item = SyntaxNode;
     fn next(&mut self) -> Option<SyntaxNode> {
+        // A mutable tree can change under us, so hold on to the next child before handing this one out.
+        if self.parent.data().mutable {
+            if !self.next_initialized {
+                self.next = self.parent.first_child();
+                self.next_initialized = true;
+            }
+            let current = self.next.take();
+            self.next = current.as_ref().and_then(|it| it.next_sibling());
+            return current;
+        }
         if !self.next_initialized {
             self.next = self.parent.first_child();
             self.next_initialized = true;
@@ -1448,6 +1458,16 @@ impl SyntaxElementChildren {
 impl Iterator for SyntaxElementChildren {
     type Item = SyntaxElement;
     fn next(&mut self) -> Option<SyntaxElement> {
+        // A mutable tree can change under us, so hold on to the next child before handing this one out.
+        if self.parent.data().mutable {
+            if !self.next_initialized {
+                self.next = self.parent.first_child_or_token();
+                self.next_initialized = true;
+            }
+            let current = self.next.take();
+            self.next = current.as_ref().and_then(|it| it.next_sibling_or_token());
+            return current;
+        }
         if !self.next_initialized {
             self.next = self.parent.first_child_or_token();
             self.next_initialized = true;
@@ -1585,3 +1605,31 @@ impl Iterator for PreorderWithTokens {
     }
 }
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use crate::{GreenNodeBuilder, green::SyntaxKind};
+
+    use super::*;
+
+    #[test]
+    fn test_splice_children() {
+        let mut builder = GreenNodeBuilder::new();
+        builder.start_node(SyntaxKind(0));
+        for text in ["a", "b", "c", "d"] {
+            builder.start_node(SyntaxKind(1));
+            builder.token(SyntaxKind(2), text);
+            builder.finish_node();
+        }
+        builder.finish_node();
+        let root = SyntaxNode::new_root_mut(builder.finish());
+
+        root.splice_children(1..3, []);
+        assert_eq!(root.to_string(), "ad");
+
+        for child in root.children() {
+            child.detach();
+        }
+        assert_eq!(root.to_string(), "");
+    }
+}
